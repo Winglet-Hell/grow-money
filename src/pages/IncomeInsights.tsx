@@ -24,6 +24,8 @@ interface CategoryData {
     avgTransaction: number;
     monthlyAvg: number;
     yearForecast: number;
+    share: number;
+    rank: number;
 }
 
 type SortField = keyof CategoryData;
@@ -62,10 +64,13 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         const currentMonth = new Date().getMonth(); // 0-11
         const remainingMonths = 11 - currentMonth;
 
+        const grandTotal = Object.values(groups).reduce((acc, curr) => acc + curr.total, 0);
+
         return Object.entries(groups).map(([category, { total, count }]) => {
             const totalEarned = total;
             const monthlyAvg = totalEarned / uniqueMonths;
             const yearForecast = monthlyAvg * remainingMonths;
+            const share = grandTotal > 0 ? (totalEarned / grandTotal) * 100 : 0;
 
             return {
                 category,
@@ -73,9 +78,13 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                 operations: count,
                 avgTransaction: count > 0 ? totalEarned / count : 0,
                 monthlyAvg,
-                yearForecast
+                yearForecast,
+                share,
+                rank: 0
             };
-        });
+        })
+            .sort((a, b) => b.totalEarned - a.totalEarned)
+            .map((item, index) => ({ ...item, rank: index + 1 }));
     }, [transactions]);
 
     const sortedData = useMemo(() => {
@@ -207,7 +216,9 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
     // Modal State
     const [selectedTagData, setSelectedTagData] = useState<{ category: string, tag: string, transactions: Transaction[] } | null>(null);
 
-    const handleTagClick = (category: string, tag: string) => {
+    const handleTagClick = (e: React.MouseEvent, category: string, tag: string) => {
+        e.stopPropagation();
+
         const matchingTransactions = transactions.filter(t => {
             if (t.type !== 'income' || t.category !== category) return false;
             const tTag = t.tags || 'No Tag';
@@ -354,6 +365,18 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                     {sortField === 'yearForecast' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('share')}>
+                                <div className="flex items-center justify-end gap-1">
+                                    % Share
+                                    {sortField === 'share' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
+                            <TableHead className="text-right w-16 cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('rank')}>
+                                <div className="flex items-center justify-end gap-1">
+                                    Rank
+                                    {sortField === 'rank' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -408,12 +431,14 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                     <TableCell className="text-right text-gray-400">
                                         {row.yearForecast > 0 ? formatCurrency(row.yearForecast) : '—'}
                                     </TableCell>
+                                    <TableCell className="text-right text-gray-500 font-medium">{row.share.toFixed(1)}%</TableCell>
+                                    <TableCell className="text-right text-gray-400 font-mono text-xs">#{row.rank}</TableCell>
                                 </TableRow>
 
                                 {/* Expanded Tag View */}
                                 {expandedCategories.has(row.category) && (
                                     <TableRow className="bg-gray-50/50">
-                                        <TableCell colSpan={6} className="p-0">
+                                        <TableCell colSpan={8} className="p-0">
                                             <div className="pl-12 pr-4 py-4 border-l-4 border-emerald-100 ml-6 my-2 bg-white/50 rounded-r-lg">
                                                 <table className="w-full text-sm">
                                                     <thead>
@@ -432,7 +457,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                                                 <td className="py-2.5 text-gray-600">
                                                                     <div
                                                                         className="flex items-center gap-2 cursor-pointer hover:text-emerald-600 transition-colors group font-medium w-fit"
-                                                                        onClick={() => handleTagClick(row.category, tagRow.tag)}
+                                                                        onClick={(e) => handleTagClick(e, row.category, tagRow.tag)}
                                                                     >
                                                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-200 group-hover:bg-emerald-500 transition-colors"></div>
                                                                         {tagRow.tag}

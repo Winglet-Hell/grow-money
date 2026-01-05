@@ -11,8 +11,8 @@ import {
 import { ArrowUpDown } from 'lucide-react';
 import { cn, stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
-
 import { TransactionListModal } from '../components/TransactionListModal';
+import { getGlobalCategory } from '../lib/categoryGroups';
 
 interface CategoryInsightsProps {
     transactions: Transaction[];
@@ -25,14 +25,18 @@ interface CategoryData {
     avgTransaction: number;
     monthlyAvg: number;
     yearForecast: number;
+    share: number;
+    rank: number;
 }
 
 type SortField = keyof CategoryData;
 type SortOrder = 'asc' | 'desc';
+type ViewMode = 'category' | 'global';
 
 export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions }) => {
     const [sortField, setSortField] = useState<SortField>('totalSpent');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+    const [viewMode, setViewMode] = useState<ViewMode>('category'); // Default to Detailed View
 
     // Calculate global unique months for consistent averaging
     const uniqueMonthsCount = useMemo(() => {
@@ -54,20 +58,26 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         const expenseTransactions = transactions.filter(t => t.type === 'expense');
 
         expenseTransactions.forEach(t => {
-            if (!groups[t.category]) {
-                groups[t.category] = { total: 0, count: 0 };
+            // Determine key based on View Mode
+            const key = viewMode === 'global' ? getGlobalCategory(t.category) : t.category;
+
+            if (!groups[key]) {
+                groups[key] = { total: 0, count: 0 };
             }
-            groups[t.category].total += Math.abs(t.amount);
-            groups[t.category].count += 1;
+            groups[key].total += Math.abs(t.amount);
+            groups[key].count += 1;
         });
 
         const currentMonth = new Date().getMonth(); // 0-11
         const remainingMonths = 11 - currentMonth;
 
+        const grandTotal = Object.values(groups).reduce((acc, curr) => acc + curr.total, 0);
+
         return Object.entries(groups).map(([category, { total, count }]) => {
             const totalSpent = total;
             const monthlyAvg = totalSpent / uniqueMonthsCount;
             const yearForecast = monthlyAvg * remainingMonths;
+            const share = grandTotal > 0 ? (totalSpent / grandTotal) * 100 : 0;
 
             return {
                 category,
@@ -75,10 +85,15 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 operations: count,
                 avgTransaction: count > 0 ? totalSpent / count : 0,
                 monthlyAvg,
-                yearForecast
+                yearForecast,
+                share,
+                // Rank will be assigned after sorting by totalSpent descending
+                rank: 0
             };
-        });
-    }, [transactions, uniqueMonthsCount]);
+        })
+            .sort((a, b) => b.totalSpent - a.totalSpent) // Initial sort to assign rank
+            .map((item, index) => ({ ...item, rank: index + 1 })); // Assign static rank
+    }, [transactions, uniqueMonthsCount, viewMode]);
 
 
 
@@ -209,7 +224,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
     // Modal State
     const [selectedTagData, setSelectedTagData] = useState<{ category: string, tag: string, transactions: Transaction[] } | null>(null);
 
-    const handleTagClick = (category: string, tag: string) => {
+    const handleTagClick = (e: React.MouseEvent, category: string, tag: string) => {
+        e.stopPropagation();
 
         // Note: The filter above for tags needs to match the grouping logic in getTagMetrics.
         // In getTagMetrics: const tag = t.tags || 'No Tag';
@@ -234,43 +250,51 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         });
     };
 
-    // Helper to get tag metrics for a specific category
-    const getTagMetrics = (category: string) => {
-        const categoryTransactions = transactions.filter(
-            t => t.type === 'expense' && t.category === category
-        );
+    // Helper to get breakdown metrics (Subcategories or Tags) for a specific parent row
+    const getBreakdownMetrics = (parentCategory: string) => {
+        // Filter transactions belonging to this parent
+        const parentTransactions = transactions.filter(t => {
+            if (t.type !== 'expense') return false;
+
+            if (viewMode === 'global') {
+                return getGlobalCategory(t.category) === parentCategory;
+            } else {
+                return t.category === parentCategory;
+            }
+        });
 
         const groups: Record<string, { total: number; count: number }> = {};
 
-        categoryTransactions.forEach(t => {
-            const tag = t.tags || 'No Tag'; // Use 'No Tag' if empty
-            if (!groups[tag]) {
-                groups[tag] = { total: 0, count: 0 };
+        parentTransactions.forEach(t => {
+            // If Global Mode -> Breakdown by Category
+            // If Category Mode -> Breakdown by Tag
+            const key = viewMode === 'global' ? t.category : (t.tags || 'No Tag');
+
+            if (!groups[key]) {
+                groups[key] = { total: 0, count: 0 };
             }
-            groups[tag].total += Math.abs(t.amount);
-            groups[tag].count += 1;
+            groups[key].total += Math.abs(t.amount);
+            groups[key].count += 1;
         });
 
         // Current month logic for forecast (same as main)
         const currentMonth = new Date().getMonth();
         const remainingMonths = 11 - currentMonth;
 
-        return Object.entries(groups).map(([tag, { total, count }]) => {
-            // Use GLOBAL uniqueMonthsCount for tags as well to ensure consistency
-            // This treats the tag as having the same "potential timespan" as the category/dataset
+        return Object.entries(groups).map(([key, { total, count }]) => {
             const totalSpent = total;
             const monthlyAvg = totalSpent / uniqueMonthsCount;
             const yearForecast = monthlyAvg * remainingMonths;
 
             return {
-                tag,
+                name: key, // Rename 'tag' to 'name' for generic use
                 totalSpent,
                 operations: count,
                 avgTransaction: count > 0 ? totalSpent / count : 0,
                 monthlyAvg,
                 yearForecast
             };
-        }).sort((a, b) => b.totalSpent - a.totalSpent); // Default sort by spent desc
+        }).sort((a, b) => b.totalSpent - a.totalSpent);
     };
 
     return (
@@ -312,16 +336,45 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             )}
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-                <div className="p-6 border-b border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-800">Category Breakdown</h3>
-                    <p className="text-sm text-gray-500">Analyze your spending habits by category</p>
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                    <div>
+                        <h3 className="text-lg font-semibold text-gray-800">Spending Breakdown</h3>
+                        <p className="text-sm text-gray-500">Analyze your spending by {viewMode === 'global' ? 'category group' : 'category'}</p>
+                    </div>
+                    {/* View Toggle */}
+                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                        <button
+                            onClick={() => {
+                                setViewMode('category');
+                                setExpandedCategories(new Set()); // Clear expansion
+                            }}
+                            className={cn(
+                                "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                                viewMode === 'category' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                            )}
+                        >
+                            Detailed Categories
+                        </button>
+                        <button
+                            onClick={() => {
+                                setViewMode('global');
+                                setExpandedCategories(new Set()); // Clear expansion
+                            }}
+                            className={cn(
+                                "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                                viewMode === 'global' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                            )}
+                        >
+                            Global Groups
+                        </button>
+                    </div>
                 </div>
                 <Table>
                     <TableHeader>
                         <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
                             <TableHead className="w-[250px] cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('category')}>
                                 <div className="flex items-center gap-1">
-                                    Category
+                                    {viewMode === 'global' ? 'Global Category' : 'Category'}
                                     {sortField === 'category' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
@@ -355,6 +408,18 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                     {sortField === 'yearForecast' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('share')}>
+                                <div className="flex items-center justify-end gap-1">
+                                    % Share
+                                    {sortField === 'share' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
+                            <TableHead className="text-right w-16 cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('rank')}>
+                                <div className="flex items-center justify-end gap-1">
+                                    Rank
+                                    {sortField === 'rank' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -371,6 +436,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                             </span>
                                             {(() => {
                                                 const color = stringToColor(row.category);
+                                                // Icon resolution:
+                                                // If Global Mode: use generic icon or try to map
+                                                // We can rely on getCategoryIcon("Housing") etc if they exist, or fallback
                                                 const Icon = getCategoryIcon(row.category);
                                                 return (
                                                     <span className={cn(
@@ -409,17 +477,21 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                     <TableCell className="text-right text-gray-400">
                                         {row.yearForecast > 0 ? formatCurrency(row.yearForecast) : '—'}
                                     </TableCell>
+                                    <TableCell className="text-right text-gray-500 font-medium">{row.share.toFixed(1)}%</TableCell>
+                                    <TableCell className="text-right text-gray-400 font-mono text-xs">#{row.rank}</TableCell>
                                 </TableRow>
 
                                 {/* Expanded Tag View */}
                                 {expandedCategories.has(row.category) && (
                                     <TableRow className="bg-gray-50/50">
-                                        <TableCell colSpan={6} className="p-0">
+                                        <TableCell colSpan={8} className="p-0">
                                             <div className="pl-12 pr-4 py-4 border-l-4 border-emerald-100 ml-6 my-2 bg-white/50 rounded-r-lg">
                                                 <table className="w-full text-sm">
                                                     <thead>
                                                         <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-gray-100">
-                                                            <th className="text-left py-2 font-medium">Tag (Subcategory)</th>
+                                                            <th className="text-left py-2 font-medium">
+                                                                {viewMode === 'global' ? 'Category' : 'Tag (Subcategory)'}
+                                                            </th>
                                                             <th className="text-right py-2 font-medium">Total Spent</th>
                                                             <th className="text-right py-2 font-medium">Ops</th>
                                                             <th className="text-right py-2 font-medium">Avg. Ticket</th>
@@ -428,29 +500,42 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-50">
-                                                        {getTagMetrics(row.category).map(tagRow => (
-                                                            <tr key={tagRow.tag} className="hover:bg-gray-100/50 transition-colors">
+                                                        {getBreakdownMetrics(row.category).map(subItem => (
+                                                            <tr key={subItem.name} className="hover:bg-gray-100/50 transition-colors">
                                                                 <td className="py-2.5 text-gray-600">
-                                                                    <div
-                                                                        className="flex items-center gap-2 cursor-pointer hover:text-emerald-600 transition-colors group font-medium w-fit"
-                                                                        onClick={() => handleTagClick(row.category, tagRow.tag)}
-                                                                    >
-                                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-200 group-hover:bg-emerald-500 transition-colors"></div>
-                                                                        {tagRow.tag}
-                                                                    </div>
+                                                                    {viewMode === 'category' ? (
+                                                                        // Tag Mode: Clickable for Modal
+                                                                        <div
+                                                                            className="flex items-center gap-2 cursor-pointer hover:text-emerald-600 transition-colors group font-medium w-fit"
+                                                                            onClick={(e) => handleTagClick(e, row.category, subItem.name)}
+                                                                        >
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-200 group-hover:bg-emerald-500 transition-colors"></div>
+                                                                            {subItem.name}
+                                                                        </div>
+                                                                    ) : (
+                                                                        // Global Mode: Just list categories (Not drill-down to tag transactions yet, 
+                                                                        // or we could make this drill down to specific category transactions? 
+                                                                        // For now, let's just make it static text or maybe trigger modal with NO tag filter?
+                                                                        // User didn't explicitly ask for 3-level drill down, just grouping.
+                                                                        // Let's keep it simple: List of categories.
+                                                                        <div className="flex items-center gap-2 font-medium">
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-200"></div>
+                                                                            {subItem.name}
+                                                                        </div>
+                                                                    )}
                                                                 </td>
-                                                                <td className="text-right py-2.5 text-gray-700">{formatCurrency(tagRow.totalSpent)}</td>
-                                                                <td className="text-right py-2.5 text-gray-500">{tagRow.operations}</td>
-                                                                <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.avgTransaction)}</td>
-                                                                <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.monthlyAvg)}</td>
-                                                                <td className="text-right py-2.5 text-gray-400">{tagRow.yearForecast > 0 ? formatCurrency(tagRow.yearForecast) : '—'}</td>
+                                                                <td className="text-right py-2.5 text-gray-700">{formatCurrency(subItem.totalSpent)}</td>
+                                                                <td className="text-right py-2.5 text-gray-500">{subItem.operations}</td>
+                                                                <td className="text-right py-2.5 text-gray-500">{formatCurrency(subItem.avgTransaction)}</td>
+                                                                <td className="text-right py-2.5 text-gray-500">{formatCurrency(subItem.monthlyAvg)}</td>
+                                                                <td className="text-right py-2.5 text-gray-400">{subItem.yearForecast > 0 ? formatCurrency(subItem.yearForecast) : '—'}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
                                                 </table>
-                                                {getTagMetrics(row.category).length === 0 && (
+                                                {getBreakdownMetrics(row.category).length === 0 && (
                                                     <div className="text-center py-4 text-gray-400 text-xs italic">
-                                                        No tags found for this category
+                                                        No data found
                                                     </div>
                                                 )}
                                             </div>
