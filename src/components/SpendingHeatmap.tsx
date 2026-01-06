@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { cn } from '../lib/utils';
 import type { Transaction } from '../types';
 import { Calendar } from 'lucide-react';
@@ -7,8 +7,8 @@ interface SpendingHeatmapProps {
     transactions: Transaction[];
 }
 
-export function SpendingHeatmap({ transactions }: SpendingHeatmapProps) {
-    const [tooltipData, setTooltipData] = useState<{ date: string; amount: number; count: number; x: number; y: number } | null>(null);
+export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }) => {
+    // const [tooltipData, setTooltipData] = useState<{ date: string; amount: number; count: number; x: number; y: number } | null>(null);
 
     // 1. Prepare Data
     // We want to show the last 365 days (approx 52 weeks)

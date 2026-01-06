@@ -298,7 +298,7 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
                         <Tooltip
                             cursor={{ fill: '#F9FAFB' }}
                             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                            formatter={(value: any, name: string) => [
+                            formatter={(value: any, name: any) => [
                                 `₽${new Intl.NumberFormat('ru-RU').format(Number(value))}`,
                                 name === 'trend' ? 'Trend' : 'Amount'
                             ]}

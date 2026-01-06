@@ -8,7 +8,7 @@ import {
     TableHeader,
     TableRow,
 } from "../components/ui/table"
-import { ArrowUpDown } from 'lucide-react';
+import { ArrowUpDown, Search, X } from 'lucide-react';
 import { cn, stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
@@ -20,6 +20,7 @@ interface IncomeInsightsProps {
 interface CategoryData {
     category: string;
     totalEarned: number;
+    currentMonthEarned: number;
     operations: number;
     avgTransaction: number;
     monthlyAvg: number;
@@ -34,10 +35,16 @@ type SortOrder = 'asc' | 'desc';
 export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) => {
     const [sortField, setSortField] = useState<SortField>('totalEarned');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+    const [searchQuery, setSearchQuery] = useState('');
 
     const categoryData = useMemo(() => {
         const groups: Record<string, { total: number; count: number }> = {};
         const months = new Set<string>();
+        const currentMonthGroups: Record<string, number> = {};
+
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
 
         // Filter for income ONLY
         const incomeTransactions = transactions.filter(t => t.type === 'income');
@@ -47,27 +54,31 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                 groups[t.category] = { total: 0, count: 0 };
             }
 
-            // For income, amounts are usually positive in csv/excel or handled by parser.
-            // We use Math.abs just in case to ensure magnitude.
-            groups[t.category].total += Math.abs(t.amount);
+            const amount = Math.abs(t.amount);
+            groups[t.category].total += amount;
             groups[t.category].count += 1;
 
             const date = new Date(t.date);
             if (!isNaN(date.getTime())) {
-                // Use date for month counting
-                const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+                const year = date.getFullYear();
+                const month = date.getMonth();
+                const monthKey = `${year}-${month}`;
                 months.add(monthKey);
+
+                if (year === currentYear && month === currentMonth) {
+                    currentMonthGroups[t.category] = (currentMonthGroups[t.category] || 0) + amount;
+                }
             }
         });
 
-        const uniqueMonths = months.size || 1; // Avoid division by zero
-        const currentMonth = new Date().getMonth(); // 0-11
+        const uniqueMonths = months.size || 1;
         const remainingMonths = 11 - currentMonth;
 
         const grandTotal = Object.values(groups).reduce((acc, curr) => acc + curr.total, 0);
 
         return Object.entries(groups).map(([category, { total, count }]) => {
             const totalEarned = total;
+            const currentMonthEarned = currentMonthGroups[category] || 0;
             const monthlyAvg = totalEarned / uniqueMonths;
             const yearForecast = monthlyAvg * remainingMonths;
             const share = grandTotal > 0 ? (totalEarned / grandTotal) * 100 : 0;
@@ -75,6 +86,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             return {
                 category,
                 totalEarned,
+                currentMonthEarned,
                 operations: count,
                 avgTransaction: count > 0 ? totalEarned / count : 0,
                 monthlyAvg,
@@ -87,21 +99,94 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             .map((item, index) => ({ ...item, rank: index + 1 }));
     }, [transactions]);
 
+    // Helper to get breakdown metrics (Tags) for a specific parent row
+    const getBreakdownMetrics = (category: string) => {
+        const categoryTransactions = transactions.filter(
+            t => t.type === 'income' && t.category === category
+        );
+
+        const groups: Record<string, { total: number; count: number }> = {};
+        const currentMonthGroups: Record<string, number> = {};
+
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+
+        categoryTransactions.forEach(t => {
+            const tag = t.tags || 'No Tag';
+            if (!groups[tag]) {
+                groups[tag] = { total: 0, count: 0 };
+            }
+            const amount = Math.abs(t.amount);
+            groups[tag].total += amount;
+            groups[tag].count += 1;
+
+            const date = new Date(t.date);
+            if (!isNaN(date.getTime())) {
+                const year = date.getFullYear();
+                const month = date.getMonth();
+                if (year === currentYear && month === currentMonth) {
+                    currentMonthGroups[tag] = (currentMonthGroups[tag] || 0) + amount;
+                }
+            }
+        });
+
+        const remainingMonths = 11 - currentMonth;
+
+        const totalEarnedCategory = Object.values(groups).reduce((acc, curr) => acc + curr.total, 0);
+
+        return Object.entries(groups).map(([tag, { total, count }]) => {
+            const totalEarned = total;
+            const currentMonthEarned = currentMonthGroups[tag] || 0;
+            const monthlyAvg = totalEarned / uniqueMonthsCount;
+            const yearForecast = monthlyAvg * remainingMonths;
+            const share = totalEarnedCategory > 0 ? (totalEarned / totalEarnedCategory) * 100 : 0; // Share within category
+
+            return {
+                name: tag, // standardized name
+                tag,       // keep tag for backward compat if needed or just use name
+                totalEarned,
+                currentMonthEarned,
+                operations: count,
+                avgTransaction: count > 0 ? totalEarned / count : 0,
+                monthlyAvg,
+                yearForecast,
+                share
+            };
+        }).sort((a, b) => b.totalEarned - a.totalEarned);
+    };
+
     const sortedData = useMemo(() => {
-        return [...categoryData].sort((a, b) => {
-            const aValue = a[sortField];
-            const bValue = b[sortField];
+        let data = [...categoryData].sort((a, b) => {
+            // @ts-ignore - dynamic sort
+            const aValue = a[sortField] ?? 0;
+            // @ts-ignore
+            const bValue = b[sortField] ?? 0;
 
             if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
             if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [categoryData, sortField, sortOrder]);
 
-    const handleSort = (field: SortField) => {
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            data = data.filter(item => {
+                // Match Category Name
+                if (item.category.toLowerCase().includes(query)) return true;
+
+                // Match Tags
+                const tags = getBreakdownMetrics(item.category);
+                return tags.some(t => t.name.toLowerCase().includes(query));
+            });
+        }
+        return data;
+    }, [categoryData, sortField, sortOrder, searchQuery]);
+
+    const handleSort = (field: SortField | 'currentMonthEarned') => {
         if (sortField === field) {
             setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
         } else {
+            // @ts-ignore
             setSortField(field);
             setSortOrder('desc');
         }
@@ -190,13 +275,6 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             trendRatio,
             lastMonthTotal
         };
-        return {
-            avgMonthly,
-            yearForecast,
-            lastYearTotal,
-            trendRatio,
-            lastMonthTotal
-        };
     }, [transactions]);
 
 
@@ -245,42 +323,6 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         return months.size || 1;
     }, [transactions]);
 
-    // Helper to get tag metrics for a specific category (Income version)
-    const getTagMetrics = (category: string) => {
-        const categoryTransactions = transactions.filter(
-            t => t.type === 'income' && t.category === category
-        );
-
-        const groups: Record<string, { total: number; count: number }> = {};
-
-        categoryTransactions.forEach(t => {
-            const tag = t.tags || 'No Tag';
-            if (!groups[tag]) {
-                groups[tag] = { total: 0, count: 0 };
-            }
-            groups[tag].total += Math.abs(t.amount);
-            groups[tag].count += 1;
-        });
-
-        const currentMonth = new Date().getMonth();
-        const remainingMonths = 11 - currentMonth;
-
-        return Object.entries(groups).map(([tag, { total, count }]) => {
-            const totalEarned = total;
-            const monthlyAvg = totalEarned / uniqueMonthsCount;
-            const yearForecast = monthlyAvg * remainingMonths;
-
-            return {
-                tag,
-                totalEarned,
-                operations: count,
-                avgTransaction: count > 0 ? totalEarned / count : 0,
-                monthlyAvg,
-                yearForecast
-            };
-        }).sort((a, b) => b.totalEarned - a.totalEarned);
-    };
-
 
     return (
         <div className="space-y-6">
@@ -322,9 +364,33 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             )}
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-                <div className="p-6 border-b border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-800">Income Breakdown</h3>
-                    <p className="text-sm text-gray-500">Analyze your income sources by category</p>
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between gap-4">
+                    <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-800">Income Breakdown</h3>
+                        <p className="text-sm text-gray-500">Analyze your income sources by category</p>
+                    </div>
+
+                    {/* Search Input */}
+                    <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Search categories or tags..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-64 transition-all"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                            >
+                                <X className="h-3 w-3" />
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <Table>
                     <TableHeader>
@@ -335,10 +401,30 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                     {sortField === 'category' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('totalEarned')}>
+                            {/* This Month (New) */}
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30 rounded-lg" onClick={() => handleSort('currentMonthEarned')}>
+                                <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
+                                    This Month
+                                    {sortField === 'currentMonthEarned' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
+
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('monthlyAvg')}>
                                 <div className="flex items-center justify-end gap-1">
+                                    Monthly Avg
+                                    {sortField === 'monthlyAvg' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30 rounded-lg" onClick={() => handleSort('totalEarned')}>
+                                <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
                                     Total Earned
                                     {sortField === 'totalEarned' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('share')}>
+                                <div className="flex items-center justify-end gap-1">
+                                    % Share
+                                    {sortField === 'share' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
                             <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('operations')}>
@@ -353,28 +439,10 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                     {sortField === 'avgTransaction' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('monthlyAvg')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Monthly Avg
-                                    {sortField === 'monthlyAvg' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
                             <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('yearForecast')}>
                                 <div className="flex items-center justify-end gap-1">
                                     Forecast (Rem. Year)
                                     {sortField === 'yearForecast' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('share')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    % Share
-                                    {sortField === 'share' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right w-16 cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('rank')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Rank
-                                    {sortField === 'rank' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
                         </TableRow>
@@ -389,7 +457,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                     <TableCell className="font-medium text-gray-900">
                                         <div className="flex items-center gap-2">
                                             <span className="text-gray-400 w-4">
-                                                {expandedCategories.has(row.category) ? '▼' : '▶'}
+                                                {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) ? '▼' : '▶'}
                                             </span>
                                             {(() => {
                                                 const color = stringToColor(row.category);
@@ -407,8 +475,12 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                             })()}
                                         </div>
                                     </TableCell>
-                                    <TableCell className="text-right relative">
-                                        <div className="relative z-10 font-medium text-gray-900">
+                                    <TableCell className="text-right font-bold text-gray-900 bg-emerald-50/10 rounded-lg">
+                                        {formatCurrency(row.currentMonthEarned)}
+                                    </TableCell>
+                                    <TableCell className="text-right text-gray-500">{formatCurrency(row.monthlyAvg)}</TableCell>
+                                    <TableCell className="text-right relative bg-emerald-50/10 rounded-lg">
+                                        <div className="relative z-10 font-bold text-gray-900">
                                             {formatCurrency(row.totalEarned)}
                                         </div>
                                         {/* Progress Bar Background */}
@@ -416,23 +488,19 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                             className="absolute left-0 top-2 bottom-2 rounded-r-md transition-all duration-500"
                                             style={{
                                                 width: `${(row.totalEarned / maxTotalEarned) * 100}%`,
-                                                opacity: 0.25,
-                                                backgroundColor: (() => {
-                                                    const ratio = row.totalEarned / maxTotalEarned;
-                                                    const hue = ratio * 120;
-                                                    return `hsl(${hue}, 70%, 50%)`;
-                                                })()
+                                                opacity: 0.1,
+                                                backgroundColor: 'currentColor', // Use row color or default? Let's use emerald
                                             }}
-                                        />
+                                        >
+                                            <div className="w-full h-full bg-emerald-500 rounded-r-md" />
+                                        </div>
                                     </TableCell>
+                                    <TableCell className="text-right text-gray-500 font-medium">{row.share.toFixed(1)}%</TableCell>
                                     <TableCell className="text-right text-gray-500">{row.operations}</TableCell>
                                     <TableCell className="text-right text-gray-500">{formatCurrency(row.avgTransaction)}</TableCell>
-                                    <TableCell className="text-right text-gray-500">{formatCurrency(row.monthlyAvg)}</TableCell>
                                     <TableCell className="text-right text-gray-400">
                                         {row.yearForecast > 0 ? formatCurrency(row.yearForecast) : '—'}
                                     </TableCell>
-                                    <TableCell className="text-right text-gray-500 font-medium">{row.share.toFixed(1)}%</TableCell>
-                                    <TableCell className="text-right text-gray-400 font-mono text-xs">#{row.rank}</TableCell>
                                 </TableRow>
 
                                 {/* Expanded Tag View */}
@@ -443,16 +511,18 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                                 <table className="w-full text-sm">
                                                     <thead>
                                                         <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-gray-100">
-                                                            <th className="text-left py-2 font-medium">Tag (Subcategory)</th>
+                                                            <th className="text-left py-2 font-medium">Tag</th>
+                                                            <th className="text-right py-2 font-medium">This Month</th>
+                                                            <th className="text-right py-2 font-medium">Monthly Avg</th>
                                                             <th className="text-right py-2 font-medium">Total Earned</th>
+                                                            <th className="text-right py-2 font-medium">% Share</th>
                                                             <th className="text-right py-2 font-medium">Ops</th>
                                                             <th className="text-right py-2 font-medium">Avg. Ticket</th>
-                                                            <th className="text-right py-2 font-medium">Monthly Avg</th>
                                                             <th className="text-right py-2 font-medium">Forecast</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-50">
-                                                        {getTagMetrics(row.category).map(tagRow => (
+                                                        {getBreakdownMetrics(row.category).map(tagRow => (
                                                             <tr key={tagRow.tag} className="hover:bg-gray-100/50 transition-colors">
                                                                 <td className="py-2.5 text-gray-600">
                                                                     <div
@@ -463,16 +533,18 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                                                         {tagRow.tag}
                                                                     </div>
                                                                 </td>
+                                                                <td className="text-right py-2.5 font-medium text-emerald-700">{formatCurrency(tagRow.currentMonthEarned)}</td>
+                                                                <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.monthlyAvg)}</td>
                                                                 <td className="text-right py-2.5 text-gray-700">{formatCurrency(tagRow.totalEarned)}</td>
+                                                                <td className="text-right py-2.5 text-gray-500 font-medium">{tagRow.share.toFixed(1)}%</td>
                                                                 <td className="text-right py-2.5 text-gray-500">{tagRow.operations}</td>
                                                                 <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.avgTransaction)}</td>
-                                                                <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.monthlyAvg)}</td>
                                                                 <td className="text-right py-2.5 text-gray-400">{tagRow.yearForecast > 0 ? formatCurrency(tagRow.yearForecast) : '—'}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
                                                 </table>
-                                                {getTagMetrics(row.category).length === 0 && (
+                                                {getBreakdownMetrics(row.category).length === 0 && (
                                                     <div className="text-center py-4 text-gray-400 text-xs italic">
                                                         No tags found for this category
                                                     </div>
