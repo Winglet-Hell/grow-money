@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, LogOut, FileText } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, LogOut, PieChart, TrendingUp, ShieldCheck } from 'lucide-react';
+import { parseFile } from './lib/parser';
 import { FileUploader } from './components/FileUploader';
 import { SummaryCards } from './components/SummaryCards';
 import { Charts } from './components/Charts';
@@ -13,6 +14,28 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 function AppContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const location = useLocation();
+
+  useEffect(() => {
+    const loadDefaultData = async () => {
+      try {
+        const response = await fetch('/default_dataset.xlsx');
+        if (!response.ok) {
+          console.log('No default dataset found');
+          return;
+        }
+
+        const blob = await response.blob();
+        const file = new File([blob], 'default_dataset.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+        const data = await parseFile(file);
+        setTransactions(data);
+      } catch (error) {
+        console.error('Error loading default data:', error);
+      }
+    };
+
+    loadDefaultData();
+  }, []);
 
   const handleDataLoaded = (data: Transaction[]) => {
     setTransactions(data);
@@ -106,10 +129,27 @@ function AppContent() {
               </div>
               <FileUploader onDataLoaded={handleDataLoaded} />
 
-              <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-3xl text-center">
-                <FeatureItem icon={<FileText className="w-5 h-5 text-blue-500" />} text="Excel & CSV Support" />
-                <FeatureItem icon={<LayoutDashboard className="w-5 h-5 text-emerald-500" />} text="Instant Analytics" />
-                <FeatureItem icon={<LogOut className="w-5 h-5 text-purple-500" />} text="Secure & Private" />
+              <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl px-4">
+                <FeatureItem
+                  icon={<LayoutDashboard className="w-6 h-6" />}
+                  title="Smart Overview"
+                  description="Get an instant snapshot of your net balance and recent financial activity."
+                />
+                <FeatureItem
+                  icon={<PieChart className="w-6 h-6" />}
+                  title="Category Insights"
+                  description="Deep dive into your spending habits with detailed category breakdowns."
+                />
+                <FeatureItem
+                  icon={<TrendingUp className="w-6 h-6" />}
+                  title="Financial Trends"
+                  description="Track your spending history and spot anomalies over time."
+                />
+                <FeatureItem
+                  icon={<ShieldCheck className="w-6 h-6" />}
+                  title="Privacy First"
+                  description="Your data is processed locally in your browser and never uploaded to any server."
+                />
               </div>
             </div>
           ) : (
@@ -140,10 +180,13 @@ function App() {
   );
 }
 
-const FeatureItem = ({ icon, text }: { icon: React.ReactNode, text: string }) => (
-  <div className="flex flex-col items-center gap-2 p-4 rounded-xl bg-white border border-gray-100 shadow-sm">
-    <div className="p-2 bg-gray-50 rounded-lg">{icon}</div>
-    <span className="font-medium text-gray-700">{text}</span>
+const FeatureItem = ({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) => (
+  <div className="flex flex-col items-center text-center gap-4 p-6 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1">
+    <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600 ring-1 ring-emerald-100">{icon}</div>
+    <div className="space-y-2">
+      <h3 className="font-semibold text-gray-900">{title}</h3>
+      <p className="text-sm text-gray-500 leading-relaxed">{description}</p>
+    </div>
   </div>
 )
 
