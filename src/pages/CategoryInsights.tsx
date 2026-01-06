@@ -38,14 +38,25 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
     const [viewMode, setViewMode] = useState<ViewMode>('category'); // Default to Detailed View
 
-    // Calculate global unique months for consistent averaging
+    // Calculate global unique completed months for consistent averaging
     const uniqueMonthsCount = useMemo(() => {
         const months = new Set<string>();
         const relevantTransactions = transactions.filter(t => t.type === 'expense');
+
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+
         relevantTransactions.forEach(t => {
             const date = new Date(t.date);
             if (!isNaN(date.getTime())) {
-                months.add(`${date.getFullYear()}-${date.getMonth()}`);
+                const year = date.getFullYear();
+                const month = date.getMonth();
+
+                // Exclude current incomplete month and future dates
+                if (year < currentYear || (year === currentYear && month < currentMonth)) {
+                    months.add(`${year}-${month}`);
+                }
             }
         });
         return months.size || 1;
@@ -56,6 +67,10 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
         // Filter for expenses ONLY
         const expenseTransactions = transactions.filter(t => t.type === 'expense');
+
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
 
         expenseTransactions.forEach(t => {
             // Determine key based on View Mode
@@ -68,14 +83,34 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             groups[key].count += 1;
         });
 
-        const currentMonth = new Date().getMonth(); // 0-11
+        // Calculate Average using COMPLETED months only
+        // We need to re-aggregate for averages to exclude current month data
+        const completedGroups: Record<string, number> = {};
+
+        expenseTransactions.forEach(t => {
+            const date = new Date(t.date);
+            const year = date.getFullYear();
+            const month = date.getMonth();
+
+            // Check if transaction is in a completed month
+            if (year < currentYear || (year === currentYear && month < currentMonth)) {
+                const key = viewMode === 'global' ? getGlobalCategory(t.category) : t.category;
+                if (!completedGroups[key]) completedGroups[key] = 0;
+                completedGroups[key] += Math.abs(t.amount);
+            }
+        });
+
+        // const currentMonth = new Date().getMonth(); // Already defined above
         const remainingMonths = 11 - currentMonth;
 
         const grandTotal = Object.values(groups).reduce((acc, curr) => acc + curr.total, 0);
 
         return Object.entries(groups).map(([category, { total, count }]) => {
             const totalSpent = total;
-            const monthlyAvg = totalSpent / uniqueMonthsCount;
+            // Use completed total for average, fallback to total if 0 (e.g. new category this month)
+            // But if we have 0 completed months, uniqueMonthsCount is 1.
+            const totalSpentCompleted = completedGroups[category] || 0;
+            const monthlyAvg = totalSpentCompleted / uniqueMonthsCount;
             const yearForecast = monthlyAvg * remainingMonths;
             const share = grandTotal > 0 ? (totalSpent / grandTotal) * 100 : 0;
 
@@ -158,7 +193,22 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
         const uniqueMonthsCount = Object.keys(monthsMap).length || 1;
         const totalAllTime = Object.values(monthsMap).reduce((a, b) => a + b, 0);
-        const avgMonthly = totalAllTime / uniqueMonthsCount;
+
+        // Calculate Avg Monthly (Completed Months Only)
+        // exclude current month from avg calc
+        const currentMonthKey = `${currentYear}-${new Date().getMonth()}`;
+
+        let totalCompleted = 0;
+        let countCompleted = 0;
+
+        Object.entries(monthsMap).forEach(([key, val]) => {
+            if (key !== currentMonthKey) {
+                totalCompleted += val;
+                countCompleted++;
+            }
+        });
+
+        const avgMonthly = countCompleted > 0 ? totalCompleted / countCompleted : totalAllTime / uniqueMonthsCount;
 
         // Year Forecast
         // Logic: Already spent this year + (Avg Monthly * Remaining Months in Year)
@@ -182,7 +232,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         }
 
         const lastCompletedMonthKey = `${prevMonthYear}-${prevMonth}`;
-        const currentMonthKey = `${currentYear}-${currentMonth}`;
+        // const currentMonthKey = `${currentYear}-${currentMonth}`; // Already defined above
 
         const lastMonthTotal = monthsMap[lastCompletedMonthKey] || 0;
 
@@ -264,17 +314,33 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         });
 
         const groups: Record<string, { total: number; count: number }> = {};
+        const completedGroups: Record<string, number> = {};
+
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonthIdx = now.getMonth();
 
         parentTransactions.forEach(t => {
             // If Global Mode -> Breakdown by Category
             // If Category Mode -> Breakdown by Tag
             const key = viewMode === 'global' ? t.category : (t.tags || 'No Tag');
 
+            // Aggregate Total
             if (!groups[key]) {
                 groups[key] = { total: 0, count: 0 };
             }
             groups[key].total += Math.abs(t.amount);
             groups[key].count += 1;
+
+            // Aggregate Completed Months Only
+            const date = new Date(t.date);
+            const year = date.getFullYear();
+            const month = date.getMonth();
+
+            if (year < currentYear || (year === currentYear && month < currentMonthIdx)) {
+                if (!completedGroups[key]) completedGroups[key] = 0;
+                completedGroups[key] += Math.abs(t.amount);
+            }
         });
 
         // Current month logic for forecast (same as main)
@@ -283,7 +349,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
         return Object.entries(groups).map(([key, { total, count }]) => {
             const totalSpent = total;
-            const monthlyAvg = totalSpent / uniqueMonthsCount;
+            const totalSpentCompleted = completedGroups[key] || 0;
+            const monthlyAvg = totalSpentCompleted / uniqueMonthsCount;
             const yearForecast = monthlyAvg * remainingMonths;
 
             return {

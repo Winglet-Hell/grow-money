@@ -6,6 +6,7 @@ import { Charts } from './components/Charts';
 import { TransactionTable } from './components/TransactionTable';
 import { CategoryInsights } from './pages/CategoryInsights';
 import { IncomeInsights } from './pages/IncomeInsights';
+import { TrendsPage } from './pages/TrendsPage';
 import type { Transaction } from './types';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 
@@ -65,6 +66,15 @@ function AppContent() {
                 >
                   Income Insights
                 </Link>
+                <Link
+                  to="/trends"
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/trends'
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                  Financial Trends
+                </Link>
               </nav>
             )}
           </div>
@@ -79,43 +89,46 @@ function AppContent() {
             </button>
           )}
         </div>
-      </header>
+      </header >
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {transactions.length === 0 ? (
-          <div className="min-h-[60vh] flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="text-center mb-8 max-w-lg">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                Welcome to your financial dashboard
-              </h2>
-              <p className="text-gray-500 text-lg">
-                Upload your bank statement to visualize your expenses and track your growth.
-              </p>
-            </div>
-            <FileUploader onDataLoaded={handleDataLoaded} />
-
-            <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-3xl text-center">
-              <FeatureItem icon={<FileText className="w-5 h-5 text-blue-500" />} text="Excel & CSV Support" />
-              <FeatureItem icon={<LayoutDashboard className="w-5 h-5 text-emerald-500" />} text="Instant Analytics" />
-              <FeatureItem icon={<LogOut className="w-5 h-5 text-purple-500" />} text="Secure & Private" />
-            </div>
-          </div>
-        ) : (
-          <Routes>
-            <Route path="/" element={
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
-                <SummaryCards transactions={transactions} />
-                <Charts transactions={transactions} />
-                <TransactionTable transactions={transactions} />
+      < main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" >
+        {
+          transactions.length === 0 ? (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="text-center mb-8 max-w-lg">
+                <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                  Welcome to your financial dashboard
+                </h2>
+                <p className="text-gray-500 text-lg">
+                  Upload your bank statement to visualize your expenses and track your growth.
+                </p>
               </div>
-            } />
-            <Route path="/category-insights" element={<CategoryInsights transactions={transactions} />} />
-            <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
-          </Routes>
-        )}
-      </main>
-    </div>
+              <FileUploader onDataLoaded={handleDataLoaded} />
+
+              <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-3xl text-center">
+                <FeatureItem icon={<FileText className="w-5 h-5 text-blue-500" />} text="Excel & CSV Support" />
+                <FeatureItem icon={<LayoutDashboard className="w-5 h-5 text-emerald-500" />} text="Instant Analytics" />
+                <FeatureItem icon={<LogOut className="w-5 h-5 text-purple-500" />} text="Secure & Private" />
+              </div>
+            </div>
+          ) : (
+            <Routes>
+              <Route path="/" element={
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+                  <SummaryCards transactions={transactions} />
+                  <Charts transactions={transactions} />
+                  <TransactionTable transactions={transactions} />
+                </div>
+              } />
+              <Route path="/category-insights" element={<CategoryInsights transactions={transactions} />} />
+              <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
+              <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
+            </Routes>
+          )
+        }
+      </main >
+    </div >
   );
 }
 
