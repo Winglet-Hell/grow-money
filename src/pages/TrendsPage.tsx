@@ -20,6 +20,7 @@ import { TrendingUp, Wallet, PiggyBank } from 'lucide-react';
 import type { Transaction } from '../types';
 import { CategoryTrendsSection } from '../components/CategoryTrendsSection';
 import { AnomaliesSection } from '../components/AnomaliesSection';
+import { SpendingHeatmap } from '../components/SpendingHeatmap';
 
 interface TrendsPageProps {
     transactions: Transaction[];
@@ -192,6 +193,9 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                     color="blue"
                 />
             </div>
+
+            {/* Spending Activity Heatmap */}
+            <SpendingHeatmap transactions={transactions} />
 
             {/* Charts Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
