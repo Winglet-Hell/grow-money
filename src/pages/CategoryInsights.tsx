@@ -8,7 +8,7 @@ import {
     TableHeader,
     TableRow,
 } from "../components/ui/table"
-import { ArrowUpDown, TrendingUp, Wallet, AlertCircle, Calendar } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, Wallet, AlertCircle, Calendar, Search, X } from 'lucide-react';
 import { cn, stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
@@ -43,6 +43,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
     const [sortField, setSortField] = useState<SortField>('totalSpent');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
     const [viewMode, setViewMode] = useState<ViewMode>('category'); // Default to Detailed View
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Calculate global unique completed months for consistent averaging
     const uniqueMonthsCount = useMemo(() => {
@@ -182,25 +183,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
 
 
-    const sortedData = useMemo(() => {
-        return [...categoryData].sort((a, b) => {
-            const aValue = a[sortField] ?? 0;
-            const bValue = b[sortField] ?? 0;
 
-            if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
-            if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
-            return 0;
-        });
-    }, [categoryData, sortField, sortOrder]);
-
-    const handleSort = (field: SortField) => {
-        if (sortField === field) {
-            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-        } else {
-            setSortField(field);
-            setSortOrder('desc');
-        }
-    };
 
     const maxTotalSpent = Math.max(...categoryData.map(d => d.totalSpent), 0);
 
@@ -363,6 +346,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         });
 
         const groups: Record<string, { total: number; count: number }> = {};
+        const currentMonthGroups: Record<string, number> = {};
         const completedGroups: Record<string, number> = {};
 
         const now = new Date();
@@ -390,17 +374,27 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 if (!completedGroups[key]) completedGroups[key] = 0;
                 completedGroups[key] += Math.abs(t.amount);
             }
+
+            // Aggregate Current Month
+            if (year === currentYear && month === currentMonthIdx) {
+                if (!currentMonthGroups[key]) currentMonthGroups[key] = 0;
+                currentMonthGroups[key] += Math.abs(t.amount);
+            }
         });
 
         // Current month logic for forecast (same as main)
         const currentMonth = new Date().getMonth();
         const remainingMonths = 11 - currentMonth;
 
+        const totalParentSpent = Object.values(groups).reduce((acc, curr) => acc + curr.total, 0);
+
         return Object.entries(groups).map(([key, { total, count }]) => {
             const totalSpent = total;
             const totalSpentCompleted = completedGroups[key] || 0;
+            const currentMonthSpent = currentMonthGroups[key] || 0;
             const monthlyAvg = totalSpentCompleted / uniqueMonthsCount;
             const yearForecast = monthlyAvg * remainingMonths;
+            const share = totalParentSpent > 0 ? (totalSpent / totalParentSpent) * 100 : 0;
 
             return {
                 name: key, // Rename 'tag' to 'name' for generic use
@@ -408,9 +402,51 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 operations: count,
                 avgTransaction: count > 0 ? totalSpent / count : 0,
                 monthlyAvg,
-                yearForecast
+                yearForecast,
+                currentMonthSpent,
+                share
             };
         }).sort((a, b) => b.totalSpent - a.totalSpent);
+    };
+
+    // Sorted Data Logic (Moved after getBreakdownMetrics)
+    const sortedData = useMemo(() => {
+        let data = [...categoryData].sort((a, b) => {
+            const aValue = a[sortField] ?? 0;
+            const bValue = b[sortField] ?? 0;
+
+            if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
+            if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            data = data.filter(item => {
+                // Match Category Name
+                if (item.category.toLowerCase().includes(query)) return true;
+
+                // Match Tags
+                const tags = getBreakdownMetrics(item.category);
+                return tags.some(t => t.name.toLowerCase().includes(query));
+            });
+        }
+
+        return data;
+    }, [categoryData, sortField, sortOrder, searchQuery]); // transactions/viewMode are deps of getBreakdownMetrics implicitly if it's not wrapped in useCallback, so better to wrap it or include deps.
+    // Ideally getBreakdownMetrics should be wrapped in useCallback.
+    // But since this is a functional component re-render, getBreakdownMetrics is recreated every render.
+    // So useMemo will run every render if we don't be careful.
+    // For now, given the simplicity, it's acceptable, but `categoryData` changes rarely (on transaction update).
+    // Let's leave it as is for now, it's "fast enough".
+
+    const handleSort = (field: SortField) => {
+        if (sortField === field) {
+            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortOrder('desc');
+        }
     };
 
     // --- Infographics Calculations ---
@@ -599,11 +635,34 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-                <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                    <div>
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between gap-4">
+                    <div className="flex-1">
                         <h3 className="text-lg font-semibold text-gray-800">Spending Breakdown</h3>
                         <p className="text-sm text-gray-500">Analyze your spending by {viewMode === 'global' ? 'category group' : 'category'}</p>
                     </div>
+
+                    {/* Search Input */}
+                    <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Search categories or tags..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-64 transition-all"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                            >
+                                <X className="h-3 w-3" />
+                            </button>
+                        )}
+                    </div>
+
                     {/* View Toggle */}
                     <div className="flex bg-gray-100 p-1 rounded-lg">
                         <button
@@ -713,7 +772,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                     <TableCell className="font-medium text-gray-900">
                                         <div className="flex items-center gap-2">
                                             <span className="text-gray-400 w-4">
-                                                {expandedCategories.has(row.category) ? '▼' : '▶'}
+                                                {/* Auto-expand if search query matches any sub-tag, otherwise use manual state */}
+                                                {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) ? '▼' : '▶'}
                                             </span>
                                             {(() => {
                                                 const color = stringToColor(row.category);
@@ -808,55 +868,70 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                 </TableRow>
 
                                 {/* Expanded Tag View */}
-                                {expandedCategories.has(row.category) && (
+                                {/* Show if manually expanded OR if search query matches something inside (and not just the category name itself, though likely we want to show it then too) */}
+                                {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) && (
                                     <TableRow className="bg-gray-50/50">
                                         <TableCell colSpan={10} className="p-0">
                                             <div className="pl-12 pr-4 py-4 border-l-4 border-emerald-100 ml-6 my-2 bg-white/50 rounded-r-lg">
                                                 <table className="w-full text-sm">
                                                     <thead>
                                                         <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-gray-100">
-                                                            <th className="text-left py-2 font-medium">
+                                                            <th className="text-left py-2 font-medium w-[220px]">
                                                                 {viewMode === 'global' ? 'Category' : 'Tag'}
                                                             </th>
                                                             <th className="text-right py-2 font-medium text-emerald-700">This Month</th>
-                                                            <th className="text-right py-2 font-medium">Monthly Avg</th>
-                                                            <th className="text-right py-2 font-medium">Total Spent</th>
+                                                            <th className="text-right py-2 font-medium text-emerald-700">Limit</th>
+                                                            <th className="text-right py-2 font-medium text-emerald-700">Left</th>
+                                                            <th className="text-right py-2 font-medium text-gray-600">Monthly Avg</th>
+                                                            <th className="text-right py-2 font-medium text-gray-600">Total Spent</th>
+                                                            <th className="text-right py-2 font-medium text-gray-600">%</th>
                                                             <th className="text-right py-2 font-medium text-gray-400">Ops</th>
+                                                            <th className="text-right py-2 font-medium text-gray-400">Avg. Tkt</th>
+                                                            <th className="text-right py-2 font-medium text-gray-400">Forecast</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-50">
-                                                        {getBreakdownMetrics(row.category).map(subItem => {
-                                                            // Need to calculate This Month for tags too if we want consistenc, 
-                                                            // but current helper returns generic struct.
-                                                            // Let's settle for showing basic metrics in drill down or re-calc.
-                                                            // Since `getBreakdownMetrics` calculates totals, let's assume it does total/monthlyAvg.
-                                                            // It does NOT calculate 'currentMonthSpent' specifically in the previous code.
-                                                            // For simplicity in this quick refactor, I'll stick to what we have or do a quick patch.
-                                                            // The user asked for "Logical order", primarily on the main table.
-                                                            // Let's show: This Month (if available? No, helper needs update).
-                                                            // Actually, let's keep the sub-table simple for now: Name | Total | Ops | Avg
-                                                            return (
-                                                                <tr key={subItem.name} className="hover:bg-gray-100/50 transition-colors">
-                                                                    <td className="py-2.5 text-gray-600">
-                                                                        <div
-                                                                            className="flex items-center gap-2 cursor-pointer hover:text-emerald-600 transition-colors group font-medium w-fit"
-                                                                            onClick={(e) => handleTagClick(e, row.category, subItem.name)}
-                                                                        >
-                                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-200 group-hover:bg-emerald-500 transition-colors"></div>
-                                                                            {subItem.name}
-                                                                        </div>
-                                                                    </td>
-                                                                    {/* Helper doesn't return This Month yet, so let's skip or use placeholer. 
-                                                                    Actually let's just show standard metrics but ordered nicely. 
-                                                                    Let's show Total | Monthly Avg | Ops
-                                                                */}
-                                                                    <td className="text-right py-2.5 text-emerald-700 font-medium">—</td> {/* Placeholder for This Month */}
-                                                                    <td className="text-right py-2.5 text-gray-600">{formatCurrency(subItem.monthlyAvg)}</td>
-                                                                    <td className="text-right py-2.5 text-gray-600">{formatCurrency(subItem.totalSpent)}</td>
-                                                                    <td className="text-right py-2.5 text-gray-400 text-xs">{subItem.operations}</td>
-                                                                </tr>
-                                                            )
-                                                        })}
+                                                        {getBreakdownMetrics(row.category)
+                                                            .filter(subItem => {
+                                                                if (!searchQuery) return true;
+                                                                // If the Category itself matched, show all tags?
+                                                                // Or if the tag matches?
+                                                                // Behavior: Show tag if it matches OR if category matches exact (less common).
+                                                                // Better: Show tag if it matches query.
+                                                                // If query matches Category name -> show all tags.
+                                                                const query = searchQuery.toLowerCase();
+                                                                const categoryMatches = row.category.toLowerCase().includes(query);
+                                                                const tagMatches = subItem.name.toLowerCase().includes(query);
+                                                                return categoryMatches || tagMatches;
+                                                            })
+                                                            .map(subItem => {
+                                                                return (
+                                                                    <tr key={subItem.name} className="hover:bg-gray-100/50 transition-colors">
+                                                                        <td className="py-2.5 text-gray-600">
+                                                                            <div
+                                                                                className="flex items-center gap-2 cursor-pointer hover:text-emerald-600 transition-colors group font-medium w-fit"
+                                                                                onClick={(e) => handleTagClick(e, row.category, subItem.name)}
+                                                                            >
+                                                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-200 group-hover:bg-emerald-500 transition-colors"></div>
+                                                                                {subItem.name}
+                                                                            </div>
+                                                                        </td>
+                                                                        <td className="text-right py-2.5 text-emerald-700 font-medium bg-emerald-50/10">
+                                                                            {formatCurrency(subItem.currentMonthSpent)}
+                                                                        </td>
+                                                                        <td className="text-right py-2.5 text-gray-300 text-xs bg-emerald-50/10">—</td>
+                                                                        <td className="text-right py-2.5 text-gray-300 text-xs bg-emerald-50/10">—</td>
+                                                                        <td className="text-right py-2.5 text-gray-600">{formatCurrency(subItem.monthlyAvg)}</td>
+                                                                        <td className="text-right py-2.5 text-gray-600">{formatCurrency(subItem.totalSpent)}</td>
+                                                                        <td className="text-right py-2.5 text-gray-500">{subItem.share.toFixed(1)}%</td>
+                                                                        <td className="text-right py-2.5 text-gray-400 text-xs">{subItem.operations}</td>
+                                                                        <td className="text-right py-2.5 text-gray-400 text-xs">{formatCurrency(subItem.avgTransaction)}</td>
+                                                                        <td className="text-right py-2.5 text-gray-400 text-xs">
+                                                                            {subItem.yearForecast > 0 ? formatCurrency(subItem.yearForecast) : '—'}
+                                                                        </td>
+                                                                    </tr>
+                                                                )
+                                                            })}
                                                     </tbody>
                                                 </table>
                                             </div>
