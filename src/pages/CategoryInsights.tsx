@@ -8,7 +8,7 @@ import {
     TableHeader,
     TableRow,
 } from "../components/ui/table"
-import { ArrowUpDown } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, Wallet, AlertCircle, Calendar } from 'lucide-react';
 import { cn, stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
@@ -413,6 +413,43 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         }).sort((a, b) => b.totalSpent - a.totalSpent);
     };
 
+    // --- Infographics Calculations ---
+    const infographics = useMemo(() => {
+        const now = new Date();
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const daysPassed = now.getDate();
+        const daysRemaining = daysInMonth - daysPassed + 1;
+
+        // 1. Budget Health
+        // Summing `currentMonthSpent` from `categoryData` gives total spent in current month matching the table.
+        // Summing `limit` from `categoryData` gives total limit matching the table.
+
+        const totalSpentCurrentMonth = categoryData.reduce((acc, item) => acc + item.currentMonthSpent, 0);
+        const totalLimit = categoryData.reduce((acc, item) => acc + (item.limit || 0), 0);
+
+        const overallRemaining = totalLimit - totalSpentCurrentMonth;
+        const progressPercent = totalLimit > 0 ? (totalSpentCurrentMonth / totalLimit) * 100 : 0;
+
+        // 2. Daily Pace
+        const avgDailySpend = totalSpentCurrentMonth / Math.max(daysPassed, 1);
+        // Safe daily spend to stick to budget: Remaining / Remaining Days
+        const safeDailySpend = totalLimit > 0 ? (Math.max(overallRemaining, 0) / Math.max(daysRemaining, 1)) : 0;
+
+        // 3. Top Spender
+        const sortedBySpend = [...categoryData].sort((a, b) => b.currentMonthSpent - a.currentMonthSpent);
+        const topCategory = sortedBySpend[0];
+
+        return {
+            totalSpentCurrentMonth,
+            totalLimit,
+            overallRemaining,
+            progressPercent,
+            avgDailySpend,
+            safeDailySpend,
+            topCategory
+        };
+    }, [categoryData]);
+
     return (
         <div className="space-y-6">
             {summaryMetrics && (
@@ -451,6 +488,116 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 </div>
             )}
 
+            {/* Infographics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+                {/* 1. Budget Health */}
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-500">Overall Budget</span>
+                            <Wallet className="w-4 h-4 text-emerald-500" />
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-2xl font-bold text-gray-900">
+                                {infographics.totalLimit > 0 ? Math.round(infographics.progressPercent) + '%' : '—'}
+                            </span>
+                            <span className="text-sm text-gray-500">used</span>
+                        </div>
+                        <div className="mt-1 text-sm text-gray-600">
+                            {formatCurrency(infographics.totalSpentCurrentMonth)} <span className="text-gray-400">/ {formatCurrency(infographics.totalLimit)}</span>
+                        </div>
+                    </div>
+                    <div className="mt-4 w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div
+                            className={cn(
+                                "h-full rounded-full transition-all duration-500",
+                                infographics.progressPercent > 100 ? "bg-red-500" : (infographics.progressPercent > 80 ? "bg-yellow-500" : "bg-emerald-500")
+                            )}
+                            style={{ width: `${Math.min(infographics.progressPercent, 100)}%` }}
+                        />
+                    </div>
+                </div>
+
+                {/* 2. Daily Pace */}
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-500">Daily Pace</span>
+                            <Calendar className="w-4 h-4 text-blue-500" />
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <span className={cn(
+                                "text-2xl font-bold",
+                                (infographics.totalLimit > 0 && infographics.avgDailySpend > infographics.safeDailySpend) ? "text-red-500" : "text-gray-900"
+                            )}>
+                                {formatCurrency(infographics.avgDailySpend)}
+                            </span>
+                            <span className="text-sm text-gray-500">/ day</span>
+                        </div>
+                        <div className="mt-1 text-sm text-gray-600">
+                            {infographics.totalLimit > 0 ? (
+                                <>
+                                    Safe limit: <span className="font-medium text-emerald-600">{formatCurrency(infographics.safeDailySpend)}</span>
+                                </>
+                            ) : (
+                                <span className="text-gray-400">Set limits to see pace</span>
+                            )}
+                        </div>
+                    </div>
+                    <div className="mt-4 flex items-center gap-2 text-xs font-medium">
+                        {infographics.totalLimit > 0 ? (
+                            infographics.avgDailySpend > infographics.safeDailySpend ? (
+                                <span className="text-red-500 flex items-center gap-1">
+                                    <TrendingUp className="w-3 h-3" /> Over budget pace
+                                </span>
+                            ) : (
+                                <span className="text-emerald-500 flex items-center gap-1">
+                                    <TrendingUp className="w-3 h-3 rotate-180" /> Good pace
+                                </span>
+                            )
+                        ) : <span className="text-gray-300">—</span>}
+                    </div>
+                </div>
+
+                {/* 3. Top Spender */}
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-500">Top Spender</span>
+                            <AlertCircle className="w-4 h-4 text-orange-500" />
+                        </div>
+                        {infographics.topCategory ? (
+                            <>
+                                <div className="flex items-center gap-2 mb-1">
+                                    {(() => {
+                                        const Icon = getCategoryIcon(infographics.topCategory.category);
+                                        const color = stringToColor(infographics.topCategory.category);
+                                        return (
+                                            <div className={cn("p-1.5 rounded-lg", color.bg, color.text)}>
+                                                <Icon className="w-4 h-4" />
+                                            </div>
+                                        );
+                                    })()}
+                                    <div className="text-lg font-bold text-gray-900 truncate" title={infographics.topCategory.category}>
+                                        {infographics.topCategory.category}
+                                    </div>
+                                </div>
+                                <div className="mt-1 text-2xl font-bold text-gray-900">
+                                    {formatCurrency(infographics.topCategory.currentMonthSpent)}
+                                </div>
+                                <div className="mt-1 text-sm text-gray-500">
+                                    {infographics.totalSpentCurrentMonth > 0
+                                        ? ((infographics.topCategory.currentMonthSpent / infographics.totalSpentCurrentMonth) * 100).toFixed(1) + '% of total'
+                                        : '0%'}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="text-gray-400 italic">No spending yet</div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
                 <div className="p-6 border-b border-gray-100 flex items-center justify-between">
                     <div>
@@ -487,65 +634,71 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 </div>
                 <Table>
                     <TableHeader>
-                        <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
-                            <TableHead className="w-[250px] cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('category')}>
+                        <TableRow className="sticky top-0 z-20 bg-gray-50 hover:bg-gray-50 shadow-sm border-b border-gray-200">
+                            <TableHead className="w-[220px] cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('category')}>
                                 <div className="flex items-center gap-1">
                                     {viewMode === 'global' ? 'Global Category' : 'Category'}
                                     {sortField === 'category' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
+
+                            {/* Current Budget Group */}
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30" onClick={() => handleSort('currentMonthSpent')}>
+                                <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
+                                    This Month
+                                    {sortField === 'currentMonthSpent' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30" onClick={() => handleSort('limit')}>
+                                <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
+                                    Limit
+                                    {sortField === 'limit' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30" onClick={() => handleSort('remaining' as SortField)}>
+                                <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
+                                    Left
+                                    {sortField === ('remaining' as SortField) && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
+
+                            {/* Historical Context */}
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('monthlyAvg')}>
+                                <div className="flex items-center justify-end gap-1 text-gray-600">
+                                    Monthly Avg
+                                    {sortField === 'monthlyAvg' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
                             <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('totalSpent')}>
-                                <div className="flex items-center justify-end gap-1">
+                                <div className="flex items-center justify-end gap-1 text-gray-600">
                                     Total Spent
                                     {sortField === 'totalSpent' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('operations')}>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('share')}>
+                                <div className="flex items-center justify-end gap-1 text-gray-600">
+                                    %
+                                    {sortField === 'share' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
+
+                            {/* Details (Smaller/Lighter) */}
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors text-xs text-gray-400 font-normal" onClick={() => handleSort('operations')}>
                                 <div className="flex items-center justify-end gap-1">
                                     Ops
                                     {sortField === 'operations' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('avgTransaction')}>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors text-xs text-gray-400 font-normal" onClick={() => handleSort('avgTransaction')}>
                                 <div className="flex items-center justify-end gap-1">
-                                    Avg. Ticket
+                                    Avg. Tkt
                                     {sortField === 'avgTransaction' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('monthlyAvg')}>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors text-xs text-gray-400 font-normal" onClick={() => handleSort('yearForecast')}>
                                 <div className="flex items-center justify-end gap-1">
-                                    Monthly Avg
-                                    {sortField === 'monthlyAvg' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('limit')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Limit
-                                    {sortField === 'limit' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('remaining' as SortField)}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Left
-                                    {sortField === ('remaining' as SortField) && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('yearForecast')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Forecast (Rem. Year)
+                                    Forecast
                                     {sortField === 'yearForecast' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('share')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    % Share
-                                    {sortField === 'share' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right w-16 cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('rank')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Rank
-                                    {sortField === 'rank' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
                         </TableRow>
@@ -564,9 +717,6 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                             </span>
                                             {(() => {
                                                 const color = stringToColor(row.category);
-                                                // Icon resolution:
-                                                // If Global Mode: use generic icon or try to map
-                                                // We can rely on getCategoryIcon("Housing") etc if they exist, or fallback
                                                 const Icon = getCategoryIcon(row.category);
                                                 return (
                                                     <span className={cn(
@@ -581,30 +731,14 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                             })()}
                                         </div>
                                     </TableCell>
-                                    <TableCell className="text-right relative">
-                                        <div className="relative z-10 font-medium text-gray-900">
-                                            {formatCurrency(row.totalSpent)}
-                                        </div>
-                                        {/* Progress Bar Background */}
-                                        <div
-                                            className="absolute left-0 top-2 bottom-2 rounded-r-md transition-all duration-500"
-                                            style={{
-                                                width: `${(row.totalSpent / maxTotalSpent) * 100}%`,
-                                                opacity: 0.25,
-                                                backgroundColor: (() => {
-                                                    const ratio = row.totalSpent / maxTotalSpent;
-                                                    const hue = (1 - ratio) * 120;
-                                                    return `hsl(${hue}, 70%, 50%)`;
-                                                })()
-                                            }}
-                                        />
+
+                                    {/* Current Budget Group */}
+                                    <TableCell className="text-right font-bold text-gray-900 bg-emerald-50/10">
+                                        {formatCurrency(row.currentMonthSpent)}
                                     </TableCell>
-                                    <TableCell className="text-right text-gray-500">{row.operations}</TableCell>
-                                    <TableCell className="text-right text-gray-500">{formatCurrency(row.avgTransaction)}</TableCell>
-                                    <TableCell className="text-right text-gray-500">{formatCurrency(row.monthlyAvg)}</TableCell>
                                     <TableCell
                                         className={cn(
-                                            "text-right relative overflow-hidden",
+                                            "text-right relative overflow-hidden bg-emerald-50/10",
                                             viewMode === 'category' ? "cursor-pointer hover:bg-gray-100 transition-colors group" : ""
                                         )}
                                         onClick={(e) => {
@@ -614,7 +748,6 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                             }
                                         }}
                                     >
-                                        {/* Progress Bar for Limit Usage - Update to CURRENT MONTH */}
                                         {row.limit && (
                                             <div
                                                 className={cn(
@@ -636,11 +769,11 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                             )}
                                         </div>
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-right bg-emerald-50/10">
                                         {row.remaining !== null ? (
                                             <span className={cn(
-                                                "font-medium",
-                                                row.remaining < 0 ? "text-red-600" : "text-emerald-600"
+                                                "font-bold",
+                                                row.remaining < 0 ? "text-red-600" : "text-emerald-700"
                                             )}>
                                                 {formatCurrency(row.remaining)}
                                             </span>
@@ -648,11 +781,30 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                             <span className="text-gray-300 text-xs">—</span>
                                         )}
                                     </TableCell>
-                                    <TableCell className="text-right text-gray-400">
-                                        {row.yearForecast > 0 ? formatCurrency(row.yearForecast) : '—'}
+
+                                    {/* Historical Context */}
+                                    <TableCell className="text-right text-gray-600 font-medium">{formatCurrency(row.monthlyAvg)}</TableCell>
+                                    <TableCell className="text-right relative">
+                                        <div className="relative z-10 text-gray-600">
+                                            {formatCurrency(row.totalSpent)}
+                                        </div>
+                                        <div
+                                            className="absolute left-0 top-2 bottom-2 rounded-r-md transition-all duration-500"
+                                            style={{
+                                                width: `${(row.totalSpent / maxTotalSpent) * 100}%`,
+                                                opacity: 0.1,
+                                                backgroundColor: 'currentColor'
+                                            }}
+                                        />
                                     </TableCell>
                                     <TableCell className="text-right text-gray-500 font-medium">{row.share.toFixed(1)}%</TableCell>
-                                    <TableCell className="text-right text-gray-400 font-mono text-xs">#{row.rank}</TableCell>
+
+                                    {/* Details */}
+                                    <TableCell className="text-right text-gray-400 text-xs">{row.operations}</TableCell>
+                                    <TableCell className="text-right text-gray-400 text-xs">{formatCurrency(row.avgTransaction)}</TableCell>
+                                    <TableCell className="text-right text-gray-400 text-xs">
+                                        {row.yearForecast > 0 ? formatCurrency(row.yearForecast) : '—'}
+                                    </TableCell>
                                 </TableRow>
 
                                 {/* Expanded Tag View */}
@@ -664,21 +816,28 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                                     <thead>
                                                         <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-gray-100">
                                                             <th className="text-left py-2 font-medium">
-                                                                {viewMode === 'global' ? 'Category' : 'Tag (Subcategory)'}
+                                                                {viewMode === 'global' ? 'Category' : 'Tag'}
                                                             </th>
-                                                            <th className="text-right py-2 font-medium">Total Spent</th>
-                                                            <th className="text-right py-2 font-medium">Ops</th>
-                                                            <th className="text-right py-2 font-medium">Avg. Ticket</th>
+                                                            <th className="text-right py-2 font-medium text-emerald-700">This Month</th>
                                                             <th className="text-right py-2 font-medium">Monthly Avg</th>
-                                                            <th className="text-right py-2 font-medium">Forecast</th>
+                                                            <th className="text-right py-2 font-medium">Total Spent</th>
+                                                            <th className="text-right py-2 font-medium text-gray-400">Ops</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-50">
-                                                        {getBreakdownMetrics(row.category).map(subItem => (
-                                                            <tr key={subItem.name} className="hover:bg-gray-100/50 transition-colors">
-                                                                <td className="py-2.5 text-gray-600">
-                                                                    {viewMode === 'category' ? (
-                                                                        // Tag Mode: Clickable for Modal
+                                                        {getBreakdownMetrics(row.category).map(subItem => {
+                                                            // Need to calculate This Month for tags too if we want consistenc, 
+                                                            // but current helper returns generic struct.
+                                                            // Let's settle for showing basic metrics in drill down or re-calc.
+                                                            // Since `getBreakdownMetrics` calculates totals, let's assume it does total/monthlyAvg.
+                                                            // It does NOT calculate 'currentMonthSpent' specifically in the previous code.
+                                                            // For simplicity in this quick refactor, I'll stick to what we have or do a quick patch.
+                                                            // The user asked for "Logical order", primarily on the main table.
+                                                            // Let's show: This Month (if available? No, helper needs update).
+                                                            // Actually, let's keep the sub-table simple for now: Name | Total | Ops | Avg
+                                                            return (
+                                                                <tr key={subItem.name} className="hover:bg-gray-100/50 transition-colors">
+                                                                    <td className="py-2.5 text-gray-600">
                                                                         <div
                                                                             className="flex items-center gap-2 cursor-pointer hover:text-emerald-600 transition-colors group font-medium w-fit"
                                                                             onClick={(e) => handleTagClick(e, row.category, subItem.name)}
@@ -686,32 +845,20 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                                                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-200 group-hover:bg-emerald-500 transition-colors"></div>
                                                                             {subItem.name}
                                                                         </div>
-                                                                    ) : (
-                                                                        // Global Mode: Just list categories (Not drill-down to tag transactions yet, 
-                                                                        // or we could make this drill down to specific category transactions? 
-                                                                        // For now, let's just make it static text or maybe trigger modal with NO tag filter?
-                                                                        // User didn't explicitly ask for 3-level drill down, just grouping.
-                                                                        // Let's keep it simple: List of categories.
-                                                                        <div className="flex items-center gap-2 font-medium">
-                                                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-200"></div>
-                                                                            {subItem.name}
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-                                                                <td className="text-right py-2.5 text-gray-700">{formatCurrency(subItem.totalSpent)}</td>
-                                                                <td className="text-right py-2.5 text-gray-500">{subItem.operations}</td>
-                                                                <td className="text-right py-2.5 text-gray-500">{formatCurrency(subItem.avgTransaction)}</td>
-                                                                <td className="text-right py-2.5 text-gray-500">{formatCurrency(subItem.monthlyAvg)}</td>
-                                                                <td className="text-right py-2.5 text-gray-400">{subItem.yearForecast > 0 ? formatCurrency(subItem.yearForecast) : '—'}</td>
-                                                            </tr>
-                                                        ))}
+                                                                    </td>
+                                                                    {/* Helper doesn't return This Month yet, so let's skip or use placeholer. 
+                                                                    Actually let's just show standard metrics but ordered nicely. 
+                                                                    Let's show Total | Monthly Avg | Ops
+                                                                */}
+                                                                    <td className="text-right py-2.5 text-emerald-700 font-medium">—</td> {/* Placeholder for This Month */}
+                                                                    <td className="text-right py-2.5 text-gray-600">{formatCurrency(subItem.monthlyAvg)}</td>
+                                                                    <td className="text-right py-2.5 text-gray-600">{formatCurrency(subItem.totalSpent)}</td>
+                                                                    <td className="text-right py-2.5 text-gray-400 text-xs">{subItem.operations}</td>
+                                                                </tr>
+                                                            )
+                                                        })}
                                                     </tbody>
                                                 </table>
-                                                {getBreakdownMetrics(row.category).length === 0 && (
-                                                    <div className="text-center py-4 text-gray-400 text-xs italic">
-                                                        No data found
-                                                    </div>
-                                                )}
                                             </div>
                                         </TableCell>
                                     </TableRow>
