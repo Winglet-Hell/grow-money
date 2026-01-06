@@ -97,11 +97,20 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         const completedGroups: Record<string, number> = {};
         const currentMonthGroups: Record<string, number> = {};
 
+        // Track which detailed categories belong to which group key (for limit aggregation)
+        const groupConstituents: Record<string, Set<string>> = {};
+
         expenseTransactions.forEach(t => {
             const date = new Date(t.date);
             const year = date.getFullYear();
             const month = date.getMonth();
             const key = viewMode === 'global' ? getGlobalCategory(t.category) : t.category;
+
+            // Track constituents
+            if (!groupConstituents[key]) {
+                groupConstituents[key] = new Set();
+            }
+            groupConstituents[key].add(t.category);
 
             // Check if transaction is in a completed month
             if (year < currentYear || (year === currentYear && month < currentMonth)) {
@@ -129,7 +138,26 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             const monthlyAvg = totalSpentCompleted / uniqueMonthsCount;
             const yearForecast = monthlyAvg * remainingMonths;
             const share = grandTotal > 0 ? (totalSpent / grandTotal) * 100 : 0;
-            const limit = getLimit(category);
+
+            // Calculate Limit
+            let limit: number | undefined = 0;
+            if (viewMode === 'global') {
+                // Sum limits of all constituents
+                const constituents = groupConstituents[category] || new Set();
+                let hasAnyLimit = false;
+                const sum = Array.from(constituents).reduce((acc, cat) => {
+                    const l = getLimit(cat);
+                    if (l !== undefined) {
+                        hasAnyLimit = true;
+                        return acc + l;
+                    }
+                    return acc;
+                }, 0);
+                limit = hasAnyLimit ? sum : undefined;
+            } else {
+                limit = getLimit(category);
+            }
+
             const remaining = limit ? limit - currentMonthSpent : null;
 
             return {
@@ -575,10 +603,15 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                     <TableCell className="text-right text-gray-500">{formatCurrency(row.avgTransaction)}</TableCell>
                                     <TableCell className="text-right text-gray-500">{formatCurrency(row.monthlyAvg)}</TableCell>
                                     <TableCell
-                                        className="text-right cursor-pointer hover:bg-gray-100 transition-colors group relative overflow-hidden"
+                                        className={cn(
+                                            "text-right relative overflow-hidden",
+                                            viewMode === 'category' ? "cursor-pointer hover:bg-gray-100 transition-colors group" : ""
+                                        )}
                                         onClick={(e) => {
-                                            e.stopPropagation();
-                                            setLimitModalData({ category: row.category, currentLimit: row.limit });
+                                            if (viewMode === 'category') {
+                                                e.stopPropagation();
+                                                setLimitModalData({ category: row.category, currentLimit: row.limit });
+                                            }
                                         }}
                                     >
                                         {/* Progress Bar for Limit Usage - Update to CURRENT MONTH */}
@@ -598,7 +631,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                             "relative z-10 font-medium",
                                             row.limit && row.currentMonthSpent > row.limit ? "text-red-600" : "text-gray-500"
                                         )}>
-                                            {row.limit ? formatCurrency(row.limit) : <span className="text-gray-300 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Set Limit</span>}
+                                            {row.limit ? formatCurrency(row.limit) : (
+                                                viewMode === 'category' ? <span className="text-gray-300 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Set Limit</span> : <span className="text-gray-300 text-xs">—</span>
+                                            )}
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-right">
