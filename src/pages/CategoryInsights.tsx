@@ -24,14 +24,20 @@ interface CategoryData {
     operations: number;
     avgTransaction: number;
     monthlyAvg: number;
+    currentMonthSpent: number;
     yearForecast: number;
     share: number;
+    limit?: number;
+    remaining: number | null;
     rank: number;
 }
 
-type SortField = keyof CategoryData;
+type SortField = keyof CategoryData | 'limit';
 type SortOrder = 'asc' | 'desc';
 type ViewMode = 'category' | 'global';
+
+import { useCategoryLimits } from '../hooks/useCategoryLimits';
+import { CategoryLimitModal } from '../components/CategoryLimitModal';
 
 export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions }) => {
     const [sortField, setSortField] = useState<SortField>('totalSpent');
@@ -62,6 +68,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         return months.size || 1;
     }, [transactions]);
 
+    const { limits, setLimit, removeLimit, getLimit } = useCategoryLimits();
+    const [limitModalData, setLimitModalData] = useState<{ category: string, currentLimit?: number } | null>(null);
+
     const categoryData = useMemo(() => {
         const groups: Record<string, { total: number; count: number }> = {};
 
@@ -86,17 +95,23 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         // Calculate Average using COMPLETED months only
         // We need to re-aggregate for averages to exclude current month data
         const completedGroups: Record<string, number> = {};
+        const currentMonthGroups: Record<string, number> = {};
 
         expenseTransactions.forEach(t => {
             const date = new Date(t.date);
             const year = date.getFullYear();
             const month = date.getMonth();
+            const key = viewMode === 'global' ? getGlobalCategory(t.category) : t.category;
 
             // Check if transaction is in a completed month
             if (year < currentYear || (year === currentYear && month < currentMonth)) {
-                const key = viewMode === 'global' ? getGlobalCategory(t.category) : t.category;
                 if (!completedGroups[key]) completedGroups[key] = 0;
                 completedGroups[key] += Math.abs(t.amount);
+            }
+            // Check if transaction is in the CURRENT month
+            if (year === currentYear && month === currentMonth) {
+                if (!currentMonthGroups[key]) currentMonthGroups[key] = 0;
+                currentMonthGroups[key] += Math.abs(t.amount);
             }
         });
 
@@ -110,9 +125,12 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             // Use completed total for average, fallback to total if 0 (e.g. new category this month)
             // But if we have 0 completed months, uniqueMonthsCount is 1.
             const totalSpentCompleted = completedGroups[category] || 0;
+            const currentMonthSpent = currentMonthGroups[category] || 0;
             const monthlyAvg = totalSpentCompleted / uniqueMonthsCount;
             const yearForecast = monthlyAvg * remainingMonths;
             const share = grandTotal > 0 ? (totalSpent / grandTotal) * 100 : 0;
+            const limit = getLimit(category);
+            const remaining = limit ? limit - currentMonthSpent : null;
 
             return {
                 category,
@@ -120,23 +138,26 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 operations: count,
                 avgTransaction: count > 0 ? totalSpent / count : 0,
                 monthlyAvg,
+                currentMonthSpent,
                 yearForecast,
                 share,
+                limit,
+                remaining,
                 // Rank will be assigned after sorting by totalSpent descending
                 rank: 0
             };
         })
             .sort((a, b) => b.totalSpent - a.totalSpent) // Initial sort to assign rank
             .map((item, index) => ({ ...item, rank: index + 1 })); // Assign static rank
-    }, [transactions, uniqueMonthsCount, viewMode]);
+    }, [transactions, uniqueMonthsCount, viewMode, limits]);
 
 
 
 
     const sortedData = useMemo(() => {
         return [...categoryData].sort((a, b) => {
-            const aValue = a[sortField];
-            const bValue = b[sortField];
+            const aValue = a[sortField] ?? 0;
+            const bValue = b[sortField] ?? 0;
 
             if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
             if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
@@ -469,6 +490,18 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                     {sortField === 'monthlyAvg' && <ArrowUpDown className="w-3 h-3" />}
                                 </div>
                             </TableHead>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('limit')}>
+                                <div className="flex items-center justify-end gap-1">
+                                    Limit
+                                    {sortField === 'limit' && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
+                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('remaining' as SortField)}>
+                                <div className="flex items-center justify-end gap-1">
+                                    Left
+                                    {sortField === ('remaining' as SortField) && <ArrowUpDown className="w-3 h-3" />}
+                                </div>
+                            </TableHead>
                             <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('yearForecast')}>
                                 <div className="flex items-center justify-end gap-1">
                                     Forecast (Rem. Year)
@@ -541,6 +574,45 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                     <TableCell className="text-right text-gray-500">{row.operations}</TableCell>
                                     <TableCell className="text-right text-gray-500">{formatCurrency(row.avgTransaction)}</TableCell>
                                     <TableCell className="text-right text-gray-500">{formatCurrency(row.monthlyAvg)}</TableCell>
+                                    <TableCell
+                                        className="text-right cursor-pointer hover:bg-gray-100 transition-colors group relative overflow-hidden"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setLimitModalData({ category: row.category, currentLimit: row.limit });
+                                        }}
+                                    >
+                                        {/* Progress Bar for Limit Usage - Update to CURRENT MONTH */}
+                                        {row.limit && (
+                                            <div
+                                                className={cn(
+                                                    "absolute right-0 top-2 bottom-2 rounded-l-md transition-all duration-500 opacity-20",
+                                                    row.currentMonthSpent > row.limit ? "bg-red-500" :
+                                                        (row.currentMonthSpent / row.limit > 0.8 ? "bg-yellow-500" : "bg-emerald-500")
+                                                )}
+                                                style={{
+                                                    width: `${Math.min((row.currentMonthSpent / row.limit) * 100, 100)}%`
+                                                }}
+                                            />
+                                        )}
+                                        <div className={cn(
+                                            "relative z-10 font-medium",
+                                            row.limit && row.currentMonthSpent > row.limit ? "text-red-600" : "text-gray-500"
+                                        )}>
+                                            {row.limit ? formatCurrency(row.limit) : <span className="text-gray-300 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Set Limit</span>}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        {row.remaining !== null ? (
+                                            <span className={cn(
+                                                "font-medium",
+                                                row.remaining < 0 ? "text-red-600" : "text-emerald-600"
+                                            )}>
+                                                {formatCurrency(row.remaining)}
+                                            </span>
+                                        ) : (
+                                            <span className="text-gray-300 text-xs">—</span>
+                                        )}
+                                    </TableCell>
                                     <TableCell className="text-right text-gray-400">
                                         {row.yearForecast > 0 ? formatCurrency(row.yearForecast) : '—'}
                                     </TableCell>
@@ -551,7 +623,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                 {/* Expanded Tag View */}
                                 {expandedCategories.has(row.category) && (
                                     <TableRow className="bg-gray-50/50">
-                                        <TableCell colSpan={8} className="p-0">
+                                        <TableCell colSpan={10} className="p-0">
                                             <div className="pl-12 pr-4 py-4 border-l-4 border-emerald-100 ml-6 my-2 bg-white/50 rounded-r-lg">
                                                 <table className="w-full text-sm">
                                                     <thead>
@@ -624,6 +696,23 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                     transactions={selectedTagData.transactions}
                 />
             )}
+
+            <CategoryLimitModal
+                isOpen={!!limitModalData}
+                onClose={() => setLimitModalData(null)}
+                category={limitModalData?.category || ''}
+                currentLimit={limitModalData?.currentLimit}
+                onSave={(amount) => {
+                    if (limitModalData?.category) {
+                        setLimit(limitModalData.category, amount);
+                    }
+                }}
+                onRemove={() => {
+                    if (limitModalData?.category) {
+                        removeLimit(limitModalData.category);
+                    }
+                }}
+            />
         </div>
     );
 };
