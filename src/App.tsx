@@ -8,6 +8,7 @@ import { TransactionTable } from './components/TransactionTable';
 import { CategoryInsights } from './pages/CategoryInsights';
 import { IncomeInsights } from './pages/IncomeInsights';
 import { TrendsPage } from './pages/TrendsPage';
+import { AccountsPage } from './pages/AccountsPage';
 import type { Transaction } from './types';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 
@@ -98,6 +99,15 @@ function AppContent() {
                 >
                   Financial Trends
                 </Link>
+                <Link
+                  to="/accounts"
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/accounts'
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                  Accounts
+                </Link>
               </nav>
             )}
           </div>
@@ -164,6 +174,7 @@ function AppContent() {
               <Route path="/category-insights" element={<CategoryInsights transactions={transactions} />} />
               <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
               <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
+              <Route path="/accounts" element={<AccountsPage transactions={transactions} />} />
             </Routes>
           )
         }

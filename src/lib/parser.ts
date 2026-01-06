@@ -10,7 +10,13 @@ const HEADERS_MAP: Record<string, keyof Omit<Transaction, 'id' | 'type'>> = {
     'Комментарий': 'note',
     'Теги': 'tags',
     'Сумма в валюте счета': 'originalAmount',
-    'Валюта счета': 'originalCurrency'
+    'Валюта счета': 'originalCurrency',
+    // Transfer specific headers
+    'Исходящий счет': 'account',
+    'Входящий счет': 'category', // We'll store Destination Account in 'category' for transfers
+    'Сумма в исходящей валюте': 'amount',
+    'Сумма во входящей валюте': 'originalAmount',
+    'Валюта вход': 'originalCurrency'
 };
 
 export async function parseFile(file: File): Promise<Transaction[]> {

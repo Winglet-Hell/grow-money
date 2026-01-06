@@ -1,4 +1,4 @@
-export interface Transaction {
+export type Transaction = {
     id: string; // generated ID
     date: string; // ISO string
     category: string;
@@ -9,4 +9,4 @@ export interface Transaction {
     originalAmount?: number;
     originalCurrency?: string;
     type: 'expense' | 'income' | 'transfer';
-}
+};
