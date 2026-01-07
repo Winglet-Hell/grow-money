@@ -142,9 +142,9 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
     const formatShortValue = (val: any) => {
         const num = Number(val);
         if (isNaN(num)) return '';
-        if (Math.abs(num) >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+        if (Math.abs(num) >= 1000000) return (num / 1000000).toFixed(0) + 'M';
         if (Math.abs(num) >= 1000) return (num / 1000).toFixed(0) + 'k';
-        return num.toString();
+        return Math.round(num).toString();
     };
 
     return (
@@ -217,7 +217,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                 axisLine={false}
                                 tickLine={false}
                                 tick={{ fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' }}
-                                tickFormatter={(value) => `₽${value / 1000}k`}
+                                tickFormatter={(value) => `₽${(value / 1000).toFixed(0)}k`}
                             />
                             <Tooltip
                                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
@@ -251,7 +251,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                 axisLine={false}
                                 tickLine={false}
                                 tick={{ fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' }}
-                                tickFormatter={(value) => `₽${value / 1000}k`}
+                                tickFormatter={(value) => `₽${(value / 1000).toFixed(0)}k`}
                             />
                             <Tooltip
                                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}

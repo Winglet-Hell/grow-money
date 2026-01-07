@@ -172,7 +172,7 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
     const formatShortValue = (val: any) => {
         const num = Number(val);
         if (isNaN(num)) return '';
-        if (Math.abs(num) >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+        if (Math.abs(num) >= 1000000) return (num / 1000000).toFixed(0) + 'M';
         if (Math.abs(num) >= 1000) return (num / 1000).toFixed(0) + 'k';
         return Math.round(num).toString();
     };
@@ -299,7 +299,7 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
                             cursor={{ fill: '#F9FAFB' }}
                             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                             formatter={(value: any, name: any) => [
-                                `₽${new Intl.NumberFormat('ru-RU').format(Number(value))}`,
+                                `₽${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Number(value))}`,
                                 name === 'trend' ? 'Trend' : 'Amount'
                             ]}
                         />

@@ -69,6 +69,26 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
 
     // Group only if sorting by date (or default)
     // If sorting by amount/category, grouping by date is confusing, so we skip it.
+
+    // First, calculate daily stats for ALL filtered transactions (not just visible ones)
+    const dailyStats = useMemo(() => {
+        const stats: Record<string, { income: number; expense: number }> = {};
+
+        filteredAndSortedTransactions.forEach(t => {
+            const dateKey = formatDate(t.date);
+            if (!stats[dateKey]) {
+                stats[dateKey] = { income: 0, expense: 0 };
+            }
+            if (t.amount > 0) {
+                stats[dateKey].income += t.amount;
+            } else {
+                stats[dateKey].expense += t.amount;
+            }
+        });
+
+        return stats;
+    }, [filteredAndSortedTransactions]);
+
     const groupedTransactions = useMemo(() => {
         if (sortConfig.key !== 'date') return null;
 
@@ -88,11 +108,23 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
         // Let's reconstruct based on unique keys encountered in order.
         const orderedKeys = Array.from(new Set(paginatedTransactions.map(t => formatDate(t.date))));
 
-        return orderedKeys.map(key => ({ date: key, items: groups[key] }));
-    }, [paginatedTransactions, sortConfig.key]);
+        return orderedKeys.map(key => ({
+            date: key,
+            items: groups[key],
+            stats: dailyStats[key] || { income: 0, expense: 0 }
+        }));
+    }, [paginatedTransactions, sortConfig.key, dailyStats]);
 
     const handleLoadMore = () => {
         setVisibleCount(prev => prev + 20);
+    };
+
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('ru-RU', {
+            style: 'currency',
+            currency: 'RUB',
+            maximumFractionDigits: 0
+        }).format(amount);
     };
 
     const SortIcon = ({ columnKey }: { columnKey: SortKey }) => {
@@ -146,7 +178,11 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                 <td className="px-6 py-4 whitespace-nowrap text-right">
                     <div className="flex flex-col items-end gap-0.5">
                         <span className={`text-sm font-medium ${t.amount > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
-                            {t.amount > 0 ? '+' : ''}{new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(t.amount)}
+                            {t.amount > 0 ? '+' : ''}{new Intl.NumberFormat('ru-RU', {
+                                style: 'currency',
+                                currency: 'RUB',
+                                maximumFractionDigits: 0
+                            }).format(t.amount)}
                         </span>
                         {t.originalAmount && t.originalCurrency && t.originalCurrency !== 'RUB' && (
                             <span className="text-xs text-gray-500">
@@ -220,11 +256,25 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {groupedTransactions ? (
-                            groupedTransactions.map(({ date, items }) => (
+                            groupedTransactions.map(({ date, items, stats }) => (
                                 <React.Fragment key={date}>
                                     <tr className="bg-gray-50/50">
                                         <td colSpan={6} className="px-6 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider sticky top-0 backdrop-blur-sm">
-                                            {date}
+                                            <div className="flex items-center justify-between">
+                                                <span>{date}</span>
+                                                <div className="flex items-center gap-4">
+                                                    {stats.income > 0 && (
+                                                        <span className="text-emerald-600 font-medium normal-case">
+                                                            +{formatCurrency(stats.income)}
+                                                        </span>
+                                                    )}
+                                                    {stats.expense < 0 && (
+                                                        <span className="text-gray-500 font-medium normal-case">
+                                                            {formatCurrency(stats.expense)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </td>
                                     </tr>
                                     {renderRows(items)}

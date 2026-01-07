@@ -14,7 +14,7 @@ const formatCompact = (num: any) => {
     if (typeof num !== 'number') return '';
     return new Intl.NumberFormat('en-US', {
         notation: "compact",
-        maximumFractionDigits: 1
+        maximumFractionDigits: 0
     }).format(num);
 };
 
@@ -122,7 +122,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                     height={50}
                                 />
                                 <YAxis hide />
-                                <Tooltip formatter={(value: any) => `₽${(value || 0).toLocaleString()}`} cursor={{ fill: 'transparent' }} />
+                                <Tooltip formatter={(value: any) => `₽${(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}`} cursor={{ fill: 'transparent' }} />
                                 <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={32}>
                                     <LabelList dataKey="value" position="top" formatter={formatCompact} style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 500 }} />
                                     {expensesByCategory.map((entry, index) => (
@@ -151,7 +151,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                     tickFormatter={truncateLabel}
                                 />
                                 <YAxis hide />
-                                <Tooltip formatter={(value: any) => `₽${(value || 0).toLocaleString()}`} cursor={{ fill: 'transparent' }} />
+                                <Tooltip formatter={(value: any) => `₽${(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}`} cursor={{ fill: 'transparent' }} />
                                 <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={32}>
                                     <LabelList dataKey="value" position="top" formatter={formatCompact} style={{ fontSize: '12px', fill: '#6B7280', fontWeight: 500 }} />
                                     {monthlySpending.map((entry, index) => {

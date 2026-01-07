@@ -106,7 +106,7 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
 
     const formatMoney = (val: number) => {
         // Short format: 1.5k, 20k
-        if (Math.abs(val) >= 1000) return (val / 1000).toFixed(1) + 'k';
+        if (Math.abs(val) >= 1000) return (val / 1000).toFixed(0) + 'k';
         return Math.round(val).toString();
     };
 
@@ -144,8 +144,8 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
                                     <span className="font-medium text-gray-900 text-sm truncate max-w-[100px]" title={item.category}>{item.category}</span>
                                 </div>
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-2xl font-bold text-gray-900">₽{formatMoney(item.lastClosedAmount)}</span>
-                                    <span className="text-xs text-gray-400">avg ₽{formatMoney(item.avgPrevious)}</span>
+                                    <span className="text-2xl font-bold text-gray-900">{formatMoney(item.lastClosedAmount)}</span>
+                                    <span className="text-xs text-gray-400">avg {formatMoney(item.avgPrevious)}</span>
                                 </div>
                             </div>
 
@@ -154,7 +154,7 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
                                 isBad ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"
                             )}>
                                 {isBad ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                                <span>{isBad ? '+' : ''}₽{formatMoney(item.diffAbs)}</span>
+                                <span>{isBad ? '+' : ''}{formatMoney(item.diffAbs)}</span>
                             </div>
                         </div>
                     );

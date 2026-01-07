@@ -54,7 +54,11 @@ const Card = ({ title, amount, icon, trend }: any) => (
         <div>
             <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
             <h3 className="text-2xl font-bold text-gray-900">
-                {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(amount)}
+                {new Intl.NumberFormat('ru-RU', {
+                    style: 'currency',
+                    currency: 'RUB',
+                    maximumFractionDigits: 0
+                }).format(amount)}
             </h3>
             {trend && <p className="text-xs text-emerald-600 mt-2 font-medium">{trend}</p>}
         </div>
