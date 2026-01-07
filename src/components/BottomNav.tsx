@@ -37,7 +37,7 @@ export function BottomNav({ onReset }: { onReset: () => void }) {
                                 key={item.path}
                                 to={item.path}
                                 className={cn(
-                                    "flex flex-col items-center justify-center w-full h-full space-y-1 rounded-xl transition-all active:scale-95",
+                                    "flex flex-col items-center justify-center w-full h-full space-y-1 rounded-full transition-all active:scale-95",
                                     isActive ? "text-emerald-600 bg-emerald-50/50" : "text-gray-400 hover:text-gray-900"
                                 )}
                                 onClick={() => setIsMenuOpen(false)}
@@ -51,7 +51,7 @@ export function BottomNav({ onReset }: { onReset: () => void }) {
                     <button
                         onClick={() => setIsMenuOpen(!isMenuOpen)}
                         className={cn(
-                            "flex flex-col items-center justify-center w-full h-full space-y-1 rounded-xl transition-all active:scale-95",
+                            "flex flex-col items-center justify-center w-full h-full space-y-1 rounded-full transition-all active:scale-95",
                             isMenuOpen ? "text-emerald-600 bg-emerald-50/50" : "text-gray-400 hover:text-gray-900"
                         )}
                     >
