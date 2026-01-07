@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
+
 import type { Transaction } from '../types';
 
 const HEADERS_MAP: Record<string, keyof Omit<Transaction, 'id' | 'type'>> = {
@@ -174,7 +174,9 @@ function parseCSV(file: File): Promise<Transaction[]> {
     });
 }
 
-function parseExcel(file: File): Promise<Transaction[]> {
+async function parseExcel(file: File): Promise<Transaction[]> {
+    const XLSX = await import('xlsx');
+
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
