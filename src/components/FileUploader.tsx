@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Upload, FileSpreadsheet, ArrowUp } from 'lucide-react';
+import { Upload, FileSpreadsheet } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { parseFile } from '../lib/parser';
 import type { Transaction } from '../types';
