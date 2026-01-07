@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, LogOut, PieChart, TrendingUp, ShieldCheck } from 'lucide-react';
 import { parseFile } from './lib/parser';
+import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
 import { SummaryCards } from './components/SummaryCards';
 import { Charts } from './components/Charts';
@@ -15,37 +16,60 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 
 function AppContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const location = useLocation();
 
   useEffect(() => {
-    const loadDefaultData = async () => {
+    const loadData = async () => {
       try {
-        const response = await fetch('/default_dataset.xlsx');
-        if (!response.ok) {
-          console.log('No default dataset found');
-          return;
+        // Try to load from IndexedDB first
+        const count = await db.transactions.count();
+
+        if (count > 0) {
+          const savedTransactions = await db.transactions.toArray();
+          setTransactions(savedTransactions);
+        } else {
+          // Fallback to default dataset if DB is empty
+          const response = await fetch('/default_dataset.xlsx');
+          if (response.ok) {
+            const blob = await response.blob();
+            const file = new File([blob], 'default_dataset.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const data = await parseFile(file);
+            setTransactions(data);
+            // Optionally save default data to DB? user didn't ask for it, but consistency is good.
+            // Let's NOT save default data to DB to avoid "stickiness" of default data if they reset.
+            // Actually, if they reset, we clear DB.
+          }
         }
-
-        const blob = await response.blob();
-        const file = new File([blob], 'default_dataset.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
-        const data = await parseFile(file);
-        setTransactions(data);
       } catch (error) {
-        console.error('Error loading default data:', error);
+        console.error('Error loading data:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    loadDefaultData();
+    loadData();
   }, []);
 
-  const handleDataLoaded = (data: Transaction[]) => {
+  const handleDataLoaded = async (data: Transaction[]) => {
     setTransactions(data);
+    // Save to DB
+    await db.transactions.clear();
+    await db.transactions.bulkAdd(data);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     setTransactions([]);
+    await db.transactions.clear();
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans">

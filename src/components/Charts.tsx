@@ -55,15 +55,6 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
         transactions
             .filter(t => t.type === 'expense')
             .forEach(t => {
-                // Assuming date is parseable mostly. If simple string, might fail.
-                // I will try to parse dd.mm.yyyy or yyyy-mm-dd or Excel serial.
-                // For MVP, if parser just passed string, I need to be careful.
-                // Ideally Parser should have normalized Date.
-                // Let's assume standard JS date parse-able string for now.
-                // Or if it's "DD.MM.YYYY HH:MM:SS" (common in RU banks), JS Date() might fail.
-                // I'll handle basic RU format here or in parser.
-                // Let's assume parser provides standard ISO or we try to parse broadly.
-
                 let dateObj = new Date(t.date);
                 if (isNaN(dateObj.getTime())) {
                     // Try parsing DD.MM.YYYY
@@ -75,16 +66,24 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                 }
 
                 if (!isNaN(dateObj.getTime())) {
-                    const key = dateObj.toLocaleString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+                    // Use sortable key YYYY-MM
+                    const year = dateObj.getFullYear();
+                    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                    const key = `${year}-${month}`;
                     months[key] = (months[key] || 0) + Math.abs(t.amount);
                 }
             });
 
         return Object.entries(months)
-            .map(([name, value]) => ({ name, value }))
-        // Basic sort by string doesn't work well for dates, but typically banks give chronological.
-        // Ideally sort by real date.
-        // For MVP I'll leave it as is or do better sort if I had time.
+            .sort((a, b) => b[0].localeCompare(a[0])) // Sort descending (Newest first)
+            .map(([key, value]) => {
+                const [year, month] = key.split('-');
+                const date = new Date(parseInt(year), parseInt(month) - 1);
+                return {
+                    name: date.toLocaleString('en-US', { month: 'short', year: '2-digit' }),
+                    value
+                };
+            });
     }, [transactions]);
 
     return (
