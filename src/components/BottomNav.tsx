@@ -27,7 +27,7 @@ export function BottomNav({ onReset }: { onReset: () => void }) {
             <div className="h-16 md:hidden" />
 
             {/* Bottom Navigation Bar */}
-            <nav className="fixed bottom-4 left-4 right-4 bg-white/90 backdrop-blur-md border border-gray-200/50 shadow-xl rounded-2xl z-50 md:hidden pb-safe">
+            <nav className="fixed bottom-8 left-6 right-6 bg-white/90 backdrop-blur-2xl border border-white/20 shadow-2xl rounded-full z-50 md:hidden ring-1 ring-black/5">
                 <div className="flex justify-around items-center h-16">
                     {navItems.map((item) => {
                         const Icon = item.icon;
