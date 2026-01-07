@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2, Calendar, AlertTriangle, CheckCircle2, ShoppingBag, Target } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
 import { useFinancialMetrics } from '../hooks/useFinancialMetrics';
@@ -135,15 +136,18 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
                 </button>
             </div>
 
-            {isFormOpen && (
+            {isFormOpen && createPortal(
                 <div className="fixed inset-0 z-[100] overflow-y-auto">
                     <div className="min-h-full flex items-center justify-center p-4">
-                        <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-xl p-8 animate-in zoom-in-95 duration-200">
+                        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm fixed" onClick={() => setIsFormOpen(false)} />
+                        {/* Note: Added backdrop here for consistency and click-to-close */}
+                        <div className="relative z-10 bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-xl p-8 animate-in zoom-in-95 duration-200">
                             <h3 className="text-2xl font-bold text-gray-900 mb-6">Add New Goal</h3>
                             <WishlistForm onSubmit={addItem} onCancel={() => setIsFormOpen(false)} />
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Grid */}

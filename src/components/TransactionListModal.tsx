@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Calendar, Banknote } from 'lucide-react';
 import type { Transaction } from '../types';
 import { formatDate, stringToColor, cn } from '../lib/utils';
@@ -51,7 +52,7 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
         new Date(b.date).getTime() - new Date(a.date).getTime()
     );
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
             <div
                 className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
@@ -200,6 +201,7 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
                     </span>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
