@@ -12,10 +12,12 @@ export default defineConfig({
           'recharts': ['recharts'],
           'db-vendor': ['dexie', 'dexie-react-hooks'],
           'ui-libs': ['lucide-react', 'clsx', 'tailwind-merge', 'classnames'],
-          'csv-vendor': ['papaparse'],
           'supabase-vendor': ['@supabase/supabase-js']
         }
       }
     }
+  },
+  worker: {
+    format: 'es'
   }
 })
