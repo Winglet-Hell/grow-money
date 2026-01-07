@@ -2,12 +2,15 @@ import React, { useMemo } from 'react';
 import { cn } from '../lib/utils';
 import type { Transaction } from '../types';
 import { Calendar } from 'lucide-react';
+import { useState } from 'react';
+import { TransactionListModal } from './TransactionListModal';
 
 interface SpendingHeatmapProps {
     transactions: Transaction[];
 }
 
 export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }) => {
+    const [selectedDayList, setSelectedDayList] = useState<{ date: Date; transactions: Transaction[] } | null>(null);
     // const [tooltipData, setTooltipData] = useState<{ date: string; amount: number; count: number; x: number; y: number } | null>(null);
 
     // 1. Prepare Data
@@ -26,7 +29,7 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
         startDate.setDate(startDate.getDate() - dayOfWeek);
 
         // Generate Map of Date -> Spend
-        const dailySpend = new Map<string, { amount: number; count: number }>();
+        const dailySpend = new Map<string, { amount: number; count: number; transactions: Transaction[] }>();
         let maxSpend = 0;
 
         transactions.forEach(t => {
@@ -40,12 +43,13 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
             const key = date.toISOString().split('T')[0];
 
             if (!dailySpend.has(key)) {
-                dailySpend.set(key, { amount: 0, count: 0 });
+                dailySpend.set(key, { amount: 0, count: 0, transactions: [] });
             }
 
             const entry = dailySpend.get(key)!;
             entry.amount += Math.abs(t.amount);
             entry.count += 1;
+            entry.transactions.push(t);
 
             if (entry.amount > maxSpend) maxSpend = entry.amount;
         });
@@ -78,8 +82,8 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
         };
 
         // Build Grid
-        const weeks: Array<{ days: Array<{ date: Date; dateStr: string; amount: number; count: number; intensity: number } | null> }> = [];
-        let currentWeek: Array<{ date: Date; dateStr: string; amount: number; count: number; intensity: number } | null> = [];
+        const weeks: Array<{ days: Array<{ date: Date; dateStr: string; amount: number; count: number; intensity: number; transactions: Transaction[] } | null> }> = [];
+        let currentWeek: Array<{ date: Date; dateStr: string; amount: number; count: number; intensity: number; transactions: Transaction[] } | null> = [];
 
         // Loop from startDate to endDate
         const iterDate = new Date(startDate);
@@ -97,6 +101,7 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
             const data = dailySpend.get(isoDate);
             const amount = data ? data.amount : 0;
             const count = data ? data.count : 0;
+            const dayTransactions = data ? data.transactions : [];
 
             // Only add if we haven't passed endDate by a full week essentially,
             // but simplified: we just pile into weeks.
@@ -128,7 +133,8 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
                 dateStr: isoDate,
                 amount,
                 count,
-                intensity
+                intensity,
+                transactions: dayTransactions
             };
 
             currentWeek.push(dayData);
@@ -223,8 +229,14 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
                                                         day.intensity === 2 ? "bg-emerald-300 hover:bg-emerald-400" : // Small
                                                             day.intensity === 3 ? "bg-emerald-500 hover:bg-emerald-600" : // Medium
                                                                 "bg-emerald-900 hover:bg-gray-900" // High
-                                            ) : "bg-transparent"
+                                            ) : "bg-transparent",
+                                            day ? "cursor-pointer" : ""
                                         )}
+                                        onClick={() => {
+                                            if (day) {
+                                                setSelectedDayList({ date: day.date, transactions: day.transactions });
+                                            }
+                                        }}
                                         title={day ? `${day.date.toDateString()}: ${formatCurrency(day.amount)}` : ''}
                                     >
                                         {/* Smart CSS Tooltip */}
@@ -310,6 +322,19 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
                     })}
                 </div>
             </div>
-        </div>
+
+
+            {
+                selectedDayList && (
+                    <TransactionListModal
+                        isOpen={true}
+                        onClose={() => setSelectedDayList(null)}
+                        title={selectedDayList.date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                        subtitle="Daily Spending"
+                        transactions={selectedDayList.transactions}
+                    />
+                )
+            }
+        </div >
     );
 }
