@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, LogOut, PieChart, TrendingUp, ShieldCheck, Import, Eye, EyeOff } from 'lucide-react';
+import { LayoutDashboard, LogOut, PieChart, TrendingUp, ShieldCheck, Import, Eye, EyeOff, Wallet, Heart, LineChart } from 'lucide-react';
 import { parseFile } from './lib/parser';
 import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
@@ -22,6 +22,17 @@ function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const location = useLocation();
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
+
+  // Define navigation items for desktop and potentially BottomNav
+  const navItems = [
+    { path: '/', label: 'Overview', icon: LayoutDashboard },
+    { path: '/category-insights', label: 'Expenses', icon: PieChart },
+    { path: '/income-insights', label: 'Income', icon: TrendingUp },
+    { path: '/trends', label: 'Trends', icon: LineChart },
+    { path: '/accounts', label: 'Wallets', icon: Wallet },
+    { path: '/wishlist', label: 'Goals', icon: Heart },
+    { path: '/ai-export', label: 'AI Sync', icon: Import },
+  ];
 
   useEffect(() => {
     const loadData = async () => {
@@ -92,69 +103,19 @@ function AppContent() {
 
             {transactions.length > 0 && (
               <nav className="hidden md:flex items-center gap-1">
-                <Link
-                  to="/"
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/'
-                    ? 'bg-gray-100 text-gray-900'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  to="/category-insights"
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/category-insights'
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                  Category Insights
-                </Link>
-                <Link
-                  to="/income-insights"
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/income-insights'
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                  Income Insights
-                </Link>
-                <Link
-                  to="/trends"
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/trends'
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                  Financial Trends
-                </Link>
-                <Link
-                  to="/accounts"
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/accounts'
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                  Accounts
-                </Link>
-                <Link
-                  to="/wishlist"
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/wishlist'
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                  Wishlist
-                </Link>
-                <Link
-                  to="/ai-export"
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/ai-export'
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                  AI Export
-                </Link>
+                {navItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${location.pathname === item.path
+                      ? (item.path === '/' ? 'bg-gray-100 text-gray-900' : 'bg-emerald-50 text-emerald-700')
+                      : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    {item.label}
+                  </Link>
+                ))}
               </nav>
             )}
           </div>

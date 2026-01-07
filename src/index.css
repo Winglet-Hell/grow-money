@@ -5,6 +5,9 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+     scrollbar-gutter: stable;
+  }
   body {
     @apply font-sans antialiased text-gray-900 bg-gray-50;
   }

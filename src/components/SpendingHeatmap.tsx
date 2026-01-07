@@ -4,12 +4,14 @@ import type { Transaction } from '../types';
 import { Calendar } from 'lucide-react';
 import { useState } from 'react';
 import { TransactionListModal } from './TransactionListModal';
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 interface SpendingHeatmapProps {
     transactions: Transaction[];
 }
 
 export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }) => {
+    const { isPrivacyMode } = usePrivacy();
     const [selectedDayList, setSelectedDayList] = useState<{ date: Date; transactions: Transaction[] } | null>(null);
     // const [tooltipData, setTooltipData] = useState<{ date: string; amount: number; count: number; x: number; y: number } | null>(null);
 
@@ -250,10 +252,30 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
                                                     wIndex > calendarData.weeks.length - 5 ? "right-0" :
                                                         "left-1/2 -translate-x-1/2"
                                             )}>
-                                                <div className="bg-gray-900 text-white text-xs rounded px-2 py-1 shadow-lg border border-gray-700">
-                                                    <div className="font-semibold">{day.date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
-                                                    <div>{day.amount > 0 ? formatCurrency(day.amount) : 'No spending'}</div>
-                                                    {day.amount > 0 && <div className="text-gray-400 text-[10px]">{day.count} transaction{day.count !== 1 ? 's' : ''}</div>}
+                                                <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl shadow-xl border border-gray-100 flex flex-col gap-2 min-w-[140px]">
+                                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 pb-1.5 mb-0.5">
+                                                        {day.date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                                    </p>
+                                                    <div className="flex flex-col gap-1.5">
+                                                        <div className="flex items-center justify-between gap-4">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-2 h-2 rounded-full ring-2 ring-white bg-emerald-500" />
+                                                                <span className="text-xs font-medium text-gray-500">Expenses</span>
+                                                            </div>
+                                                            <span className="text-xs font-bold text-gray-900">
+                                                                {isPrivacyMode ? '••••••' : (day.amount > 0 ? formatCurrency(day.amount) : 'No spend')}
+                                                            </span>
+                                                        </div>
+                                                        {day.amount > 0 && (
+                                                            <div className="flex items-center justify-between gap-4">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-2 h-2" /> {/* alignment spacer */}
+                                                                    <span className="text-[10px] text-gray-400">Transactions</span>
+                                                                </div>
+                                                                <span className="text-[10px] font-medium text-gray-500">{day.count}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
@@ -276,15 +298,15 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
                         spending days
                     </div>
                     <div>
-                        <span className="font-bold text-gray-900 block text-lg">{formatCurrency(avgDailySpend)}</span>
+                        <span className="font-bold text-gray-900 block text-lg">{isPrivacyMode ? '••••••' : formatCurrency(avgDailySpend)}</span>
                         avg daily spend
                     </div>
                     <div>
-                        <span className="font-bold text-gray-900 block text-lg">{formatCurrency(calendarData.minSpend)}</span>
+                        <span className="font-bold text-gray-900 block text-lg">{isPrivacyMode ? '••••••' : formatCurrency(calendarData.minSpend)}</span>
                         lowest daily spend
                     </div>
                     <div>
-                        <span className="font-bold text-gray-900 block text-lg">{formatCurrency(calendarData.maxSpend)}</span>
+                        <span className="font-bold text-gray-900 block text-lg">{isPrivacyMode ? '••••••' : formatCurrency(calendarData.maxSpend)}</span>
                         highest daily spend
                     </div>
                 </div>

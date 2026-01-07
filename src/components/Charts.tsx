@@ -6,6 +6,7 @@ import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
+import { CustomTooltip } from './CustomTooltip';
 
 interface ChartsProps {
     transactions: Transaction[];
@@ -124,7 +125,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                     height={50}
                                 />
                                 <YAxis hide />
-                                <Tooltip formatter={(value: any) => isPrivacyMode ? '••••••' : `₽${(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}`} cursor={{ fill: 'transparent' }} />
+                                <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
                                 <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={32}>
                                     <LabelList
                                         dataKey="value"
@@ -158,7 +159,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                     tickFormatter={truncateLabel}
                                 />
                                 <YAxis hide />
-                                <Tooltip formatter={(value: any) => isPrivacyMode ? '••••••' : `₽${(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}`} cursor={{ fill: 'transparent' }} />
+                                <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
                                 <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={32}>
                                     <LabelList
                                         dataKey="value"

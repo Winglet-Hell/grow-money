@@ -22,6 +22,7 @@ import { CategoryTrendsSection } from '../components/CategoryTrendsSection';
 import { AnomaliesSection } from '../components/AnomaliesSection';
 import { SpendingHeatmap } from '../components/SpendingHeatmap';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { CustomTooltip } from '../components/CustomTooltip';
 
 interface TrendsPageProps {
     transactions: Transaction[];
@@ -133,14 +134,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
         };
     }, [chartData]);
 
-    const formatCurrency = (val: number) => {
-        if (isPrivacyMode) return '••••••';
-        return new Intl.NumberFormat('ru-RU', {
-            style: 'currency',
-            currency: 'RUB',
-            maximumFractionDigits: 0
-        }).format(val);
-    };
+
 
     const formatShortValue = (val: any) => {
         if (isPrivacyMode) return '';
@@ -226,10 +220,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                 tick={{ fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' }}
                                 tickFormatter={(value) => isPrivacyMode ? '•••' : `₽${(value / 1000).toFixed(0)}k`}
                             />
-                            <Tooltip
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                formatter={(value: number | undefined) => formatCurrency(value || 0)}
-                            />
+                            <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} />
                             <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#6B7280', paddingTop: '10px', fontWeight: 400, fontFamily: 'inherit' }} />
                             <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={50}>
                                 <LabelList dataKey="income" position="top" formatter={formatShortValue} style={{ fontSize: '10px', fill: '#6B7280' }} />
@@ -260,10 +251,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                 tick={{ fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' }}
                                 tickFormatter={(value) => isPrivacyMode ? '•••' : `₽${(value / 1000).toFixed(0)}k`}
                             />
-                            <Tooltip
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                formatter={(value: number | undefined) => formatCurrency(value || 0)}
-                            />
+                            <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
                             <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#6B7280', paddingTop: '10px', fontWeight: 400, fontFamily: 'inherit' }} />
                             <Bar dataKey="netFlow" name="Net Flow" radius={[4, 4, 0, 0]} maxBarSize={50}>
                                 {chartData.map((entry, index) => (
@@ -371,10 +359,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                     tick={{ fill: '#6B7280', fontSize: 12 }}
                                     unit="%"
                                 />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                    formatter={(value: number | undefined) => `${(value || 0).toFixed(1)}%`}
-                                />
+                                <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} valuePrefix="" valueSuffix="%" />} />
                                 <ReferenceLine y={20} stroke="#10b981" strokeDasharray="3 3" label={{ value: 'Target 20%', fill: '#10b981', fontSize: 12 }} />
                                 <Area
                                     type="monotone"

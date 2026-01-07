@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart, LineChart } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 // This component will be used in App.tsx
@@ -9,16 +9,16 @@ export function BottomNav({ onReset }: { onReset: () => void }) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const navItems = [
-        { path: '/', label: 'Home', icon: LayoutDashboard },
-        { path: '/trends', label: 'Trends', icon: TrendingUp },
-        { path: '/accounts', label: 'Accounts', icon: Wallet },
+        { path: '/', label: 'Overview', icon: LayoutDashboard },
+        { path: '/trends', label: 'Trends', icon: LineChart },
+        { path: '/accounts', label: 'Wallets', icon: Wallet },
     ];
 
     const menuItems = [
-        { path: '/category-insights', label: 'Category Insights', icon: PieChart },
-        { path: '/income-insights', label: 'Income Insights', icon: PieChart }, // Reusing PieChart for now
-        { path: '/wishlist', label: 'Wishlist', icon: Heart },
-        { path: '/ai-export', label: 'AI Export', icon: Import },
+        { path: '/category-insights', label: 'Expenses', icon: PieChart },
+        { path: '/income-insights', label: 'Income', icon: TrendingUp },
+        { path: '/wishlist', label: 'Goals', icon: Heart },
+        { path: '/ai-export', label: 'AI Sync', icon: Import },
     ];
 
     return (

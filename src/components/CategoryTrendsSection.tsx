@@ -14,6 +14,8 @@ import {
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { cn, stringToColor } from '../lib/utils';
 import type { Transaction } from '../types';
+import { usePrivacy } from '../contexts/PrivacyContext';
+import { CustomTooltip } from './CustomTooltip';
 
 interface CategoryTrendsSectionProps {
     transactions: Transaction[];
@@ -21,6 +23,7 @@ interface CategoryTrendsSectionProps {
 }
 
 export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSectionProps) {
+    const { isPrivacyMode } = usePrivacy();
     const [type, setType] = useState<'expense' | 'income'>('expense');
     const [selectedCategory, setSelectedCategory] = useState<string>('');
 
@@ -296,12 +299,8 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
                             tickFormatter={formatShortValue}
                         />
                         <Tooltip
-                            cursor={{ fill: '#F9FAFB' }}
-                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                            formatter={(value: any, name: any) => [
-                                `₽${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Number(value))}`,
-                                name === 'trend' ? 'Trend' : 'Amount'
-                            ]}
+                            content={<CustomTooltip isPrivacy={isPrivacyMode} />}
+                            cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }}
                         />
                         <Bar
                             dataKey="amount"
