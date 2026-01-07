@@ -60,8 +60,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
             const date = new Date(t.date);
             if (!isNaN(date.getTime())) {
-                const year = date.getFullYear();
-                const month = date.getMonth();
+                const year = date.getUTCFullYear();
+                const month = date.getUTCMonth();
                 const monthKey = `${year}-${month}`;
                 months.add(monthKey);
 
@@ -123,8 +123,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
             const date = new Date(t.date);
             if (!isNaN(date.getTime())) {
-                const year = date.getFullYear();
-                const month = date.getMonth();
+                const year = date.getUTCFullYear();
+                const month = date.getUTCMonth();
                 if (year === currentYear && month === currentMonth) {
                     currentMonthGroups[tag] = (currentMonthGroups[tag] || 0) + amount;
                 }
@@ -221,8 +221,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             const date = new Date(t.date);
             if (isNaN(date.getTime())) return;
 
-            const year = date.getFullYear();
-            const monthKey = `${year}-${date.getMonth()}`;
+            const year = date.getUTCFullYear();
+            const monthKey = `${year}-${date.getUTCMonth()}`;
 
             monthsMap[monthKey] = (monthsMap[monthKey] || 0) + amount;
 
@@ -317,7 +317,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         income.forEach(t => {
             const date = new Date(t.date);
             if (!isNaN(date.getTime())) {
-                months.add(`${date.getFullYear()}-${date.getMonth()}`);
+                months.add(`${date.getUTCFullYear()}-${date.getUTCMonth()}`);
             }
         });
         return months.size || 1;

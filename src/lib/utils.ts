@@ -40,3 +40,18 @@ export function stringToColor(str: string): ColorSet {
     const index = Math.abs(hash) % COLORS.length;
     return COLORS[index];
 }
+
+export function formatDate(dateStr: string | Date | undefined): string {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return String(dateStr);
+        // Use UTC methods to ensure date doesn't shift based on user timezone
+        const day = d.getUTCDate().toString().padStart(2, '0');
+        const month = (d.getUTCMonth() + 1).toString().padStart(2, '0');
+        const year = d.getUTCFullYear();
+        return `${day}.${month}.${year}`;
+    } catch (e) {
+        return String(dateStr);
+    }
+}

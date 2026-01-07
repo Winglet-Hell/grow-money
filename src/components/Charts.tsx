@@ -75,7 +75,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                 }
 
                 if (!isNaN(dateObj.getTime())) {
-                    const key = dateObj.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+                    const key = dateObj.toLocaleString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' });
                     months[key] = (months[key] || 0) + Math.abs(t.amount);
                 }
             });
@@ -138,7 +138,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                 <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={32}>
                                     <LabelList dataKey="value" position="top" formatter={formatCompact} style={{ fontSize: '12px', fill: '#6B7280', fontWeight: 500 }} />
                                     {monthlySpending.map((entry, index) => {
-                                        const current = new Date().toLocaleString('en-US', { month: 'short', year: '2-digit' });
+                                        const current = new Date().toLocaleString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' });
                                         const isCurrent = entry.name === current;
                                         const color = isCurrent
                                             ? '#cbd5e1' // Gray for incomplete (current) month

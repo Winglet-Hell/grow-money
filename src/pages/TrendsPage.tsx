@@ -37,8 +37,8 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
         const getMonthKey = (dateStr: string) => {
             const date = new Date(dateStr);
             return {
-                key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
-                label: new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date),
+                key: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`,
+                label: new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(date),
                 timestamp: date.getTime()
             };
         };

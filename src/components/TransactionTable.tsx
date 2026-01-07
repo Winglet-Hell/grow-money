@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { Transaction } from '../types';
-import { cn, stringToColor } from '../lib/utils';
+import { cn, stringToColor, formatDate } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown } from 'lucide-react';
 
@@ -74,10 +74,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
 
         const groups: Record<string, Transaction[]> = {};
         paginatedTransactions.forEach(t => {
-            const dateObj = new Date(t.date);
-            const dateKey = isNaN(dateObj.getTime())
-                ? t.date
-                : dateObj.toLocaleDateString('ru-RU');
+            const dateKey = formatDate(t.date);
 
             if (!groups[dateKey]) {
                 groups[dateKey] = [];
@@ -89,10 +86,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
         // Since paginatedTransactions is already sorted by date, we can just iterate keys
         // But object keys iteration order isn't guaranteed.
         // Let's reconstruct based on unique keys encountered in order.
-        const orderedKeys = Array.from(new Set(paginatedTransactions.map(t => {
-            const d = new Date(t.date);
-            return isNaN(d.getTime()) ? t.date : d.toLocaleDateString('ru-RU');
-        })));
+        const orderedKeys = Array.from(new Set(paginatedTransactions.map(t => formatDate(t.date))));
 
         return orderedKeys.map(key => ({ date: key, items: groups[key] }));
     }, [paginatedTransactions, sortConfig.key]);
@@ -146,7 +140,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                 <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={t.note}>
                     {t.note}
                     {!t.note && sortConfig.key !== 'date' && (
-                        <span className="text-xs text-gray-400 ml-2">{new Date(t.date).toLocaleDateString()}</span>
+                        <span className="text-xs text-gray-400 ml-2">{formatDate(t.date)}</span>
                     )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right">

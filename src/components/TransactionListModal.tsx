@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { X, Calendar, Banknote } from 'lucide-react';
 import type { Transaction } from '../types';
+import { formatDate } from '../lib/utils';
 
 interface TransactionListModalProps {
     isOpen: boolean;
@@ -39,14 +40,6 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
         }).format(Math.abs(val));
     };
 
-    const formatDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        return new Intl.DateTimeFormat('en-GB', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric'
-        }).format(date);
-    };
 
     // Sorting transactions by date descending (already requested by user)
     const sortedTransactions = [...transactions].sort((a, b) =>
@@ -93,10 +86,10 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
                                 <div key={t.id} className="p-4 hover:bg-gray-50 transition-colors flex items-start gap-4">
                                     <div className="min-w-[40px] flex flex-col items-center justify-center bg-gray-100 rounded-lg p-2 text-xs font-medium text-gray-500">
                                         <span className="text-lg font-bold text-gray-900">
-                                            {new Date(t.date).getDate()}
+                                            {new Date(t.date).getUTCDate()}
                                         </span>
                                         <span>
-                                            {new Date(t.date).toLocaleDateString('en-US', { month: 'short' })}
+                                            {new Date(t.date).toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })}
                                         </span>
                                     </div>
 
