@@ -28,11 +28,11 @@ interface TrendsPageProps {
     transactions: Transaction[];
 }
 
-type Period = '6M' | '1Y' | 'ALL';
+type Period = '3M' | '6M' | '1Y' | 'ALL';
 
 export function TrendsPage({ transactions }: TrendsPageProps) {
     const { isPrivacyMode } = usePrivacy();
-    const [period, setPeriod] = useState<Period>('6M');
+    const [period, setPeriod] = useState<Period>('ALL');
 
     // 1. Data Processing
     const chartData = useMemo(() => {
@@ -91,7 +91,9 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
         });
 
         // Filter by period
-        if (period === '6M') {
+        if (period === '3M') {
+            return dataWithTrends.slice(-3);
+        } else if (period === '6M') {
             return dataWithTrends.slice(-6);
         } else if (period === '1Y') {
             return dataWithTrends.slice(-12);
@@ -155,7 +157,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                 </div>
 
                 <div className="flex bg-gray-100 p-1 rounded-lg">
-                    {(['6M', '1Y', 'ALL'] as Period[]).map((p) => (
+                    {(['3M', '6M', '1Y', 'ALL'] as Period[]).map((p) => (
                         <button
                             key={p}
                             onClick={() => setPeriod(p)}
@@ -164,7 +166,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                 : 'text-gray-500 hover:text-gray-900'
                                 }`}
                         >
-                            {p === '6M' ? 'Last 6 Months' : p === '1Y' ? 'Last Year' : 'All Time'}
+                            {p === '3M' ? '3 Months' : p === '6M' ? '6 Months' : p === '1Y' ? 'Year' : 'All'}
                         </button>
                     ))}
                 </div>

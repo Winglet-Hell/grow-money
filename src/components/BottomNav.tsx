@@ -1,12 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart, LineChart } from 'lucide-react';
 import { cn } from '../lib/utils';
+import menuIllustration from '../assets/menu-illustration.png';
 
 // This component will be used in App.tsx
 export function BottomNav({ onReset }: { onReset: () => void }) {
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+    // Lock body scroll when menu is open
+    useEffect(() => {
+        if (isMenuOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, [isMenuOpen]);
 
     const navItems = [
         { path: '/', label: 'Overview', icon: LayoutDashboard },
@@ -61,9 +74,9 @@ export function BottomNav({ onReset }: { onReset: () => void }) {
             </nav>
 
             {isMenuOpen && (
-                <div className="fixed inset-0 bg-white z-40 md:hidden animate-in fade-in slide-in-from-bottom duration-200 pb-24">
+                <div className="fixed inset-0 bg-white z-[60] md:hidden animate-in fade-in slide-in-from-bottom duration-200 pb-24">
                     <div className="p-4 flex flex-col h-full overflow-y-auto pb-safe">
-                        <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center justify-between mt-12 mb-6">
                             <h2 className="text-xl font-bold text-gray-900">Menu</h2>
                             <button onClick={() => setIsMenuOpen(false)} className="p-2 bg-gray-100 rounded-full">
                                 <X className="w-5 h-5 text-gray-500" />
@@ -98,7 +111,7 @@ export function BottomNav({ onReset }: { onReset: () => void }) {
                             })}
                         </div>
 
-                        <div className="mt-auto pt-8 border-t border-gray-100">
+                        <div className="pt-4 mt-2">
                             <button
                                 onClick={() => {
                                     setIsMenuOpen(false);
@@ -111,6 +124,15 @@ export function BottomNav({ onReset }: { onReset: () => void }) {
                                 </div>
                                 Reset Data
                             </button>
+                        </div>
+
+                        {/* Decorative Illustration - Fixed size to prevent scrolling */}
+                        <div className="mt-4 flex justify-center opacity-90 animate-in fade-in zoom-in duration-1000">
+                            <img
+                                src={menuIllustration}
+                                alt="Financial Growth"
+                                className="w-32 h-32 object-contain"
+                            />
                         </div>
                     </div>
                 </div>

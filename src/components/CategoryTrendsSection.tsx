@@ -19,7 +19,7 @@ import { CustomTooltip } from './CustomTooltip';
 
 interface CategoryTrendsSectionProps {
     transactions: Transaction[];
-    period: '6M' | '1Y' | 'ALL';
+    period: '3M' | '6M' | '1Y' | 'ALL';
 }
 
 export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSectionProps) {
@@ -83,7 +83,8 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
         let data = Array.from(monthlyData.values()).sort((a, b) => a.timestamp - b.timestamp);
 
         // Filter by Period
-        if (period === '6M') data = data.slice(-6);
+        if (period === '3M') data = data.slice(-3);
+        else if (period === '6M') data = data.slice(-6);
         else if (period === '1Y') data = data.slice(-12);
 
         // --- Metrics Calculation ---
@@ -270,7 +271,7 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
                         <select
                             value={selectedCategory}
                             onChange={(e) => setSelectedCategory(e.target.value)}
-                            className="block w-48 pl-3 pr-10 py-1.5 text-base border-gray-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md bg-gray-50 border transition-all hover:bg-white"
+                            className="block w-48 px-3 py-1.5 text-base border-gray-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md bg-gray-50 border transition-all hover:bg-white appearance-none"
                         >
                             {categories.map(c => (
                                 <option key={c} value={c}>{c}</option>

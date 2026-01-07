@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, LogOut, PieChart, TrendingUp, ShieldCheck, Import, Eye, EyeOff, Wallet, Heart, LineChart } from 'lucide-react';
 import { parseFile } from './lib/parser';
+import { getFormattedDateRange, cn } from './lib/utils';
 import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
 import { SummaryCards } from './components/SummaryCards';
@@ -16,6 +17,58 @@ import { AIExportPage } from './pages/AIExportPage';
 import { PrivacyProvider, usePrivacy } from './contexts/PrivacyContext';
 import type { Transaction } from './types';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+
+// Feature Data
+const FEATURES = [
+  {
+    icon: <LayoutDashboard className="w-5 h-5" />,
+    title: "Smart Overview",
+    description: "Get an instant snapshot of your net balance and recent financial activity at a glance.",
+    color: "bg-emerald-50 text-emerald-600"
+  },
+  {
+    icon: <PieChart className="w-5 h-5" />,
+    title: "Category Insights",
+    description: "Deep dive into your spending habits with detailed category and tag breakdowns.",
+    color: "bg-blue-50 text-blue-600"
+  },
+  {
+    icon: <TrendingUp className="w-5 h-5" />,
+    title: "Income Analysis",
+    description: "Track your revenue sources and monitor your monthly earnings growth.",
+    color: "bg-purple-50 text-purple-600"
+  },
+  {
+    icon: <LineChart className="w-5 h-5" />,
+    title: "Financial Trends",
+    description: "Analyze historical performance over 3M, 6M, 1Y or All Time periods.",
+    color: "bg-amber-50 text-amber-600"
+  },
+  {
+    icon: <Wallet className="w-5 h-5" />,
+    title: "Multi-Wallet",
+    description: "Manage multiple accounts and track your total net worth in one place.",
+    color: "bg-indigo-50 text-indigo-600"
+  },
+  {
+    icon: <Heart className="w-5 h-5" />,
+    title: "Goal Planning",
+    description: "Set financial goals, track wishlists, and monitor your savings progress.",
+    color: "bg-rose-50 text-rose-600"
+  },
+  {
+    icon: <Import className="w-5 h-5" />,
+    title: "AI Integration",
+    description: "Export clean data efficiently for advanced analysis with ChatGPT or Gemini.",
+    color: "bg-sky-50 text-sky-600"
+  },
+  {
+    icon: <ShieldCheck className="w-5 h-5" />,
+    title: "Privacy First",
+    description: "100% local processing. Your financial data is never uploaded to any server.",
+    color: "bg-gray-50 text-gray-600"
+  }
+];
 
 function AppContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -80,23 +133,39 @@ function AppContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-emerald-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-4 md:pb-8 font-sans">
+    <div className={`min-h-screen pb-4 md:pb-8 font-sans selection:bg-emerald-200 selection:text-emerald-900 overflow-x-hidden relative transition-colors duration-700 ${transactions.length > 0 ? 'bg-slate-50' : 'bg-[#F0FDF9]'}`}>
+      {/* --- Ethereal Background Layers (Only on Landing) --- */}
+
+      {transactions.length === 0 && (
+        <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+          {/* Top Right Blob - Ghostly */}
+          <div className="absolute top-[-20%] right-[-10%] w-[70vw] h-[70vw] bg-gradient-to-br from-emerald-50/20 to-cyan-50/20 rounded-full blur-[160px] mix-blend-multiply opacity-30 animate-blob transition-all duration-1000" />
+
+          {/* Bottom Left Blob - Ghostly */}
+          <div className="absolute bottom-[-20%] left-[-10%] w-[60vw] h-[60vw] bg-gradient-to-tr from-teal-50/20 to-emerald-50/10 rounded-full blur-[160px] mix-blend-multiply opacity-30 animate-blob animation-delay-4000 transition-all duration-1000" />
+
+          {/* Center - Almost invisible shimmer */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50vw] h-[50vw] bg-white/40 rounded-full blur-[180px] opacity-20 animate-pulse-slow" />
+        </div>
+      )}
+
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200/50 sticky top-0 z-50 rounded-b-3xl shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <header className={`${transactions.length > 0 ? 'bg-white/80' : 'bg-transparent'} backdrop-blur-md border-b ${transactions.length > 0 ? 'border-gray-200/50' : 'border-transparent'} fixed top-0 inset-x-0 z-50 rounded-b-3xl transition-all duration-500 h-16`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="bg-emerald-100 p-2 rounded-lg">
+            <Link to="/" className="flex items-center gap-2 group cursor-pointer" onClick={handleReset}>
+              {/* Note: Added onClick reset for logo to go back to home/reset if needed, or just standard link */}
+              <div className="bg-white/40 border border-white/60 p-2 rounded-xl backdrop-blur-md shadow-sm group-hover:bg-white/60 transition-colors">
                 <LayoutDashboard className="w-5 h-5 text-emerald-600" />
               </div>
-              <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+              <h1 className="text-xl font-bold tracking-tight text-emerald-950">
                 Grow <span className="text-emerald-600">money</span>
               </h1>
             </Link>
@@ -108,7 +177,7 @@ function AppContent() {
                     key={item.path}
                     to={item.path}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${location.pathname === item.path
-                      ? (item.path === '/' ? 'bg-gray-100 text-gray-900' : 'bg-emerald-50 text-emerald-700')
+                      ? (item.path === '/' ? 'bg-emerald-50 text-emerald-700' : 'bg-emerald-50 text-emerald-700')
                       : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                   >
@@ -129,33 +198,6 @@ function AppContent() {
               >
                 {isPrivacyMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
-
-              <div className="flex items-center gap-2">
-                <label className="flex md:hidden cursor-pointer text-emerald-600 hover:text-emerald-700 items-center justify-center p-2 rounded-full hover:bg-emerald-50 transition-colors">
-                  <Import className="w-6 h-6" />
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        try {
-                          setIsLoading(true);
-                          const data = await parseFile(file);
-                          await handleDataLoaded(data);
-                        } catch (error) {
-                          console.error("Upload failed", error);
-                        } finally {
-                          setIsLoading(false);
-                        }
-                      }
-                    }}
-                  />
-                </label>
-
-              </div>
-
               <button
                 onClick={handleReset}
                 className="hidden md:flex text-sm font-medium text-gray-400 hover:text-red-500 items-center gap-2 transition-colors px-3 py-2 rounded-lg hover:bg-gray-50"
@@ -168,59 +210,110 @@ function AppContent() {
         </div>
       </header >
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-8 relative z-10">
         {
           transactions.length === 0 ? (
-            <div className="min-h-[60vh] flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="text-center mb-8 max-w-lg">
-                <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                  Welcome to your financial dashboard
+            <div className="min-h-[85vh] flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-8 duration-1000 relative">
+
+              {/* --- Floating Glass Icons --- */}
+
+              {/* Top Left: Bar Chart */}
+              <div className="absolute top-[15%] left-[10%] w-20 h-20 rounded-2xl bg-white/30 border border-white/60 backdrop-blur-xl shadow-lg flex items-center justify-center animate-float hidden lg:flex">
+                <div className="bg-emerald-100/50 p-3 rounded-xl">
+                  <LineChart className="w-8 h-8 text-emerald-600" />
+                </div>
+              </div>
+
+              {/* Top Right: Pie Chart */}
+              <div className="absolute top-[20%] right-[15%] w-16 h-16 rounded-2xl bg-white/30 border border-white/60 backdrop-blur-xl shadow-lg flex items-center justify-center animate-float animation-delay-2000 hidden lg:flex">
+                <div className="bg-cyan-100/50 p-3 rounded-xl">
+                  <PieChart className="w-6 h-6 text-cyan-600" />
+                </div>
+              </div>
+
+              {/* Bottom Left: Coins */}
+              <div className="absolute bottom-[25%] left-[15%] w-14 h-14 rounded-full bg-white/30 border border-white/60 backdrop-blur-xl shadow-lg flex items-center justify-center animate-float animation-delay-4000 hidden lg:flex">
+                <div className="bg-emerald-50 p-2.5 rounded-full">
+                  <TrendingUp className="w-5 h-5 text-emerald-600" />
+                </div>
+              </div>
+
+              {/* Bottom Right: Wallet */}
+              <div className="absolute bottom-[30%] right-[10%] w-18 h-18 rounded-2xl bg-white/30 border border-white/60 backdrop-blur-xl shadow-lg flex items-center justify-center animate-float animation-delay-1000 hidden lg:flex">
+                <div className="bg-teal-100/50 p-3 rounded-xl">
+                  <Wallet className="w-7 h-7 text-teal-600" />
+                </div>
+              </div>
+
+
+              {/* Hero Section */}
+              <div className="text-center mb-8 md:mb-16 max-w-4xl relative z-10">
+                <h2 className="text-5xl md:text-7xl font-extrabold tracking-tight text-emerald-950 mb-6 leading-tight">
+                  Your Personal <br />
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">
+                    Financial Analytics
+                  </span>
                 </h2>
-                <p className="text-gray-500 text-lg">
-                  Upload your bank statement to visualize your expenses and track your growth.
+                <p className="text-emerald-800/60 text-lg md:text-xl font-medium tracking-wide max-w-2xl mx-auto leading-relaxed">
+                  Transform your raw bank statements into actionable insights. <br className="hidden md:block" />
+                  Secure, private, and beautifully visualized.
                 </p>
               </div>
+
               <FileUploader onDataLoaded={handleDataLoaded} />
 
-              <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl px-4">
-                <FeatureItem
-                  icon={<LayoutDashboard className="w-6 h-6" />}
-                  title="Smart Overview"
-                  description="Get an instant snapshot of your net balance and recent financial activity."
-                />
-                <FeatureItem
-                  icon={<PieChart className="w-6 h-6" />}
-                  title="Category Insights"
-                  description="Deep dive into your spending habits with detailed category breakdowns."
-                />
-                <FeatureItem
-                  icon={<TrendingUp className="w-6 h-6" />}
-                  title="Financial Trends"
-                  description="Track your spending history and spot anomalies over time."
-                />
-                <FeatureItem
-                  icon={<ShieldCheck className="w-6 h-6" />}
-                  title="Privacy First"
-                  description="Your data is processed locally in your browser and never uploaded to any server."
-                />
+              {/* Comprehensive Features Grid */}
+              <div className="mt-32 w-full">
+                <div className="text-center mb-12">
+                  <h3 className="text-sm font-bold text-emerald-600/50 uppercase tracking-[0.2em]">Everything you need</h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full px-4">
+                  {FEATURES.map((feature, idx) => (
+                    <FeatureItem key={idx} {...feature} darkMode={false} glassMode={true} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer text */}
+              <div className="mt-20 text-center text-sm text-emerald-800/40 font-medium tracking-widest uppercase">
+                <p>© 2026 Grow Money</p>
               </div>
             </div>
           ) : (
-            <Routes>
-              <Route path="/" element={
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
-                  <SummaryCards transactions={transactions} />
-                  <Charts transactions={transactions} />
-                  <TransactionTable transactions={transactions} />
-                </div>
-              } />
-              <Route path="/category-insights" element={<CategoryInsights transactions={transactions} />} />
-              <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
-              <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
-              <Route path="/wishlist" element={<WishlistPage transactions={transactions} />} />
-              <Route path="/accounts" element={<AccountsPage transactions={transactions} />} />
-              <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
-            </Routes>
+            // Logged in Dashboard View - Clean layout
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <Routes>
+                {/* ... existing routes ... */}
+                <Route path="/" element={
+                  <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+                    {/* Dashboard Header */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+                        <p className="text-gray-500">Overview of your current financial health</p>
+                      </div>
+                      {transactions.length > 0 && (
+                        <div className="px-3 py-1 bg-white/50 border border-emerald-100 rounded-lg text-xs font-medium text-emerald-700 flex items-center gap-2 shadow-sm">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                          {getFormattedDateRange(transactions)}
+                        </div>
+                      )}
+                    </div>
+
+                    <SummaryCards transactions={transactions} />
+                    <Charts transactions={transactions} />
+                    <TransactionTable transactions={transactions} />
+                  </div>
+                } />
+                <Route path="/category-insights" element={<CategoryInsights transactions={transactions} />} />
+                <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
+                <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
+                <Route path="/wishlist" element={<WishlistPage transactions={transactions} />} />
+                <Route path="/accounts" element={<AccountsPage transactions={transactions} />} />
+                <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
+              </Routes>
+            </div>
           )
         }
       </main >
@@ -239,13 +332,29 @@ function App() {
   );
 }
 
-const FeatureItem = ({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) => (
-  <div className="flex flex-col items-center text-center gap-4 p-6 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1">
-    <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600 ring-1 ring-emerald-100">{icon}</div>
-    <div className="space-y-2">
-      <h3 className="font-semibold text-gray-900">{title}</h3>
-      <p className="text-sm text-gray-500 leading-relaxed">{description}</p>
+const FeatureItem = ({ icon, title, description, color, darkMode, glassMode }: { icon: React.ReactNode, title: string, description: string, color: string, darkMode?: boolean, glassMode?: boolean }) => (
+  <div className={cn(
+    "group flex flex-col gap-4 p-6 rounded-2xl border transition-all duration-300 hover:-translate-y-1 relative overflow-hidden",
+    glassMode
+      ? "bg-white/40 border-white/60 shadow-sm hover:shadow-lg hover:bg-white/60 backdrop-blur-lg"
+      : darkMode
+        ? "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20 hover:shadow-[0_0_20px_rgba(52,211,153,0.1)]"
+        : "bg-white border-gray-100 shadow-sm hover:shadow-lg"
+  )}>
+    <div className={cn(
+      "w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 duration-300",
+      glassMode ? "bg-white/50 text-emerald-600 shadow-inner" : (darkMode ? "bg-white/10 text-emerald-400" : color)
+    )}>
+      {icon}
     </div>
+    <div className="space-y-2 relative z-10">
+      <h3 className={cn("font-bold text-lg", darkMode ? "text-white" : "text-emerald-950")}>{title}</h3>
+      <p className={cn("text-sm leading-relaxed", darkMode ? "text-slate-400" : "text-emerald-800/60")}>{description}</p>
+    </div>
+
+    {darkMode && (
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+    )}
   </div>
 )
 

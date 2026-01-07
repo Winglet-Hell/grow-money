@@ -55,3 +55,25 @@ export function formatDate(dateStr: string | Date | undefined): string {
         return String(dateStr);
     }
 }
+
+export function getFormattedDateRange(transactions: { date: string }[]): string {
+    if (!transactions.length) return '';
+
+    const dates = transactions
+        .map(t => new Date(t.date).getTime())
+        .filter(t => !isNaN(t));
+
+    if (!dates.length) return '';
+
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+
+    const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' });
+
+    // If same month and year
+    if (minDate.getFullYear() === maxDate.getFullYear() && minDate.getMonth() === maxDate.getMonth()) {
+        return formatter.format(minDate);
+    }
+
+    return `${formatter.format(minDate)} - ${formatter.format(maxDate)}`;
+}

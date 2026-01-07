@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { cn, stringToColor } from '../lib/utils';
 import type { Transaction } from '../types';
@@ -9,6 +9,7 @@ interface AnomaliesSectionProps {
 }
 
 export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
+    const [isExpanded, setIsExpanded] = useState(false);
     // Calculate anomalies based on "Last Closed Month" vs "Average of Previous Closed Months"
     const anomalies = useMemo(() => {
         const now = new Date();
@@ -125,7 +126,7 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {anomalies.map(item => {
+                {(isExpanded ? anomalies : anomalies.slice(0, 5)).map(item => {
                     const Icon = getCategoryIcon(item.category);
                     const color = stringToColor(item.category);
                     const isBad = item.diffAbs > 0; // Spending increased
@@ -160,6 +161,27 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
                     );
                 })}
             </div>
+
+            {anomalies.length > 5 && (
+                <div className="mt-6 flex justify-center">
+                    <button
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        className="flex items-center gap-2 px-6 py-2 rounded-full bg-white border border-gray-100 shadow-sm text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-all active:scale-95"
+                    >
+                        {isExpanded ? (
+                            <>
+                                Show Less
+                                <ChevronUp className="w-4 h-4" />
+                            </>
+                        ) : (
+                            <>
+                                Show More ({anomalies.length - 5} more)
+                                <ChevronDown className="w-4 h-4" />
+                            </>
+                        )}
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

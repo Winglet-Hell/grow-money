@@ -9,7 +9,7 @@ import {
     TableRow,
 } from "../components/ui/table"
 import { ArrowUpDown, Search, X } from 'lucide-react';
-import { cn, stringToColor } from '../lib/utils';
+import { cn, stringToColor, getFormattedDateRange } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -404,6 +404,18 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
     return (
         <div className="space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Income</h2>
+                    <p className="text-gray-500">Track your earnings and revenue sources</p>
+                </div>
+                <div className="px-3 py-1 bg-gray-100 rounded-lg text-xs font-medium text-gray-600 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    {getFormattedDateRange(transactions)}
+                </div>
+            </div>
+
             {summaryMetrics && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">

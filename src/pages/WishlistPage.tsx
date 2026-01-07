@@ -135,12 +135,13 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
                 </button>
             </div>
 
-            {/* Form Modal */}
             {isFormOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 animate-in zoom-in-95 duration-200">
-                        <h3 className="text-xl font-bold text-gray-900 mb-4">Add New Goal</h3>
-                        <WishlistForm onSubmit={addItem} onCancel={() => setIsFormOpen(false)} />
+                <div className="fixed inset-0 z-[100] overflow-y-auto">
+                    <div className="min-h-full flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-xl p-8 animate-in zoom-in-95 duration-200">
+                            <h3 className="text-2xl font-bold text-gray-900 mb-6">Add New Goal</h3>
+                            <WishlistForm onSubmit={addItem} onCancel={() => setIsFormOpen(false)} />
+                        </div>
                     </div>
                 </div>
             )}
@@ -180,15 +181,15 @@ function WishlistCard({ item, netWorth, savingPower, onDelete, isPrivacy }: { it
     const monthsToGoalFromScratch = savingPower > 0 ? Math.ceil(item.costRUB / savingPower) : Infinity;
 
     // Scenario B: Gap / Saving Power (If we used all net worth, how long to close gap?)
-    // Actually spec says: 
+    // Actually spec says:
     // Scenario A: Cost / Monthly Saving Power. Result: "You will accumulate in X months" (Assuming simple accumulation from 0? or from now?)
     // Spec: "Сценарий А (From Scratch): Cost / Monthly Saving Power"
     // Spec: "Сценарий Б (Using Current Capital): Total Net Worth - Cost"
 
     // Let's interpret "From Scratch" as "If I had 0 money".
-    // But for the user, "When can I buy it" usually means "From now". 
-    // If NetWorth > Cost, I can buy now. 
-    // If NetWorth < Cost, I need to save (Cost - NetWorth). 
+    // But for the user, "When can I buy it" usually means "From now".
+    // If NetWorth > Cost, I can buy now.
+    // If NetWorth < Cost, I need to save (Cost - NetWorth).
     // Time to goal = (Cost - NetWorth) / SavingPower.
 
     // Spec says: "From Scratch result: 'You will accumulate in X months'".
@@ -336,38 +337,38 @@ function WishlistForm({ onSubmit, onCancel }: { onSubmit: (val: any) => void, on
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Goal Name</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Goal Name</label>
                 <input
                     required
                     type="text"
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-gray-400 font-medium"
                     placeholder="e.g. MacBook Pro"
                 />
             </div>
             <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cost (RUB)</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Cost (RUB)</label>
                 <input
                     required
                     type="number"
                     value={cost}
                     onChange={e => setCost(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-gray-400 font-medium"
                     placeholder="150000"
                 />
             </div>
             <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-                <div className="flex gap-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
+                <div className="flex gap-3">
                     {['Low', 'Medium', 'High'].map(p => (
                         <button
                             key={p}
                             type="button"
                             onClick={() => setPriority(p)}
-                            className={`flex-1 py-2 text-sm font-medium rounded-lg border ${priority === p
-                                ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
-                                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            className={`flex-1 py-3 text-sm font-semibold rounded-xl border transition-all ${priority === p
+                                ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm'
+                                : 'border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'
                                 }`}
                         >
                             {p}
@@ -376,26 +377,26 @@ function WishlistForm({ onSubmit, onCancel }: { onSubmit: (val: any) => void, on
                 </div>
             </div>
             <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Image URL (Optional)</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Image URL (Optional)</label>
                 <input
                     type="text"
                     value={imageURL}
                     onChange={e => setImageURL(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-gray-400 font-medium"
                     placeholder="https://..."
                 />
             </div>
-            <div className="flex gap-3 mt-6">
+            <div className="flex gap-4 mt-8">
                 <button
                     type="button"
                     onClick={onCancel}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                    className="flex-1 px-4 py-3 border border-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-300 transition-colors"
                 >
                     Cancel
                 </button>
                 <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors shadow-sm"
+                    className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-md hover:shadow-lg active:scale-[0.98]"
                 >
                     Add Goal
                 </button>
