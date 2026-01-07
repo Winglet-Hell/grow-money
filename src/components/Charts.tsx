@@ -3,6 +3,7 @@ import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList
 } from 'recharts';
 import type { Transaction } from '../types';
+import { usePrivacy } from '../contexts/PrivacyContext';
 import { stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 
@@ -48,6 +49,7 @@ const CustomXAxisTick = (props: any) => {
 };
 
 export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
+    const { isPrivacyMode } = usePrivacy();
     const expensesByCategory = useMemo(() => {
         const categories: Record<string, number> = {};
 
@@ -122,9 +124,14 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                     height={50}
                                 />
                                 <YAxis hide />
-                                <Tooltip formatter={(value: any) => `₽${(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}`} cursor={{ fill: 'transparent' }} />
+                                <Tooltip formatter={(value: any) => isPrivacyMode ? '••••••' : `₽${(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}`} cursor={{ fill: 'transparent' }} />
                                 <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={32}>
-                                    <LabelList dataKey="value" position="top" formatter={formatCompact} style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 500 }} />
+                                    <LabelList
+                                        dataKey="value"
+                                        position="top"
+                                        formatter={(val: any) => isPrivacyMode ? '' : formatCompact(val)}
+                                        style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 500 }}
+                                    />
                                     {expensesByCategory.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={stringToColor(entry.name).hex} />
                                     ))}
@@ -151,9 +158,14 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                     tickFormatter={truncateLabel}
                                 />
                                 <YAxis hide />
-                                <Tooltip formatter={(value: any) => `₽${(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}`} cursor={{ fill: 'transparent' }} />
+                                <Tooltip formatter={(value: any) => isPrivacyMode ? '••••••' : `₽${(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}`} cursor={{ fill: 'transparent' }} />
                                 <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={32}>
-                                    <LabelList dataKey="value" position="top" formatter={formatCompact} style={{ fontSize: '12px', fill: '#6B7280', fontWeight: 500 }} />
+                                    <LabelList
+                                        dataKey="value"
+                                        position="top"
+                                        formatter={(val: any) => isPrivacyMode ? '' : formatCompact(val)}
+                                        style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 500 }}
+                                    />
                                     {monthlySpending.map((entry, index) => {
                                         const current = new Date().toLocaleString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' });
                                         const isCurrent = entry.name === current;

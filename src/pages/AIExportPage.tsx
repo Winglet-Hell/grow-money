@@ -2,12 +2,14 @@ import { useState, useMemo } from 'react';
 import { Download, Copy, CheckCircle, FileJson, Bot, Info, Eye } from 'lucide-react';
 import { getGlobalCategory } from '../lib/categoryGroups';
 import type { Transaction } from '../types';
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 interface AIExportPageProps {
     transactions: Transaction[];
 }
 
 export function AIExportPage({ transactions }: AIExportPageProps) {
+    const { isPrivacyMode } = usePrivacy();
     const [isCopied, setIsCopied] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
 
@@ -340,8 +342,8 @@ Output: Structure your answer with clear headings and bullet points.`;
                                     <div key={month} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm">
                                         <span className="font-medium text-gray-700">{month}</span>
                                         <div className="text-right">
-                                            <div className="text-emerald-600 font-medium">+{stats.income.toLocaleString('ru-RU')}</div>
-                                            <div className="text-red-500 text-xs">-{stats.expenses.toLocaleString('ru-RU')}</div>
+                                            <div className="text-emerald-600 font-medium">{isPrivacyMode ? '•••' : '+' + stats.income.toLocaleString('ru-RU')}</div>
+                                            <div className="text-red-500 text-xs">{isPrivacyMode ? '•••' : '-' + stats.expenses.toLocaleString('ru-RU')}</div>
                                         </div>
                                     </div>
                                 ))}
@@ -360,7 +362,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                             {dataPayload.incomeSources.data.map((item, idx) => (
                                 <div key={idx} className="flex items-center justify-between text-sm">
                                     <span className="text-gray-600">{item.source}</span>
-                                    <span className="font-semibold text-emerald-600">+{item.amount.toLocaleString('ru-RU')}</span>
+                                    <span className="font-semibold text-emerald-600">{isPrivacyMode ? '•••' : '+' + item.amount.toLocaleString('ru-RU')}</span>
                                 </div>
                             ))}
                             {dataPayload.incomeSources.data.length === 0 && (
@@ -381,7 +383,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                             {dataPayload.expensesByCategory.data.slice(0, 5).map((item, idx) => (
                                 <div key={idx} className="flex items-center justify-between text-sm">
                                     <span className="text-gray-600 truncate max-w-[180px]">{item.category}</span>
-                                    <span className="font-semibold text-gray-900">{item.amount.toLocaleString('ru-RU')}</span>
+                                    <span className="font-semibold text-gray-900">{isPrivacyMode ? '•••' : item.amount.toLocaleString('ru-RU')}</span>
                                 </div>
                             ))}
                             <div className="pt-2 text-center text-xs text-gray-400">
@@ -404,7 +406,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                                     <span className="font-medium text-gray-700 truncate max-w-[60%]">{item.name}</span>
                                     <div className="flex items-center gap-2">
                                         <span className="text-gray-500">{item.count}x</span>
-                                        <span className="font-semibold text-gray-900">{item.amount.toLocaleString('ru-RU')}</span>
+                                        <span className="font-semibold text-gray-900">{isPrivacyMode ? '•••' : item.amount.toLocaleString('ru-RU')}</span>
                                     </div>
                                 </div>
                             ))}
@@ -427,7 +429,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                                 dataPayload.subscriptions.data.map((sub, idx) => (
                                     <div key={idx} className="flex items-center justify-between p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg text-sm">
                                         <span className="font-medium text-gray-700 truncate max-w-[70%]">{sub.name}</span>
-                                        <span className="text-indigo-600 font-semibold">{sub.amount.toLocaleString('ru-RU')}</span>
+                                        <span className="text-indigo-600 font-semibold">{isPrivacyMode ? '•••' : sub.amount.toLocaleString('ru-RU')}</span>
                                     </div>
                                 ))
                             ) : (
@@ -452,7 +454,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                                         <span className="truncate max-w-[150px] inline-block">{t.note || t.category}</span>
                                     </div>
                                     <span className={t.type === 'income' ? 'text-emerald-600' : 'text-gray-900'}>
-                                        {t.type === 'income' ? '+' : ''}{t.amount.toLocaleString('ru-RU')}
+                                        {isPrivacyMode ? '•••' : (t.type === 'income' ? '+' : '') + t.amount.toLocaleString('ru-RU')}
                                     </span>
                                 </div>
                             ))}

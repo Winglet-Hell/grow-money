@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, LogOut, PieChart, TrendingUp, ShieldCheck, Import } from 'lucide-react';
+import { LayoutDashboard, LogOut, PieChart, TrendingUp, ShieldCheck, Import, Eye, EyeOff } from 'lucide-react';
 import { parseFile } from './lib/parser';
 import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
@@ -13,6 +13,7 @@ import { TrendsPage } from './pages/TrendsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { WishlistPage } from './pages/WishlistPage';
 import { AIExportPage } from './pages/AIExportPage';
+import { PrivacyProvider, usePrivacy } from './contexts/PrivacyContext';
 import type { Transaction } from './types';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 
@@ -20,6 +21,7 @@ function AppContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const location = useLocation();
+  const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
 
   useEffect(() => {
     const loadData = async () => {
@@ -159,28 +161,39 @@ function AppContent() {
 
           {transactions.length > 0 && (
             <div className="flex items-center gap-2">
-              <label className="flex md:hidden cursor-pointer text-emerald-600 hover:text-emerald-700 items-center justify-center p-2 rounded-full hover:bg-emerald-50 transition-colors">
-                <Import className="w-6 h-6" />
-                <input
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      try {
-                        setIsLoading(true);
-                        const data = await parseFile(file);
-                        await handleDataLoaded(data);
-                      } catch (error) {
-                        console.error("Upload failed", error);
-                      } finally {
-                        setIsLoading(false);
+              <button
+                onClick={togglePrivacyMode}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                title={isPrivacyMode ? "Show sensitive data" : "Hide sensitive data"}
+              >
+                {isPrivacyMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+
+              <div className="flex items-center gap-2">
+                <label className="flex md:hidden cursor-pointer text-emerald-600 hover:text-emerald-700 items-center justify-center p-2 rounded-full hover:bg-emerald-50 transition-colors">
+                  <Import className="w-6 h-6" />
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        try {
+                          setIsLoading(true);
+                          const data = await parseFile(file);
+                          await handleDataLoaded(data);
+                        } catch (error) {
+                          console.error("Upload failed", error);
+                        } finally {
+                          setIsLoading(false);
+                        }
                       }
-                    }
-                  }}
-                />
-              </label>
+                    }}
+                  />
+                </label>
+
+              </div>
 
               <button
                 onClick={handleReset}
@@ -258,7 +271,9 @@ function AppContent() {
 function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <PrivacyProvider>
+        <AppContent />
+      </PrivacyProvider>
     </BrowserRouter>
   );
 }

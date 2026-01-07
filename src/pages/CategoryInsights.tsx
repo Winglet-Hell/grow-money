@@ -13,6 +13,7 @@ import { cn, stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
 import { getGlobalCategory } from '../lib/categoryGroups';
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 interface CategoryInsightsProps {
     transactions: Transaction[];
@@ -40,6 +41,7 @@ import { useCategoryLimits } from '../hooks/useCategoryLimits';
 import { CategoryLimitModal } from '../components/CategoryLimitModal';
 
 export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions }) => {
+    const { isPrivacyMode } = usePrivacy();
     const [sortField, setSortField] = useState<SortField>('totalSpent');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
     const [viewMode, setViewMode] = useState<ViewMode>('category'); // Default to Detailed View
@@ -188,6 +190,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
     const maxTotalSpent = Math.max(...categoryData.map(d => d.totalSpent), 0);
 
     const formatCurrency = (val: number) => {
+        if (isPrivacyMode) return '••••••';
         return new Intl.NumberFormat('ru-RU', {
             style: 'currency',
             currency: 'RUB',
@@ -613,7 +616,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                 "text-sm font-medium",
                                 summaryMetrics.trendRatio > 0 ? "text-red-500" : "text-emerald-500"
                             )}>
-                                {summaryMetrics.trendRatio > 0 ? '+' : ''}{(summaryMetrics.trendRatio * 100).toFixed(1)}%
+                                {isPrivacyMode ? '•••' : (summaryMetrics.trendRatio > 0 ? '+' : '') + (summaryMetrics.trendRatio * 100).toFixed(1) + '%'}
                             </span>
                         </div>
                         <p className="text-xs text-gray-400 mt-1">vs Average</p>
@@ -632,7 +635,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                         </div>
                         <div className="flex items-baseline gap-2">
                             <span className="text-2xl font-bold text-gray-900">
-                                {infographics.totalLimit > 0 ? Math.round(infographics.progressPercent) + '%' : '—'}
+                                {isPrivacyMode ? '•••' : (infographics.totalLimit > 0 ? Math.round(infographics.progressPercent) + '%' : '—')}
                             </span>
                             <span className="text-sm text-gray-500">used</span>
                         </div>

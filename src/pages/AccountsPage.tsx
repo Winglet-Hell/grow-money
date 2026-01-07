@@ -2,12 +2,14 @@ import { useMemo } from 'react';
 import { Wallet, Bitcoin, Landmark, Banknote, CreditCard, TrendingUp, DollarSign, Wifi, WifiOff } from 'lucide-react';
 import type { Transaction } from '../types';
 import { useAccounts, type AccountStatus } from '../hooks/useAccounts';
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 interface AccountsPageProps {
     transactions: Transaction[];
 }
 
 export function AccountsPage({ transactions }: AccountsPageProps) {
+    const { isPrivacyMode } = usePrivacy();
     const { accounts: accountsStatus, totalNetWorth, rates, isLoadingRates, isLiveRates } = useAccounts(transactions);
 
     const groups = useMemo(() => {
@@ -21,6 +23,7 @@ export function AccountsPage({ transactions }: AccountsPageProps) {
     }, [accountsStatus]);
 
     const formatCurrency = (amount: number, currency: string) => {
+        if (isPrivacyMode) return '••••••';
         try {
             return new Intl.NumberFormat('en-US', {
                 style: 'currency',
@@ -80,7 +83,7 @@ export function AccountsPage({ transactions }: AccountsPageProps) {
                 <div className="relative z-10">
                     <h2 className="text-emerald-100 font-medium text-lg mb-2">Total Net Worth</h2>
                     <div className="text-5xl font-bold tracking-tight">
-                        {formatCurrency(totalNetWorth, 'RUB')}
+                        {isPrivacyMode ? '••••••' : formatCurrency(totalNetWorth, 'RUB')}
                     </div>
                     <div className="mt-4 flex items-center gap-2 text-emerald-100 text-sm">
                         {isLoadingRates ? (

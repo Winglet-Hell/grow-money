@@ -21,6 +21,7 @@ import type { Transaction } from '../types';
 import { CategoryTrendsSection } from '../components/CategoryTrendsSection';
 import { AnomaliesSection } from '../components/AnomaliesSection';
 import { SpendingHeatmap } from '../components/SpendingHeatmap';
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 interface TrendsPageProps {
     transactions: Transaction[];
@@ -29,6 +30,7 @@ interface TrendsPageProps {
 type Period = '6M' | '1Y' | 'ALL';
 
 export function TrendsPage({ transactions }: TrendsPageProps) {
+    const { isPrivacyMode } = usePrivacy();
     const [period, setPeriod] = useState<Period>('6M');
 
     // 1. Data Processing
@@ -132,6 +134,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
     }, [chartData]);
 
     const formatCurrency = (val: number) => {
+        if (isPrivacyMode) return '••••••';
         return new Intl.NumberFormat('ru-RU', {
             style: 'currency',
             currency: 'RUB',
@@ -140,6 +143,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
     };
 
     const formatShortValue = (val: any) => {
+        if (isPrivacyMode) return '';
         const num = Number(val);
         if (isNaN(num)) return '';
         if (Math.abs(num) >= 1000000) return (num / 1000000).toFixed(0) + 'M';
@@ -179,18 +183,21 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                     amount={kpis.avgIncome}
                     icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
                     color="emerald"
+                    isPrivacy={isPrivacyMode}
                 />
                 <KPICard
                     title="Avg. Monthly Spend"
                     amount={kpis.avgSpend}
                     icon={<Wallet className="w-5 h-5 text-rose-600" />}
                     color="rose"
+                    isPrivacy={isPrivacyMode}
                 />
                 <KPICard
                     title="Total Saved"
                     amount={kpis.totalSaved}
                     icon={<PiggyBank className="w-5 h-5 text-blue-600" />}
                     color="blue"
+                    isPrivacy={isPrivacyMode}
                 />
             </div>
 
@@ -217,7 +224,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                 axisLine={false}
                                 tickLine={false}
                                 tick={{ fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' }}
-                                tickFormatter={(value) => `₽${(value / 1000).toFixed(0)}k`}
+                                tickFormatter={(value) => isPrivacyMode ? '•••' : `₽${(value / 1000).toFixed(0)}k`}
                             />
                             <Tooltip
                                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
@@ -251,7 +258,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                 axisLine={false}
                                 tickLine={false}
                                 tick={{ fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' }}
-                                tickFormatter={(value) => `₽${(value / 1000).toFixed(0)}k`}
+                                tickFormatter={(value) => isPrivacyMode ? '•••' : `₽${(value / 1000).toFixed(0)}k`}
                             />
                             <Tooltip
                                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
@@ -400,7 +407,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
 }
 
 // Sub-components for cleaner code
-function KPICard({ title, amount, icon, color }: { title: string; amount: number; icon: React.ReactNode; color: 'emerald' | 'rose' | 'blue' }) {
+function KPICard({ title, amount, icon, color, isPrivacy }: { title: string; amount: number; icon: React.ReactNode; color: 'emerald' | 'rose' | 'blue', isPrivacy: boolean }) {
     const bgColors = {
         emerald: 'bg-emerald-50',
         rose: 'bg-rose-50',
@@ -412,7 +419,7 @@ function KPICard({ title, amount, icon, color }: { title: string; amount: number
             <div>
                 <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
                 <h3 className="text-2xl font-bold text-gray-900">
-                    {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(amount)}
+                    {isPrivacy ? '••••••' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(amount)}
                 </h3>
             </div>
             <div className={`p-3 rounded-lg ${bgColors[color]} group-hover:scale-110 transition-transform`}>

@@ -1,12 +1,14 @@
 import React from 'react';
 import { ArrowUpCircle, ArrowDownCircle, Wallet } from 'lucide-react';
 import type { Transaction } from '../types';
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 interface SummaryCardsProps {
     transactions: Transaction[];
 }
 
 export const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions }) => {
+    const { isPrivacyMode } = usePrivacy();
     const income = transactions
         .filter(t => t.type === 'income')
         .reduce((sum, t) => sum + t.amount, 0);
@@ -33,28 +35,30 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions }) => {
                 amount={income}
                 icon={<ArrowUpCircle className="w-6 h-6 text-emerald-500" />}
                 trend="Good job!"
+                isPrivacy={isPrivacyMode}
             />
             <Card
                 title="Total Expenses"
                 amount={expenses}
                 icon={<ArrowDownCircle className="w-6 h-6 text-red-500" />}
-
+                isPrivacy={isPrivacyMode}
             />
             <Card
                 title="Net Balance"
                 amount={netBalance}
                 icon={<Wallet className="w-6 h-6 text-blue-500" />}
+                isPrivacy={isPrivacyMode}
             />
         </div>
     );
 };
 
-const Card = ({ title, amount, icon, trend }: any) => (
+const Card = ({ title, amount, icon, trend, isPrivacy }: any) => (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-start justify-between">
         <div>
             <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
             <h3 className="text-2xl font-bold text-gray-900">
-                {new Intl.NumberFormat('ru-RU', {
+                {isPrivacy ? '••••••' : new Intl.NumberFormat('ru-RU', {
                     style: 'currency',
                     currency: 'RUB',
                     maximumFractionDigits: 0

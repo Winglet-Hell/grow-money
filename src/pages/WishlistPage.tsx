@@ -4,6 +4,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useFinancialMetrics } from '../hooks/useFinancialMetrics';
 import type { Transaction } from '../types';
 import { supabase } from '../lib/supabase';
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 interface WishlistItem {
     id: string; // UUID from Supabase
@@ -18,6 +19,7 @@ interface WishlistPageProps {
 }
 
 export function WishlistPage({ transactions }: WishlistPageProps) {
+    const { isPrivacyMode } = usePrivacy();
     const { totalNetWorth } = useAccounts(transactions);
     const { monthlySavingPower } = useFinancialMetrics(transactions);
     const [items, setItems] = useState<WishlistItem[]>([]);
@@ -107,7 +109,7 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
                     <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20 min-w-[200px]">
                         <div className="text-xs text-amber-200 uppercase tracking-wider font-semibold mb-1">Monthly Saving Power</div>
                         <div className={`text-3xl font-bold ${monthlySavingPower < 0 ? 'text-red-200' : 'text-white'}`}>
-                            {Math.floor(monthlySavingPower).toLocaleString('ru-RU')} RUB
+                            {isPrivacyMode ? '••••••' : Math.floor(monthlySavingPower).toLocaleString('ru-RU')} RUB
                         </div>
                         {monthlySavingPower < 0 && (
                             <div className="text-xs text-red-100 mt-1 flex items-center gap-1">
@@ -152,6 +154,7 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
                         netWorth={totalNetWorth}
                         savingPower={monthlySavingPower}
                         onDelete={deleteItem}
+                        isPrivacy={isPrivacyMode}
                     />
                 ))}
                 {sortedItems.length === 0 && !isLoading && (
@@ -171,7 +174,7 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
     );
 }
 
-function WishlistCard({ item, netWorth, savingPower, onDelete }: { item: WishlistItem, netWorth: number, savingPower: number, onDelete: (id: string) => void }) {
+function WishlistCard({ item, netWorth, savingPower, onDelete, isPrivacy }: { item: WishlistItem, netWorth: number, savingPower: number, onDelete: (id: string) => void, isPrivacy: boolean }) {
     const canBuyNow = netWorth >= item.costRUB;
     const gap = item.costRUB - netWorth;
     const monthsToGoalFromScratch = savingPower > 0 ? Math.ceil(item.costRUB / savingPower) : Infinity;
@@ -242,7 +245,7 @@ function WishlistCard({ item, netWorth, savingPower, onDelete }: { item: Wishlis
                 )}
 
                 <div className="text-2xl font-bold text-gray-900 mb-1">
-                    {item.costRUB.toLocaleString('ru-RU')} <span className="text-sm font-normal text-gray-400">RUB</span>
+                    {isPrivacy ? '••••••' : item.costRUB.toLocaleString('ru-RU')} <span className="text-sm font-normal text-gray-400">RUB</span>
                 </div>
 
                 {/* Progress */}
@@ -267,7 +270,7 @@ function WishlistCard({ item, netWorth, savingPower, onDelete }: { item: Wishlis
                                 Available NOW!
                             </div>
                             <div className="text-sm text-emerald-600">
-                                You will have {(netWorth - item.costRUB).toLocaleString('ru-RU')} RUB left.
+                                You will have {isPrivacy ? '••••••' : (netWorth - item.costRUB).toLocaleString('ru-RU')} RUB left.
                             </div>
                         </div>
                     ) : (

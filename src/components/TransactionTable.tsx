@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { Transaction } from '../types';
+import { usePrivacy } from '../contexts/PrivacyContext';
 import { cn, stringToColor, formatDate } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown } from 'lucide-react';
@@ -17,6 +18,7 @@ interface SortConfig {
 }
 
 export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions }) => {
+    const { isPrivacyMode } = usePrivacy();
     const [searchTerm, setSearchTerm] = useState('');
     const [visibleCount, setVisibleCount] = useState(20);
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'date', direction: 'desc' });
@@ -120,6 +122,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
     };
 
     const formatCurrency = (amount: number) => {
+        if (isPrivacyMode) return '••••••';
         return new Intl.NumberFormat('ru-RU', {
             style: 'currency',
             currency: 'RUB',
@@ -178,15 +181,12 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                 <td className="px-6 py-4 whitespace-nowrap text-right">
                     <div className="flex flex-col items-end gap-0.5">
                         <span className={`text-sm font-medium ${t.amount > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
-                            {t.amount > 0 ? '+' : ''}{new Intl.NumberFormat('ru-RU', {
-                                style: 'currency',
-                                currency: 'RUB',
-                                maximumFractionDigits: 0
-                            }).format(t.amount)}
+                            {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount)}
                         </span>
                         {t.originalAmount && t.originalCurrency && t.originalCurrency !== 'RUB' && (
                             <span className="text-xs text-gray-500">
                                 {(() => {
+                                    if (isPrivacyMode) return '••••••';
                                     try {
                                         return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: t.originalCurrency }).format(t.originalAmount);
                                     } catch (e) {
@@ -231,6 +231,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                 {t.originalAmount && t.originalCurrency && t.originalCurrency !== 'RUB' && (
                     <div className="text-right text-xs text-gray-400 mt-1">
                         {(() => {
+                            if (isPrivacyMode) return '••••••';
                             try {
                                 return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: t.originalCurrency }).format(t.originalAmount);
                             } catch (e) {

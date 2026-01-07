@@ -12,6 +12,7 @@ import { ArrowUpDown, Search, X } from 'lucide-react';
 import { cn, stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 interface IncomeInsightsProps {
     transactions: Transaction[];
@@ -33,6 +34,7 @@ type SortField = keyof CategoryData;
 type SortOrder = 'asc' | 'desc';
 
 export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) => {
+    const { isPrivacyMode } = usePrivacy();
     const [sortField, setSortField] = useState<SortField>('totalEarned');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
     const [searchQuery, setSearchQuery] = useState('');
@@ -195,6 +197,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
     const maxTotalEarned = Math.max(...categoryData.map(d => d.totalEarned), 0);
 
     const formatCurrency = (val: number) => {
+        if (isPrivacyMode) return '••••••';
         return new Intl.NumberFormat('ru-RU', {
             style: 'currency',
             currency: 'RUB',
@@ -430,7 +433,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                 // For Income: Positive Trend = Green (Good), Negative Trend = Red (Bad)
                                 summaryMetrics.trendRatio > 0 ? "text-emerald-500" : "text-red-500"
                             )}>
-                                {summaryMetrics.trendRatio > 0 ? '+' : ''}{(summaryMetrics.trendRatio * 100).toFixed(1)}%
+
+                                {isPrivacyMode ? '•••' : (summaryMetrics.trendRatio > 0 ? '+' : '') + (summaryMetrics.trendRatio * 100).toFixed(1) + '%'}
                             </span>
                         </div>
                         <p className="text-xs text-gray-400 mt-1">vs Average</p>
@@ -583,7 +587,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                                 <div className="w-full h-full bg-emerald-500 rounded-r-md" />
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-right text-gray-500 font-medium">{row.share.toFixed(1)}%</TableCell>
+                                        <TableCell className="text-right text-gray-500 font-medium">{isPrivacyMode ? '•••' : row.share.toFixed(1)}%</TableCell>
                                         <TableCell className="text-right text-gray-500">{row.operations}</TableCell>
                                         <TableCell className="text-right text-gray-500">{formatCurrency(row.avgTransaction)}</TableCell>
                                         <TableCell className="text-right text-gray-400">
@@ -624,7 +628,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                                                     <td className="text-right py-2.5 font-medium text-emerald-700">{formatCurrency(tagRow.currentMonthEarned)}</td>
                                                                     <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.monthlyAvg)}</td>
                                                                     <td className="text-right py-2.5 text-gray-700">{formatCurrency(tagRow.totalEarned)}</td>
-                                                                    <td className="text-right py-2.5 text-gray-500 font-medium">{tagRow.share.toFixed(1)}%</td>
+                                                                    <td className="text-right py-2.5 text-gray-500 font-medium">{isPrivacyMode ? '•••' : tagRow.share.toFixed(1)}%</td>
                                                                     <td className="text-right py-2.5 text-gray-500">{tagRow.operations}</td>
                                                                     <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.avgTransaction)}</td>
                                                                     <td className="text-right py-2.5 text-gray-400">{tagRow.yearForecast > 0 ? formatCurrency(tagRow.yearForecast) : '—'}</td>
