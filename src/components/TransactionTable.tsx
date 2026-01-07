@@ -201,6 +201,48 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
         ))
     );
 
+    const MobileCard = ({ transaction: t }: { transaction: Transaction }) => {
+        const color = stringToColor(t.category);
+        const Icon = getCategoryIcon(t.category);
+
+        return (
+            <div className="bg-white p-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+                <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-3">
+                        <div className={cn("p-2 rounded-lg", color.bg, color.text)}>
+                            <Icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <div className="font-medium text-gray-900">{t.tags || t.category}</div>
+                            <div className="text-xs text-gray-500">{formatDate(t.date)}</div>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <span className={`font-semibold ${t.amount > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
+                            {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount)}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-center text-sm text-gray-500 pl-[3.25rem]">
+                    <span className="truncate max-w-[150px]">{t.tags ? t.category : (t.note || 'No description')}</span>
+                    <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">{t.account}</span>
+                </div>
+                {t.originalAmount && t.originalCurrency && t.originalCurrency !== 'RUB' && (
+                    <div className="text-right text-xs text-gray-400 mt-1">
+                        {(() => {
+                            try {
+                                return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: t.originalCurrency }).format(t.originalAmount);
+                            } catch (e) {
+                                return `${t.originalAmount.toLocaleString('ru-RU')} ${t.originalCurrency}`;
+                            }
+                        })()}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -218,7 +260,8 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                 </div>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
                 <table className="w-full">
                     <thead className="bg-gray-50">
                         <tr>
@@ -295,11 +338,37 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                 </table>
             </div>
 
+            {/* Mobile Cards (Visible on Small Screens) */}
+            <div className="md:hidden">
+                {groupedTransactions ? (
+                    groupedTransactions.map(({ date, items, stats }) => (
+                        <div key={date}>
+                            <div className="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider flex justify-between items-center sticky top-0 z-10">
+                                <span>{date}</span>
+                                <div className="flex gap-2">
+                                    {stats.income > 0 && <span className="text-emerald-600">+{formatCurrency(stats.income)}</span>}
+                                    {stats.expense < 0 && <span className="text-gray-500">{formatCurrency(stats.expense)}</span>}
+                                </div>
+                            </div>
+                            {items.map(t => <MobileCard key={t.id} transaction={t} />)}
+                        </div>
+                    ))
+                ) : (
+                    paginatedTransactions.map(t => <MobileCard key={t.id} transaction={t} />)
+                )}
+                {filteredAndSortedTransactions.length === 0 && (
+                    <div className="p-8 text-center text-gray-400 text-sm">
+                        No transactions found matching your search.
+                    </div>
+                )}
+            </div>
+
+
             {paginatedTransactions.length < filteredAndSortedTransactions.length && (
                 <div className="p-4 border-t border-gray-100 bg-gray-50/30 text-center">
                     <button
                         onClick={handleLoadMore}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm w-full justification-center sm:w-auto"
                     >
                         Load More
                         <ChevronDown className="w-4 h-4" />

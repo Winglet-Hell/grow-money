@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, LogOut, PieChart, TrendingUp, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, LogOut, PieChart, TrendingUp, ShieldCheck, Import } from 'lucide-react';
 import { parseFile } from './lib/parser';
 import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
 import { SummaryCards } from './components/SummaryCards';
 import { Charts } from './components/Charts';
 import { TransactionTable } from './components/TransactionTable';
+import { BottomNav } from './components/BottomNav';
 import { CategoryInsights } from './pages/CategoryInsights';
 import { IncomeInsights } from './pages/IncomeInsights';
 import { TrendsPage } from './pages/TrendsPage';
@@ -73,9 +74,9 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 font-sans">
+    <div className="min-h-screen bg-gray-50 pb-4 md:pb-8 font-sans">
       {/* Header */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
+      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200/50 sticky top-0 z-50 rounded-b-3xl shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-8">
             <Link to="/" className="flex items-center gap-2">
@@ -88,7 +89,7 @@ function AppContent() {
             </Link>
 
             {transactions.length > 0 && (
-              <nav className="flex items-center gap-1">
+              <nav className="hidden md:flex items-center gap-1">
                 <Link
                   to="/"
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/'
@@ -157,19 +158,43 @@ function AppContent() {
           </div>
 
           {transactions.length > 0 && (
-            <button
-              onClick={handleReset}
-              className="text-sm font-medium text-gray-500 hover:text-red-500 flex items-center gap-2 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Reset Data
-            </button>
+            <div className="flex items-center gap-2">
+              <label className="flex md:hidden cursor-pointer text-emerald-600 hover:text-emerald-700 items-center justify-center p-2 rounded-full hover:bg-emerald-50 transition-colors">
+                <Import className="w-6 h-6" />
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      try {
+                        setIsLoading(true);
+                        const data = await parseFile(file);
+                        await handleDataLoaded(data);
+                      } catch (error) {
+                        console.error("Upload failed", error);
+                      } finally {
+                        setIsLoading(false);
+                      }
+                    }
+                  }}
+                />
+              </label>
+
+              <button
+                onClick={handleReset}
+                className="hidden md:flex text-sm font-medium text-gray-400 hover:text-red-500 items-center gap-2 transition-colors px-3 py-2 rounded-lg hover:bg-gray-50"
+              >
+                <LogOut className="w-4 h-4" />
+                Reset
+              </button>
+            </div>
           )}
         </div>
       </header >
 
-      {/* Main Content */}
-      < main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" >
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {
           transactions.length === 0 ? (
             <div className="min-h-[60vh] flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -225,6 +250,7 @@ function AppContent() {
           )
         }
       </main >
+      {transactions.length > 0 && <BottomNav onReset={handleReset} />}
     </div >
   );
 }

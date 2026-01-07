@@ -324,6 +324,81 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
     }, [transactions]);
 
 
+    // Mobile Card Component for Income Insights
+    const IncomeMobileCard = ({ row }: { row: CategoryData }) => {
+        const color = stringToColor(row.category);
+        const Icon = getCategoryIcon(row.category);
+        const [isExpanded, setIsExpanded] = useState(false);
+        const subMetrics = isExpanded ? getBreakdownMetrics(row.category) : [];
+
+        return (
+            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-3">
+                <div
+                    className="flex justify-between items-start cursor-pointer"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                >
+                    <div className="flex items-center gap-3">
+                        <div className={cn("p-2 rounded-lg", color.bg, color.text)}>
+                            <Icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <div className="font-medium text-gray-900">{row.category}</div>
+                            <div className="text-xs text-gray-500">{row.operations} ops</div>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <div className="font-bold text-gray-900">{formatCurrency(row.currentMonthEarned)}</div>
+                        <div className="text-xs text-gray-400">{row.share.toFixed(1)}%</div>
+                    </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                        <span className="text-gray-400 block">Total Earned</span>
+                        <span className="font-medium text-gray-900">{formatCurrency(row.totalEarned)}</span>
+                    </div>
+                    <div>
+                        <span className="text-gray-400 block">Monthly Avg</span>
+                        <span className="font-medium text-gray-700">{formatCurrency(row.monthlyAvg)}</span>
+                    </div>
+                </div>
+
+                {/* Expandable Details */}
+                {isExpanded && (
+                    <div className="mt-4 pt-4 border-t border-gray-50 animate-in fade-in slide-in-from-top-1">
+                        <div className="grid grid-cols-2 gap-4 mb-4 text-xs">
+                            <div>
+                                <span className="text-gray-400 block">Avg Ticket</span>
+                                <span className="font-medium text-gray-700">{formatCurrency(row.avgTransaction)}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-400 block">Year Forecast</span>
+                                <span className="font-medium text-gray-700">{formatCurrency(row.yearForecast)}</span>
+                            </div>
+                        </div>
+
+                        {/* Sub-breakdown (Tags) */}
+                        {subMetrics.length > 0 && (
+                            <div className="space-y-2">
+                                <p className="text-xs font-semibold text-gray-500 uppercase">Tags</p>
+                                {subMetrics.map(sub => (
+                                    <div key={sub.tag} className="flex justify-between text-sm py-1 border-b border-gray-50 last:border-0">
+                                        <span className="text-gray-600">{sub.tag}</span>
+                                        <span className="font-medium text-gray-900">{formatCurrency(sub.currentMonthEarned)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {subMetrics.length === 0 && (
+                            <p className="text-xs text-center text-gray-400 py-2">No tags available</p>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-6">
             {summaryMetrics && (
@@ -363,15 +438,15 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                 </div>
             )}
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-                <div className="p-6 border-b border-gray-100 flex items-center justify-between gap-4">
+            <div className="bg-white md:rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+                <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex-1">
                         <h3 className="text-lg font-semibold text-gray-800">Income Breakdown</h3>
                         <p className="text-sm text-gray-500">Analyze your income sources by category</p>
                     </div>
 
                     {/* Search Input */}
-                    <div className="relative">
+                    <div className="relative w-full sm:w-auto">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <Search className="h-4 w-4 text-gray-400" />
                         </div>
@@ -380,7 +455,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                             placeholder="Search categories or tags..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-64 transition-all"
+                            className="pl-10 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-full sm:w-64 transition-all"
                         />
                         {searchQuery && (
                             <button
@@ -392,172 +467,187 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                         )}
                     </div>
                 </div>
-                <Table>
-                    <TableHeader>
-                        <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
-                            <TableHead className="w-[250px] cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('category')}>
-                                <div className="flex items-center gap-1">
-                                    Category
-                                    {sortField === 'category' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            {/* This Month (New) */}
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30 rounded-lg" onClick={() => handleSort('currentMonthEarned')}>
-                                <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
-                                    This Month
-                                    {sortField === 'currentMonthEarned' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
 
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('monthlyAvg')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Monthly Avg
-                                    {sortField === 'monthlyAvg' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30 rounded-lg" onClick={() => handleSort('totalEarned')}>
-                                <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
-                                    Total Earned
-                                    {sortField === 'totalEarned' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('share')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    % Share
-                                    {sortField === 'share' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('operations')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Ops
-                                    {sortField === 'operations' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('avgTransaction')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Avg. Ticket
-                                    {sortField === 'avgTransaction' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('yearForecast')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Forecast (Rem. Year)
-                                    {sortField === 'yearForecast' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {sortedData.map((row) => (
-                            <React.Fragment key={row.category}>
-                                <TableRow
-                                    className="hover:bg-gray-50/50 cursor-pointer"
-                                    onClick={() => toggleExpand(row.category)}
-                                >
-                                    <TableCell className="font-medium text-gray-900">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-gray-400 w-4">
-                                                {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) ? '▼' : '▶'}
-                                            </span>
-                                            {(() => {
-                                                const color = stringToColor(row.category);
-                                                const Icon = getCategoryIcon(row.category);
-                                                return (
-                                                    <span className={cn(
-                                                        "flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium w-fit",
-                                                        color.bg,
-                                                        color.text
-                                                    )}>
-                                                        <Icon className="w-3.5 h-3.5" />
-                                                        {row.category}
-                                                    </span>
-                                                );
-                                            })()}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-right font-bold text-gray-900 bg-emerald-50/10 rounded-lg">
-                                        {formatCurrency(row.currentMonthEarned)}
-                                    </TableCell>
-                                    <TableCell className="text-right text-gray-500">{formatCurrency(row.monthlyAvg)}</TableCell>
-                                    <TableCell className="text-right relative bg-emerald-50/10 rounded-lg">
-                                        <div className="relative z-10 font-bold text-gray-900">
-                                            {formatCurrency(row.totalEarned)}
-                                        </div>
-                                        {/* Progress Bar Background */}
-                                        <div
-                                            className="absolute left-0 top-2 bottom-2 rounded-r-md transition-all duration-500"
-                                            style={{
-                                                width: `${(row.totalEarned / maxTotalEarned) * 100}%`,
-                                                opacity: 0.1,
-                                                backgroundColor: 'currentColor', // Use row color or default? Let's use emerald
-                                            }}
-                                        >
-                                            <div className="w-full h-full bg-emerald-500 rounded-r-md" />
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-right text-gray-500 font-medium">{row.share.toFixed(1)}%</TableCell>
-                                    <TableCell className="text-right text-gray-500">{row.operations}</TableCell>
-                                    <TableCell className="text-right text-gray-500">{formatCurrency(row.avgTransaction)}</TableCell>
-                                    <TableCell className="text-right text-gray-400">
-                                        {row.yearForecast > 0 ? formatCurrency(row.yearForecast) : '—'}
-                                    </TableCell>
-                                </TableRow>
+                {/* Mobile View: Cards */}
+                <div className="md:hidden p-4 bg-gray-50/50">
+                    {sortedData.map((row) => (
+                        <IncomeMobileCard key={row.category} row={row} />
+                    ))}
+                    {sortedData.length === 0 && (
+                        <div className="text-center py-12 text-gray-400 text-sm">No categories found</div>
+                    )}
+                </div>
 
-                                {/* Expanded Tag View */}
-                                {expandedCategories.has(row.category) && (
-                                    <TableRow className="bg-gray-50/50">
-                                        <TableCell colSpan={8} className="p-0">
-                                            <div className="pl-12 pr-4 py-4 border-l-4 border-emerald-100 ml-6 my-2 bg-white/50 rounded-r-lg">
-                                                <table className="w-full text-sm">
-                                                    <thead>
-                                                        <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-gray-100">
-                                                            <th className="text-left py-2 font-medium">Tag</th>
-                                                            <th className="text-right py-2 font-medium">This Month</th>
-                                                            <th className="text-right py-2 font-medium">Monthly Avg</th>
-                                                            <th className="text-right py-2 font-medium">Total Earned</th>
-                                                            <th className="text-right py-2 font-medium">% Share</th>
-                                                            <th className="text-right py-2 font-medium">Ops</th>
-                                                            <th className="text-right py-2 font-medium">Avg. Ticket</th>
-                                                            <th className="text-right py-2 font-medium">Forecast</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-gray-50">
-                                                        {getBreakdownMetrics(row.category).map(tagRow => (
-                                                            <tr key={tagRow.tag} className="hover:bg-gray-100/50 transition-colors">
-                                                                <td className="py-2.5 text-gray-600">
-                                                                    <div
-                                                                        className="flex items-center gap-2 cursor-pointer hover:text-emerald-600 transition-colors group font-medium w-fit"
-                                                                        onClick={(e) => handleTagClick(e, row.category, tagRow.tag)}
-                                                                    >
-                                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-200 group-hover:bg-emerald-500 transition-colors"></div>
-                                                                        {tagRow.tag}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="text-right py-2.5 font-medium text-emerald-700">{formatCurrency(tagRow.currentMonthEarned)}</td>
-                                                                <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.monthlyAvg)}</td>
-                                                                <td className="text-right py-2.5 text-gray-700">{formatCurrency(tagRow.totalEarned)}</td>
-                                                                <td className="text-right py-2.5 text-gray-500 font-medium">{tagRow.share.toFixed(1)}%</td>
-                                                                <td className="text-right py-2.5 text-gray-500">{tagRow.operations}</td>
-                                                                <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.avgTransaction)}</td>
-                                                                <td className="text-right py-2.5 text-gray-400">{tagRow.yearForecast > 0 ? formatCurrency(tagRow.yearForecast) : '—'}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                                {getBreakdownMetrics(row.category).length === 0 && (
-                                                    <div className="text-center py-4 text-gray-400 text-xs italic">
-                                                        No tags found for this category
-                                                    </div>
-                                                )}
+                {/* Desktop View: Table */}
+                <div className="hidden md:block">
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
+                                <TableHead className="w-[250px] cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('category')}>
+                                    <div className="flex items-center gap-1">
+                                        Category
+                                        {sortField === 'category' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                {/* This Month (New) */}
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30 rounded-lg" onClick={() => handleSort('currentMonthEarned')}>
+                                    <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
+                                        This Month
+                                        {sortField === 'currentMonthEarned' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('monthlyAvg')}>
+                                    <div className="flex items-center justify-end gap-1">
+                                        Monthly Avg
+                                        {sortField === 'monthlyAvg' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30 rounded-lg" onClick={() => handleSort('totalEarned')}>
+                                    <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
+                                        Total Earned
+                                        {sortField === 'totalEarned' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('share')}>
+                                    <div className="flex items-center justify-end gap-1">
+                                        % Share
+                                        {sortField === 'share' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('operations')}>
+                                    <div className="flex items-center justify-end gap-1">
+                                        Ops
+                                        {sortField === 'operations' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('avgTransaction')}>
+                                    <div className="flex items-center justify-end gap-1">
+                                        Avg. Ticket
+                                        {sortField === 'avgTransaction' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('yearForecast')}>
+                                    <div className="flex items-center justify-end gap-1">
+                                        Forecast (Rem. Year)
+                                        {sortField === 'yearForecast' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {sortedData.map((row) => (
+                                <React.Fragment key={row.category}>
+                                    <TableRow
+                                        className="hover:bg-gray-50/50 cursor-pointer"
+                                        onClick={() => toggleExpand(row.category)}
+                                    >
+                                        <TableCell className="font-medium text-gray-900">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-gray-400 w-4">
+                                                    {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) ? '▼' : '▶'}
+                                                </span>
+                                                {(() => {
+                                                    const color = stringToColor(row.category);
+                                                    const Icon = getCategoryIcon(row.category);
+                                                    return (
+                                                        <span className={cn(
+                                                            "flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium w-fit",
+                                                            color.bg,
+                                                            color.text
+                                                        )}>
+                                                            <Icon className="w-3.5 h-3.5" />
+                                                            {row.category}
+                                                        </span>
+                                                    );
+                                                })()}
                                             </div>
                                         </TableCell>
+                                        <TableCell className="text-right font-bold text-gray-900 bg-emerald-50/10 rounded-lg">
+                                            {formatCurrency(row.currentMonthEarned)}
+                                        </TableCell>
+                                        <TableCell className="text-right text-gray-500">{formatCurrency(row.monthlyAvg)}</TableCell>
+                                        <TableCell className="text-right relative bg-emerald-50/10 rounded-lg">
+                                            <div className="relative z-10 font-bold text-gray-900">
+                                                {formatCurrency(row.totalEarned)}
+                                            </div>
+                                            {/* Progress Bar Background */}
+                                            <div
+                                                className="absolute left-0 top-2 bottom-2 rounded-r-md transition-all duration-500"
+                                                style={{
+                                                    width: `${(row.totalEarned / maxTotalEarned) * 100}%`,
+                                                    opacity: 0.1,
+                                                    backgroundColor: 'currentColor', // Use row color or default? Let's use emerald
+                                                }}
+                                            >
+                                                <div className="w-full h-full bg-emerald-500 rounded-r-md" />
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-right text-gray-500 font-medium">{row.share.toFixed(1)}%</TableCell>
+                                        <TableCell className="text-right text-gray-500">{row.operations}</TableCell>
+                                        <TableCell className="text-right text-gray-500">{formatCurrency(row.avgTransaction)}</TableCell>
+                                        <TableCell className="text-right text-gray-400">
+                                            {row.yearForecast > 0 ? formatCurrency(row.yearForecast) : '—'}
+                                        </TableCell>
                                     </TableRow>
-                                )}
-                            </React.Fragment>
-                        ))}
-                    </TableBody>
-                </Table>
+
+                                    {/* Expanded Tag View */}
+                                    {expandedCategories.has(row.category) && (
+                                        <TableRow className="bg-gray-50/50">
+                                            <TableCell colSpan={8} className="p-0">
+                                                <div className="pl-12 pr-4 py-4 border-l-4 border-emerald-100 ml-6 my-2 bg-white/50 rounded-r-lg">
+                                                    <table className="w-full text-sm">
+                                                        <thead>
+                                                            <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-gray-100">
+                                                                <th className="text-left py-2 font-medium">Tag</th>
+                                                                <th className="text-right py-2 font-medium">This Month</th>
+                                                                <th className="text-right py-2 font-medium">Monthly Avg</th>
+                                                                <th className="text-right py-2 font-medium">Total Earned</th>
+                                                                <th className="text-right py-2 font-medium">% Share</th>
+                                                                <th className="text-right py-2 font-medium">Ops</th>
+                                                                <th className="text-right py-2 font-medium">Avg. Ticket</th>
+                                                                <th className="text-right py-2 font-medium">Forecast</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-50">
+                                                            {getBreakdownMetrics(row.category).map(tagRow => (
+                                                                <tr key={tagRow.tag} className="hover:bg-gray-100/50 transition-colors">
+                                                                    <td className="py-2.5 text-gray-600">
+                                                                        <div
+                                                                            className="flex items-center gap-2 cursor-pointer hover:text-emerald-600 transition-colors group font-medium w-fit"
+                                                                            onClick={(e) => handleTagClick(e, row.category, tagRow.tag)}
+                                                                        >
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-200 group-hover:bg-emerald-500 transition-colors"></div>
+                                                                            {tagRow.tag}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="text-right py-2.5 font-medium text-emerald-700">{formatCurrency(tagRow.currentMonthEarned)}</td>
+                                                                    <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.monthlyAvg)}</td>
+                                                                    <td className="text-right py-2.5 text-gray-700">{formatCurrency(tagRow.totalEarned)}</td>
+                                                                    <td className="text-right py-2.5 text-gray-500 font-medium">{tagRow.share.toFixed(1)}%</td>
+                                                                    <td className="text-right py-2.5 text-gray-500">{tagRow.operations}</td>
+                                                                    <td className="text-right py-2.5 text-gray-500">{formatCurrency(tagRow.avgTransaction)}</td>
+                                                                    <td className="text-right py-2.5 text-gray-400">{tagRow.yearForecast > 0 ? formatCurrency(tagRow.yearForecast) : '—'}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                    {getBreakdownMetrics(row.category).length === 0 && (
+                                                        <div className="text-center py-4 text-gray-400 text-xs italic">
+                                                            No tags found for this category
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </React.Fragment>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
             </div>
+
             {selectedTagData && (
                 <TransactionListModal
                     isOpen={!!selectedTagData}

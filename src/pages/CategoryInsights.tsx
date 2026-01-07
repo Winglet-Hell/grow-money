@@ -486,6 +486,103 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         };
     }, [categoryData]);
 
+    // Mobile Card Component for Category Insights
+    const CategoryMobileCard = ({ row }: { row: CategoryData }) => {
+        const color = stringToColor(row.category);
+        const Icon = getCategoryIcon(row.category);
+        const [isExpanded, setIsExpanded] = useState(false);
+        const subMetrics = isExpanded ? getBreakdownMetrics(row.category) : [];
+
+        return (
+            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-3">
+                <div
+                    className="flex justify-between items-start cursor-pointer"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                >
+                    <div className="flex items-center gap-3">
+                        <div className={cn("p-2 rounded-lg", color.bg, color.text)}>
+                            <Icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <div className="font-medium text-gray-900">{row.category}</div>
+                            <div className="text-xs text-gray-500">{row.operations} ops</div>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <div className="font-bold text-gray-900">{formatCurrency(row.currentMonthSpent)}</div>
+                        <div className="text-xs text-gray-400">{row.share.toFixed(1)}%</div>
+                    </div>
+                </div>
+
+                {/* Limit Progress Bar if Limit exists */}
+                {row.limit && row.limit > 0 && (
+                    <div className="mt-3">
+                        <div className="flex justify-between text-xs mb-1">
+                            <span className="text-gray-500">Limit: {formatCurrency(row.limit)}</span>
+                            <span className={cn(
+                                "font-medium",
+                                (row.remaining || 0) < 0 ? "text-red-500" : "text-emerald-600"
+                            )}>
+                                {(row.remaining || 0) < 0 ? 'Over: ' : 'Left: '}
+                                {formatCurrency(Math.abs(row.remaining || 0))}
+                            </span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                                className={cn(
+                                    "h-full rounded-full",
+                                    (row.remaining || 0) < 0 ? "bg-red-500" : "bg-emerald-500"
+                                )}
+                                style={{ width: `${Math.min((row.currentMonthSpent / row.limit) * 100, 100)}%` }}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* Expandable Details */}
+                {isExpanded && (
+                    <div className="mt-4 pt-4 border-t border-gray-50 animate-in fade-in slide-in-from-top-1">
+                        <div className="grid grid-cols-2 gap-4 mb-4 text-xs">
+                            <div>
+                                <span className="text-gray-400 block">Monthly Avg</span>
+                                <span className="font-medium text-gray-700">{formatCurrency(row.monthlyAvg)}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-400 block">Total Spent</span>
+                                <span className="font-medium text-gray-700">{formatCurrency(row.totalSpent)}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-400 block">Avg Ticket</span>
+                                <span className="font-medium text-gray-700">{formatCurrency(row.avgTransaction)}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-400 block">Year Forecast</span>
+                                <span className="font-medium text-gray-700">{formatCurrency(row.yearForecast)}</span>
+                            </div>
+                        </div>
+
+                        {/* Sub-breakdown (Tags or Categories) */}
+                        {subMetrics.length > 0 && (
+                            <div className="space-y-2">
+                                <p className="text-xs font-semibold text-gray-500 uppercase">Breakdown</p>
+                                {subMetrics.map(sub => (
+                                    <div key={sub.name} className="flex justify-between text-sm py-1 border-b border-gray-50 last:border-0">
+                                        <span className="text-gray-600">{sub.name}</span>
+                                        <span className="font-medium text-gray-900">{formatCurrency(sub.currentMonthSpent)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {subMetrics.length === 0 && (
+                            <p className="text-xs text-center text-gray-400 py-2">No further breakdown available</p>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-6">
             {summaryMetrics && (
@@ -634,15 +731,15 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
-                <div className="p-6 border-b border-gray-100 flex items-center justify-between gap-4">
+            <div className="bg-white md:rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+                <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex-1">
                         <h3 className="text-lg font-semibold text-gray-800">Spending Breakdown</h3>
                         <p className="text-sm text-gray-500">Analyze your spending by {viewMode === 'global' ? 'category group' : 'category'}</p>
                     </div>
 
                     {/* Search Input */}
-                    <div className="relative">
+                    <div className="relative w-full sm:w-auto">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <Search className="h-4 w-4 text-gray-400" />
                         </div>
@@ -651,7 +748,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                             placeholder="Search categories or tags..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-64 transition-all"
+                            className="pl-10 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-full sm:w-64 transition-all"
                         />
                         {searchQuery && (
                             <button
@@ -664,18 +761,18 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                     </div>
 
                     {/* View Toggle */}
-                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                    <div className="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
                         <button
                             onClick={() => {
                                 setViewMode('category');
                                 setExpandedCategories(new Set()); // Clear expansion
                             }}
                             className={cn(
-                                "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                                "flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-all",
                                 viewMode === 'category' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
                             )}
                         >
-                            Detailed Categories
+                            Detailed
                         </button>
                         <button
                             onClick={() => {
@@ -683,293 +780,307 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                 setExpandedCategories(new Set()); // Clear expansion
                             }}
                             className={cn(
-                                "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                                "flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-all",
                                 viewMode === 'global' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
                             )}
                         >
-                            Global Groups
+                            Global
                         </button>
                     </div>
                 </div>
-                <Table>
-                    <TableHeader>
-                        <TableRow className="sticky top-0 z-20 bg-gray-50 hover:bg-gray-50 shadow-sm border-b border-gray-200">
-                            <TableHead className="w-[220px] cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('category')}>
-                                <div className="flex items-center gap-1">
-                                    {viewMode === 'global' ? 'Global Category' : 'Category'}
-                                    {sortField === 'category' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
 
-                            {/* Current Budget Group */}
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30" onClick={() => handleSort('currentMonthSpent')}>
-                                <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
-                                    This Month
-                                    {sortField === 'currentMonthSpent' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30" onClick={() => handleSort('limit')}>
-                                <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
-                                    Limit
-                                    {sortField === 'limit' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30" onClick={() => handleSort('remaining' as SortField)}>
-                                <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
-                                    Left
-                                    {sortField === ('remaining' as SortField) && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
+                {/* Mobile View: Cards */}
+                <div className="md:hidden p-4 bg-gray-50/50">
+                    {sortedData.map((row) => (
+                        <CategoryMobileCard key={row.category} row={row} />
+                    ))}
+                    {sortedData.length === 0 && (
+                        <div className="text-center py-12 text-gray-400 text-sm">No categories found</div>
+                    )}
+                </div>
 
-                            {/* Historical Context */}
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('monthlyAvg')}>
-                                <div className="flex items-center justify-end gap-1 text-gray-600">
-                                    Monthly Avg
-                                    {sortField === 'monthlyAvg' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('totalSpent')}>
-                                <div className="flex items-center justify-end gap-1 text-gray-600">
-                                    Total Spent
-                                    {sortField === 'totalSpent' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('share')}>
-                                <div className="flex items-center justify-end gap-1 text-gray-600">
-                                    %
-                                    {sortField === 'share' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
+                {/* Desktop View: Table */}
+                <div className="hidden md:block">
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="sticky top-0 z-20 bg-gray-50 hover:bg-gray-50 shadow-sm border-b border-gray-200">
+                                <TableHead className="w-[220px] cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('category')}>
+                                    <div className="flex items-center gap-1">
+                                        {viewMode === 'global' ? 'Global Category' : 'Category'}
+                                        {sortField === 'category' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
 
-                            {/* Details (Smaller/Lighter) */}
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors text-xs text-gray-400 font-normal" onClick={() => handleSort('operations')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Ops
-                                    {sortField === 'operations' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors text-xs text-gray-400 font-normal" onClick={() => handleSort('avgTransaction')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Avg. Tkt
-                                    {sortField === 'avgTransaction' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors text-xs text-gray-400 font-normal" onClick={() => handleSort('yearForecast')}>
-                                <div className="flex items-center justify-end gap-1">
-                                    Forecast
-                                    {sortField === 'yearForecast' && <ArrowUpDown className="w-3 h-3" />}
-                                </div>
-                            </TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {sortedData.map((row) => (
-                            <React.Fragment key={row.category}>
-                                <TableRow
-                                    className="hover:bg-gray-50/50 cursor-pointer"
-                                    onClick={() => toggleExpand(row.category)}
-                                >
-                                    <TableCell className="font-medium text-gray-900">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-gray-400 w-4">
-                                                {/* Auto-expand if search query matches any sub-tag, otherwise use manual state */}
-                                                {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) ? '▼' : '▶'}
-                                            </span>
-                                            {(() => {
-                                                const color = stringToColor(row.category);
-                                                const Icon = getCategoryIcon(row.category);
-                                                return (
-                                                    <span className={cn(
-                                                        "flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium w-fit",
-                                                        color.bg,
-                                                        color.text
-                                                    )}>
-                                                        <Icon className="w-3.5 h-3.5" />
-                                                        {row.category}
-                                                    </span>
-                                                );
-                                            })()}
-                                        </div>
-                                    </TableCell>
+                                {/* Current Budget Group */}
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30" onClick={() => handleSort('currentMonthSpent')}>
+                                    <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
+                                        This Month
+                                        {sortField === 'currentMonthSpent' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30" onClick={() => handleSort('limit')}>
+                                    <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
+                                        Limit
+                                        {sortField === 'limit' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors bg-emerald-50/30" onClick={() => handleSort('remaining' as SortField)}>
+                                    <div className="flex items-center justify-end gap-1 font-semibold text-emerald-900">
+                                        Left
+                                        {sortField === ('remaining' as SortField) && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
 
-                                    {/* Current Budget Group */}
-                                    <TableCell className="text-right font-bold text-gray-900 bg-emerald-50/10">
-                                        {formatCurrency(row.currentMonthSpent)}
-                                    </TableCell>
-                                    <TableCell
-                                        className={cn(
-                                            "text-right relative overflow-hidden bg-emerald-50/10",
-                                            viewMode === 'category' ? "cursor-pointer hover:bg-gray-100 transition-colors group" : ""
-                                        )}
-                                        onClick={(e) => {
-                                            if (viewMode === 'category') {
-                                                e.stopPropagation();
-                                                setLimitModalData({ category: row.category, currentLimit: row.limit });
-                                            }
-                                        }}
+                                {/* Historical Context */}
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('monthlyAvg')}>
+                                    <div className="flex items-center justify-end gap-1 text-gray-600">
+                                        Monthly Avg
+                                        {sortField === 'monthlyAvg' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('totalSpent')}>
+                                    <div className="flex items-center justify-end gap-1 text-gray-600">
+                                        Total Spent
+                                        {sortField === 'totalSpent' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('share')}>
+                                    <div className="flex items-center justify-end gap-1 text-gray-600">
+                                        %
+                                        {sortField === 'share' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+
+                                {/* Details (Smaller/Lighter) */}
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors text-xs text-gray-400 font-normal" onClick={() => handleSort('operations')}>
+                                    <div className="flex items-center justify-end gap-1">
+                                        Ops
+                                        {sortField === 'operations' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors text-xs text-gray-400 font-normal" onClick={() => handleSort('avgTransaction')}>
+                                    <div className="flex items-center justify-end gap-1">
+                                        Avg. Tkt
+                                        {sortField === 'avgTransaction' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors text-xs text-gray-400 font-normal" onClick={() => handleSort('yearForecast')}>
+                                    <div className="flex items-center justify-end gap-1">
+                                        Forecast
+                                        {sortField === 'yearForecast' && <ArrowUpDown className="w-3 h-3" />}
+                                    </div>
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {sortedData.map((row) => (
+                                <React.Fragment key={row.category}>
+                                    <TableRow
+                                        className="hover:bg-gray-50/50 cursor-pointer"
+                                        onClick={() => toggleExpand(row.category)}
                                     >
-                                        {row.limit && (
-                                            <div
-                                                className={cn(
-                                                    "absolute right-0 top-2 bottom-2 rounded-l-md transition-all duration-500 opacity-20",
-                                                    row.currentMonthSpent > row.limit ? "bg-red-500" :
-                                                        (row.currentMonthSpent / row.limit > 0.8 ? "bg-yellow-500" : "bg-emerald-500")
-                                                )}
-                                                style={{
-                                                    width: `${Math.min((row.currentMonthSpent / row.limit) * 100, 100)}%`
-                                                }}
-                                            />
-                                        )}
-                                        <div className={cn(
-                                            "relative z-10 font-medium",
-                                            row.limit && row.currentMonthSpent > row.limit ? "text-red-600" : "text-gray-500"
-                                        )}>
-                                            {row.limit ? formatCurrency(row.limit) : (
-                                                viewMode === 'category' ? <span className="text-gray-300 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Set Limit</span> : <span className="text-gray-300 text-xs">—</span>
-                                            )}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-right bg-emerald-50/10">
-                                        {row.remaining !== null ? (
-                                            <span className={cn(
-                                                "font-bold",
-                                                row.remaining < 0 ? "text-red-600" : "text-emerald-700"
-                                            )}>
-                                                {formatCurrency(row.remaining)}
-                                            </span>
-                                        ) : (
-                                            <span className="text-gray-300 text-xs">—</span>
-                                        )}
-                                    </TableCell>
-
-                                    {/* Historical Context */}
-                                    <TableCell className="text-right text-gray-600 font-medium">{formatCurrency(row.monthlyAvg)}</TableCell>
-                                    <TableCell className="text-right relative">
-                                        <div className="relative z-10 text-gray-600">
-                                            {formatCurrency(row.totalSpent)}
-                                        </div>
-                                        <div
-                                            className="absolute left-0 top-2 bottom-2 rounded-r-md transition-all duration-500"
-                                            style={{
-                                                width: `${(row.totalSpent / maxTotalSpent) * 100}%`,
-                                                opacity: 0.1,
-                                                backgroundColor: 'currentColor'
-                                            }}
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-right text-gray-500 font-medium">{row.share.toFixed(1)}%</TableCell>
-
-                                    {/* Details */}
-                                    <TableCell className="text-right text-gray-400 text-xs">{row.operations}</TableCell>
-                                    <TableCell className="text-right text-gray-400 text-xs">{formatCurrency(row.avgTransaction)}</TableCell>
-                                    <TableCell className="text-right text-gray-400 text-xs">
-                                        {row.yearForecast > 0 ? formatCurrency(row.yearForecast) : '—'}
-                                    </TableCell>
-                                </TableRow>
-
-                                {/* Expanded Tag View */}
-                                {/* Show if manually expanded OR if search query matches something inside (and not just the category name itself, though likely we want to show it then too) */}
-                                {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) && (
-                                    <TableRow className="bg-gray-50/50">
-                                        <TableCell colSpan={10} className="p-0">
-                                            <div className="pl-12 pr-4 py-4 border-l-4 border-emerald-100 ml-6 my-2 bg-white/50 rounded-r-lg">
-                                                <table className="w-full text-sm">
-                                                    <thead>
-                                                        <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-gray-100">
-                                                            <th className="text-left py-2 font-medium w-[220px]">
-                                                                {viewMode === 'global' ? 'Category' : 'Tag'}
-                                                            </th>
-                                                            <th className="text-right py-2 font-medium text-emerald-700">This Month</th>
-                                                            <th className="text-right py-2 font-medium text-emerald-700">Limit</th>
-                                                            <th className="text-right py-2 font-medium text-emerald-700">Left</th>
-                                                            <th className="text-right py-2 font-medium text-gray-600">Monthly Avg</th>
-                                                            <th className="text-right py-2 font-medium text-gray-600">Total Spent</th>
-                                                            <th className="text-right py-2 font-medium text-gray-600">%</th>
-                                                            <th className="text-right py-2 font-medium text-gray-400">Ops</th>
-                                                            <th className="text-right py-2 font-medium text-gray-400">Avg. Tkt</th>
-                                                            <th className="text-right py-2 font-medium text-gray-400">Forecast</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-gray-50">
-                                                        {getBreakdownMetrics(row.category)
-                                                            .filter(subItem => {
-                                                                if (!searchQuery) return true;
-                                                                // If the Category itself matched, show all tags?
-                                                                // Or if the tag matches?
-                                                                // Behavior: Show tag if it matches OR if category matches exact (less common).
-                                                                // Better: Show tag if it matches query.
-                                                                // If query matches Category name -> show all tags.
-                                                                const query = searchQuery.toLowerCase();
-                                                                const categoryMatches = row.category.toLowerCase().includes(query);
-                                                                const tagMatches = subItem.name.toLowerCase().includes(query);
-                                                                return categoryMatches || tagMatches;
-                                                            })
-                                                            .map(subItem => {
-                                                                return (
-                                                                    <tr key={subItem.name} className="hover:bg-gray-100/50 transition-colors">
-                                                                        <td className="py-2.5 text-gray-600">
-                                                                            <div
-                                                                                className="flex items-center gap-2 cursor-pointer hover:text-emerald-600 transition-colors group font-medium w-fit"
-                                                                                onClick={(e) => handleTagClick(e, row.category, subItem.name)}
-                                                                            >
-                                                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-200 group-hover:bg-emerald-500 transition-colors"></div>
-                                                                                {subItem.name}
-                                                                            </div>
-                                                                        </td>
-                                                                        <td className="text-right py-2.5 text-emerald-700 font-medium bg-emerald-50/10">
-                                                                            {formatCurrency(subItem.currentMonthSpent)}
-                                                                        </td>
-                                                                        <td className="text-right py-2.5 text-gray-300 text-xs bg-emerald-50/10">—</td>
-                                                                        <td className="text-right py-2.5 text-gray-300 text-xs bg-emerald-50/10">—</td>
-                                                                        <td className="text-right py-2.5 text-gray-600">{formatCurrency(subItem.monthlyAvg)}</td>
-                                                                        <td className="text-right py-2.5 text-gray-600">{formatCurrency(subItem.totalSpent)}</td>
-                                                                        <td className="text-right py-2.5 text-gray-500">{subItem.share.toFixed(1)}%</td>
-                                                                        <td className="text-right py-2.5 text-gray-400 text-xs">{subItem.operations}</td>
-                                                                        <td className="text-right py-2.5 text-gray-400 text-xs">{formatCurrency(subItem.avgTransaction)}</td>
-                                                                        <td className="text-right py-2.5 text-gray-400 text-xs">
-                                                                            {subItem.yearForecast > 0 ? formatCurrency(subItem.yearForecast) : '—'}
-                                                                        </td>
-                                                                    </tr>
-                                                                )
-                                                            })}
-                                                    </tbody>
-                                                </table>
+                                        <TableCell className="font-medium text-gray-900">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-gray-400 w-4">
+                                                    {/* Auto-expand if search query matches any sub-tag, otherwise use manual state */}
+                                                    {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) ? '▼' : '▶'}
+                                                </span>
+                                                {(() => {
+                                                    const color = stringToColor(row.category);
+                                                    const Icon = getCategoryIcon(row.category);
+                                                    return (
+                                                        <span className={cn(
+                                                            "flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium w-fit",
+                                                            color.bg,
+                                                            color.text
+                                                        )}>
+                                                            <Icon className="w-3.5 h-3.5" />
+                                                            {row.category}
+                                                        </span>
+                                                    );
+                                                })()}
                                             </div>
                                         </TableCell>
+
+                                        {/* Current Budget Group */}
+                                        <TableCell className="text-right font-bold text-gray-900 bg-emerald-50/10">
+                                            {formatCurrency(row.currentMonthSpent)}
+                                        </TableCell>
+                                        <TableCell
+                                            className={cn(
+                                                "text-right relative overflow-hidden bg-emerald-50/10",
+                                                viewMode === 'category' ? "cursor-pointer hover:bg-gray-100 transition-colors group" : ""
+                                            )}
+                                            onClick={(e) => {
+                                                if (viewMode === 'category') {
+                                                    e.stopPropagation();
+                                                    setLimitModalData({ category: row.category, currentLimit: row.limit });
+                                                }
+                                            }}
+                                        >
+                                            {row.limit && (
+                                                <div
+                                                    className={cn(
+                                                        "absolute right-0 top-2 bottom-2 rounded-l-md transition-all duration-500 opacity-20",
+                                                        row.currentMonthSpent > row.limit ? "bg-red-500" :
+                                                            (row.currentMonthSpent / row.limit > 0.8 ? "bg-yellow-500" : "bg-emerald-500")
+                                                    )}
+                                                    style={{
+                                                        width: `${Math.min((row.currentMonthSpent / row.limit) * 100, 100)}%`
+                                                    }}
+                                                />
+                                            )}
+                                            <div className={cn(
+                                                "relative z-10 font-medium",
+                                                row.limit && row.currentMonthSpent > row.limit ? "text-red-600" : "text-gray-500"
+                                            )}>
+                                                {row.limit ? formatCurrency(row.limit) : (
+                                                    viewMode === 'category' ? <span className="text-gray-300 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Set Limit</span> : <span className="text-gray-300 text-xs">—</span>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-right bg-emerald-50/10">
+                                            {row.remaining !== null ? (
+                                                <span className={cn(
+                                                    "font-bold",
+                                                    row.remaining < 0 ? "text-red-600" : "text-emerald-700"
+                                                )}>
+                                                    {formatCurrency(row.remaining)}
+                                                </span>
+                                            ) : (
+                                                <span className="text-gray-300 text-xs">—</span>
+                                            )}
+                                        </TableCell>
+
+                                        {/* Historical Context */}
+                                        <TableCell className="text-right text-gray-600 font-medium">{formatCurrency(row.monthlyAvg)}</TableCell>
+                                        <TableCell className="text-right relative">
+                                            <div className="relative z-10 text-gray-600">
+                                                {formatCurrency(row.totalSpent)}
+                                            </div>
+                                            <div
+                                                className="absolute left-0 top-2 bottom-2 rounded-r-md transition-all duration-500"
+                                                style={{
+                                                    width: `${(row.totalSpent / maxTotalSpent) * 100}%`,
+                                                    opacity: 0.1,
+                                                    backgroundColor: 'currentColor'
+                                                }}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="text-right text-gray-500 font-medium">{row.share.toFixed(1)}%</TableCell>
+
+                                        {/* Details */}
+                                        <TableCell className="text-right text-gray-400 text-xs">{row.operations}</TableCell>
+                                        <TableCell className="text-right text-gray-400 text-xs">{formatCurrency(row.avgTransaction)}</TableCell>
+                                        <TableCell className="text-right text-gray-400 text-xs">
+                                            {row.yearForecast > 0 ? formatCurrency(row.yearForecast) : '—'}
+                                        </TableCell>
                                     </TableRow>
-                                )}
-                            </React.Fragment>
-                        ))}
-                    </TableBody>
-                </Table>
-            </div>
 
-            {selectedTagData && (
-                <TransactionListModal
-                    isOpen={!!selectedTagData}
-                    onClose={() => setSelectedTagData(null)}
-                    category={selectedTagData.category}
-                    tag={selectedTagData.tag}
-                    transactions={selectedTagData.transactions}
+                                    {/* Expanded Tag View */}
+                                    {/* Show if manually expanded OR if search query matches something inside (and not just the category name itself, though likely we want to show it then too) */}
+                                    {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) && (
+                                        <TableRow className="bg-gray-50/50">
+                                            <TableCell colSpan={10} className="p-0">
+                                                <div className="pl-12 pr-4 py-4 border-l-4 border-emerald-100 ml-6 my-2 bg-white/50 rounded-r-lg">
+                                                    <table className="w-full text-sm">
+                                                        <thead>
+                                                            <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-gray-100">
+                                                                <th className="text-left py-2 font-medium w-[220px]">
+                                                                    {viewMode === 'global' ? 'Category' : 'Tag'}
+                                                                </th>
+                                                                <th className="text-right py-2 font-medium text-emerald-700">This Month</th>
+                                                                <th className="text-right py-2 font-medium text-emerald-700">Limit</th>
+                                                                <th className="text-right py-2 font-medium text-emerald-700">Left</th>
+                                                                <th className="text-right py-2 font-medium text-gray-600">Monthly Avg</th>
+                                                                <th className="text-right py-2 font-medium text-gray-600">Total Spent</th>
+                                                                <th className="text-right py-2 font-medium text-gray-600">%</th>
+                                                                <th className="text-right py-2 font-medium text-gray-400">Ops</th>
+                                                                <th className="text-right py-2 font-medium text-gray-400">Avg. Tkt</th>
+                                                                <th className="text-right py-2 font-medium text-gray-400">Forecast</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-50">
+                                                            {getBreakdownMetrics(row.category)
+                                                                .filter(subItem => {
+                                                                    if (!searchQuery) return true;
+                                                                    // If the Category itself matched, show all tags?
+                                                                    // Or if the tag matches?
+                                                                    // Behavior: Show tag if it matches OR if category matches exact (less common).
+                                                                    // Better: Show tag if it matches query.
+                                                                    // If query matches Category name -> show all tags.
+                                                                    const query = searchQuery.toLowerCase();
+                                                                    const categoryMatches = row.category.toLowerCase().includes(query);
+                                                                    const tagMatches = subItem.name.toLowerCase().includes(query);
+                                                                    return categoryMatches || tagMatches;
+                                                                })
+                                                                .map(subItem => {
+                                                                    return (
+                                                                        <tr key={subItem.name} className="hover:bg-gray-100/50 transition-colors">
+                                                                            <td className="py-2.5 text-gray-600">
+                                                                                <div
+                                                                                    className="flex items-center gap-2 cursor-pointer hover:text-emerald-600 transition-colors group font-medium w-fit"
+                                                                                    onClick={(e) => handleTagClick(e, row.category, subItem.name)}
+                                                                                >
+                                                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-200 group-hover:bg-emerald-500 transition-colors"></div>
+                                                                                    {subItem.name}
+                                                                                </div>
+                                                                            </td>
+                                                                            <td className="text-right py-2.5 text-emerald-700 font-medium bg-emerald-50/10">
+                                                                                {formatCurrency(subItem.currentMonthSpent)}
+                                                                            </td>
+                                                                            <td className="text-right py-2.5 text-gray-300 text-xs bg-emerald-50/10">—</td>
+                                                                            <td className="text-right py-2.5 text-gray-300 text-xs bg-emerald-50/10">—</td>
+                                                                            <td className="text-right py-2.5 text-gray-600">{formatCurrency(subItem.monthlyAvg)}</td>
+                                                                            <td className="text-right py-2.5 text-gray-600">{formatCurrency(subItem.totalSpent)}</td>
+                                                                            <td className="text-right py-2.5 text-gray-500">{subItem.share.toFixed(1)}%</td>
+                                                                            <td className="text-right py-2.5 text-gray-400 text-xs">{subItem.operations}</td>
+                                                                            <td className="text-right py-2.5 text-gray-400 text-xs">{formatCurrency(subItem.avgTransaction)}</td>
+                                                                            <td className="text-right py-2.5 text-gray-400 text-xs">
+                                                                                {subItem.yearForecast > 0 ? formatCurrency(subItem.yearForecast) : '—'}
+                                                                            </td>
+                                                                        </tr>
+                                                                    )
+                                                                })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </React.Fragment>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+
+                {selectedTagData && (
+                    <TransactionListModal
+                        isOpen={!!selectedTagData}
+                        onClose={() => setSelectedTagData(null)}
+                        category={selectedTagData.category}
+                        tag={selectedTagData.tag}
+                        transactions={selectedTagData.transactions}
+                    />
+                )}
+
+                <CategoryLimitModal
+                    isOpen={!!limitModalData}
+                    onClose={() => setLimitModalData(null)}
+                    category={limitModalData?.category || ''}
+                    currentLimit={limitModalData?.currentLimit}
+                    onSave={(amount) => {
+                        if (limitModalData?.category) {
+                            setLimit(limitModalData.category, amount);
+                        }
+                    }}
+                    onRemove={() => {
+                        if (limitModalData?.category) {
+                            removeLimit(limitModalData.category);
+                        }
+                    }}
                 />
-            )}
-
-            <CategoryLimitModal
-                isOpen={!!limitModalData}
-                onClose={() => setLimitModalData(null)}
-                category={limitModalData?.category || ''}
-                currentLimit={limitModalData?.currentLimit}
-                onSave={(amount) => {
-                    if (limitModalData?.category) {
-                        setLimit(limitModalData.category, amount);
-                    }
-                }}
-                onRemove={() => {
-                    if (limitModalData?.category) {
-                        removeLimit(limitModalData.category);
-                    }
-                }}
-            />
+            </div>
         </div>
     );
 };

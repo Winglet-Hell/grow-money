@@ -178,14 +178,14 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
     };
 
     return (
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm h-[400px] flex flex-col col-span-1 lg:col-span-2">
+        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm h-auto md:h-[400px] flex flex-col col-span-1 lg:col-span-2">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col md:flex-row md:items-center gap-4">
                     <h3 className="text-lg font-semibold text-gray-900">Category Trends</h3>
 
                     {/* Metrics Display */}
                     {metrics && metrics.lastClosedAmount > 0 && (
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm border-l pl-4 border-gray-200">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm md:border-l md:pl-4 border-gray-200">
 
                             {/* Main Stat: Last Closed */}
                             <div>
@@ -233,7 +233,7 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
                     )}
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     {/* Type Switcher */}
                     <div className="flex bg-gray-100 p-1 rounded-lg">
                         <button
@@ -277,7 +277,7 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
                 </div>
             </div>
 
-            <div className="flex-1 w-full min-h-0">
+            <div className="h-[300px] md:h-auto md:flex-1 w-full min-h-0">
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />

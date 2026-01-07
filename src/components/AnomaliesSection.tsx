@@ -116,7 +116,7 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
         .toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
     return (
-        <div className="mt-8">
+        <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-5 flex items-center gap-2">
                 Category Spending Deviations
                 <span className="px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-medium">
