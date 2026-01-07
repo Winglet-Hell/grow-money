@@ -35,6 +35,7 @@ import {
     CreditCard,
     DollarSign,
     PiggyBank,
+    Hotel,
     type LucideIcon
 } from 'lucide-react';
 
@@ -121,7 +122,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
     // Travel
     'travel': Plane,
     'flight': Plane,
-    'hotel': Home,
+    'hotel': Hotel,
     'vacation': Plane,
     'путешествия': Plane,
 
@@ -167,7 +168,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
     'ремонт': Hammer,
 
     // Specific User Requests
-    'hotels': Home,
+    'hotels': Hotel,
     'flights': Plane,
     'flighsts': Plane, // typo coverage
     'visa': GraduationCap, // Study & Visa

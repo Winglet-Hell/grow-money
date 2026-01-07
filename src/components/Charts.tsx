@@ -3,12 +3,12 @@ import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList
 } from 'recharts';
 import type { Transaction } from '../types';
+import { stringToColor } from '../lib/utils';
+import { getCategoryIcon } from '../lib/categoryIcons';
 
 interface ChartsProps {
     transactions: Transaction[];
 }
-
-import { stringToColor } from '../lib/utils';
 
 const formatCompact = (num: any) => {
     if (typeof num !== 'number') return '';
@@ -27,6 +27,24 @@ const getSeverityColor = (value: number, max: number) => {
 
 const truncateLabel = (str: string) => {
     return str.length > 8 ? str.slice(0, 6) + '..' : str;
+};
+
+const CustomXAxisTick = (props: any) => {
+    const { x, y, payload } = props;
+    const Icon = getCategoryIcon(payload.value);
+
+    return (
+        <g transform={`translate(${x},${y})`}>
+            <foreignObject x={-12} y={0} width={24} height={24}>
+                <div className="flex items-center justify-center w-full h-full text-gray-500">
+                    <Icon size={16} />
+                </div>
+            </foreignObject>
+            <text x={0} y={32} textAnchor="middle" fill="#6B7280" fontSize={12}>
+                {truncateLabel(payload.value)}
+            </text>
+        </g>
+    );
 };
 
 export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
@@ -100,8 +118,8 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                     axisLine={false}
                                     tickLine={false}
                                     interval={0}
-                                    tick={{ fontSize: 12, fill: '#6B7280' }}
-                                    tickFormatter={truncateLabel}
+                                    tick={<CustomXAxisTick />}
+                                    height={50}
                                 />
                                 <YAxis hide />
                                 <Tooltip formatter={(value: any) => `₽${(value || 0).toLocaleString()}`} cursor={{ fill: 'transparent' }} />
