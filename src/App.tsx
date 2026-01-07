@@ -11,6 +11,7 @@ import { IncomeInsights } from './pages/IncomeInsights';
 import { TrendsPage } from './pages/TrendsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { WishlistPage } from './pages/WishlistPage';
+import { AIExportPage } from './pages/AIExportPage';
 import type { Transaction } from './types';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 
@@ -142,6 +143,15 @@ function AppContent() {
                 >
                   Wishlist
                 </Link>
+                <Link
+                  to="/ai-export"
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${location.pathname === '/ai-export'
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                  AI Export
+                </Link>
               </nav>
             )}
           </div>
@@ -210,6 +220,7 @@ function AppContent() {
               <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
               <Route path="/wishlist" element={<WishlistPage transactions={transactions} />} />
               <Route path="/accounts" element={<AccountsPage transactions={transactions} />} />
+              <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
             </Routes>
           )
         }
