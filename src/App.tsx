@@ -201,13 +201,13 @@ function AppContent() {
       {transactions.length === 0 && (
         <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
           {/* Top Right Blob - Ghostly */}
-          <div className="absolute top-[-20%] right-[-10%] w-[70vw] h-[70vw] bg-gradient-to-br from-emerald-50/20 to-cyan-50/20 rounded-full blur-[160px] mix-blend-multiply opacity-30 animate-blob transition-all duration-1000" />
+          <div className="absolute top-[-20%] right-[-10%] w-[70vw] h-[70vw] bg-gradient-to-br from-emerald-50/20 to-cyan-50/20 rounded-full blur-[80px] md:blur-[160px] mix-blend-multiply opacity-30 animate-blob transition-all duration-1000" />
 
           {/* Bottom Left Blob - Ghostly */}
-          <div className="absolute bottom-[-20%] left-[-10%] w-[60vw] h-[60vw] bg-gradient-to-tr from-teal-50/20 to-emerald-50/10 rounded-full blur-[160px] mix-blend-multiply opacity-30 animate-blob animation-delay-4000 transition-all duration-1000" />
+          <div className="absolute bottom-[-20%] left-[-10%] w-[60vw] h-[60vw] bg-gradient-to-tr from-teal-50/20 to-emerald-50/10 rounded-full blur-[80px] md:blur-[160px] mix-blend-multiply opacity-30 animate-blob animation-delay-4000 transition-all duration-1000" />
 
           {/* Center - Almost invisible shimmer */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50vw] h-[50vw] bg-white/40 rounded-full blur-[180px] opacity-20 animate-pulse-slow" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50vw] h-[50vw] bg-white/40 rounded-full blur-[100px] md:blur-[180px] opacity-20 animate-pulse-slow" />
         </div>
       )}
 
@@ -334,10 +334,10 @@ function AppContent() {
         </div>
       </header >
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-8 relative">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 md:pt-24 pb-8 relative">
         {
           transactions.length === 0 ? (
-            <div className="min-h-[85vh] flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-8 duration-1000 relative">
+            <div className="min-h-[80vh] md:min-h-[85vh] flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-8 duration-1000 relative">
 
               {/* --- Floating Glass Icons --- */}
 
@@ -371,23 +371,23 @@ function AppContent() {
 
 
               {/* Hero Section */}
-              <div className="text-center mb-8 md:mb-16 max-w-4xl relative z-10">
-                <h2 className="text-5xl md:text-7xl font-extrabold tracking-tight text-emerald-950 mb-6 leading-tight">
-                  Your Personal <br />
+              <div className="text-center mb-6 md:mb-8 max-w-4xl relative z-10 px-2 lg:px-0">
+                <h2 className="text-4xl md:text-7xl font-extrabold tracking-tight text-emerald-950 mb-3 md:mb-6 leading-tight">
+                  Your Personal <br className="hidden md:block" />
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">
                     Financial Analytics
                   </span>
                 </h2>
-                <p className="text-emerald-800/60 text-lg md:text-xl font-medium tracking-wide max-w-2xl mx-auto leading-relaxed">
-                  Transform your raw bank statements into actionable insights. <br className="hidden md:block" />
+                <p className="text-emerald-800/60 text-base md:text-xl font-medium tracking-wide max-w-2xl mx-auto leading-relaxed">
+                  Transform statements into insights. <br className="hidden md:block" />
                   Secure, private, and beautifully visualized.
                 </p>
               </div>
 
               <FileUploader onDataLoaded={handleDataLoaded} isAuthenticated={!!session} onSignIn={() => setShowAuth(true)} />
 
-              {/* Comprehensive Features Grid */}
-              <div className="mt-32 w-full">
+              {/* Comprehensive Features Grid - Hidden on mobile as per user request */}
+              <div className="mt-12 md:mt-32 w-full hidden md:block">
                 <div className="text-center mb-12">
                   <h3 className="text-sm font-bold text-emerald-600/50 uppercase tracking-[0.2em]">Everything you need</h3>
                 </div>
