@@ -26,7 +26,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions }) => {
     // I will assume: Positive = Income, Negative = Expense.
 
     // Re-calculating balance simply as sum
-    const netBalance = transactions.reduce((sum, t) => sum + t.amount, 0);
+    const netBalance = income - expenses;
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

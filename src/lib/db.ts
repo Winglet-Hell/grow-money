@@ -7,7 +7,7 @@ export class GrowMoneyDB extends Dexie {
     constructor() {
         super('GrowMoneyDB');
         this.version(1).stores({
-            transactions: 'id, date, type, category'
+            transactions: 'id, date, type, category, account'
         });
     }
 }

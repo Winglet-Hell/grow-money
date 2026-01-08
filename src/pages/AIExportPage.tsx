@@ -79,7 +79,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
             .reduce((acc, t) => {
                 // User rule: Tag = Service Name
                 // Group by Name + Account to distinguish different payment sources (e.g. RUB vs USDT)
-                const serviceName = t.tags || t.note || 'Unknown Subscription';
+                const serviceName = (Array.isArray(t.tags) ? t.tags.join(', ') : t.tags) || t.note || 'Unknown Subscription';
                 const accountName = t.account || 'Unknown Account';
                 const uniqueKey = `${serviceName} (${accountName})`;
 
@@ -119,7 +119,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
             .reduce((acc, t) => {
                 // Prefer Tag, fallback to Note, fallback to "Unknown"
                 // Clean up the name (trim, lowercase for aggregation but display proper case)
-                let name = t.tags || t.note;
+                let name = (Array.isArray(t.tags) ? t.tags.join(', ') : t.tags) || t.note;
 
                 if (!name || name.length < 2) return acc; // Skip empty/trivial notes
 

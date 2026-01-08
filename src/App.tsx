@@ -8,6 +8,7 @@ import { useUserSettings, UserSettingsProvider } from './contexts/UserSettingsCo
 import { getFormattedDateRange, cn } from './lib/utils';
 import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
+import { syncAccountsWithSupabase } from './lib/accountUtils';
 import { SummaryCards } from './components/SummaryCards';
 import { Charts } from './components/Charts';
 import { TransactionTable } from './components/TransactionTable';
@@ -133,6 +134,11 @@ function AppContent() {
         const count = await db.transactions.count();
         if (count > 0) {
           const savedTransactions = await db.transactions.toArray();
+          // UI PREFERENCE: Sort Newest First (Desc)
+          savedTransactions.sort((a, b) => {
+            if (a.date !== b.date) return b.date.localeCompare(a.date);
+            return (a.index || 0) - (b.index || 0);
+          });
           setTransactions(savedTransactions);
         }
       } catch (error) {
@@ -148,9 +154,23 @@ function AppContent() {
   }, []);
 
   const handleDataLoaded = async (data: Transaction[]) => {
+    // UI PREFERENCE: Sort Newest First (Desc)
+    data.sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return (a.index || 0) - (b.index || 0);
+    });
+
     setTransactions(data);
     await db.transactions.clear();
     await db.transactions.bulkAdd(data);
+
+    // Sync newly discovered accounts to Supabase
+    if (session?.user?.id) {
+      // Import dynamically or ensure imported at top. 
+      // Since it's a small app, top-level import is fine.
+      // But wait, I need to look at imports first.
+      syncAccountsWithSupabase(data, session.user.id);
+    }
   };
 
   const handleReset = async () => {
@@ -418,7 +438,7 @@ function AppContent() {
                 <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
                 <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
                 <Route path="/wishlist" element={<WishlistPage transactions={transactions} />} />
-                <Route path="/accounts" element={<AccountsPage transactions={transactions} />} />
+                <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} />} />
                 <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>

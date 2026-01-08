@@ -9,18 +9,30 @@ import type { Transaction } from '../types';
 const HEADERS_MAP: Record<string, keyof Omit<Transaction, 'id' | 'type'>> = {
     'Дата и время': 'date',
     'Категория': 'category',
-    'Сумма в валюте учета': 'amount',
     'Счет': 'account',
     'Комментарий': 'note',
     'Теги': 'tags',
-    'Сумма в валюте счета': 'originalAmount',
-    'Валюта счета': 'originalCurrency',
+
+    // Legacy/Fallback columns (might be empty in this file fmt)
+    'Сумма операции в валюте операции': 'originalAmount',
+    'Валюта операции': 'originalCurrency',
+    'Сумма в валюте операции': 'originalAmount',
+
+    // Definitive columns (PREFFERED - defined last to overwrite legacy)
+    'Сумма в валюте учета': 'amount',       // MAIN AMOUNT (RUB)
+    'Валюта учета': 'currency',             // MAIN CURRENCY (RUB)
+    'Сумма в валюте счета': 'originalAmount', // SECONDARY AMOUNT (THB)
+    'Валюта счета': 'originalCurrency',       // SECONDARY CURRENCY (THB)
+
     // Transfer specific headers
     'Исходящий счет': 'account',
-    'Входящий счет': 'category', // We'll store Destination Account in 'category' for transfers
-    'Сумма в исходящей валюте': 'amount',
+    'Входящий счет': 'category',
+    'Сумма в исходящей валюте счета': 'amount',
+    'Валюта исходящего счета': 'originalCurrency',
     'Сумма во входящей валюте': 'originalAmount',
-    'Валюта вход': 'originalCurrency'
+    'Сумма во входящем счете': 'originalAmount',
+    'Валюта входящая': 'originalCurrency',
+    'Валюта входящего счета': 'originalCurrency',
 };
 
 function toSentenceCase(str: string): string {
@@ -61,91 +73,119 @@ function parseDateString(value: string): string | null {
     return null;
 }
 
-function mapRow(row: any, type: Transaction['type']): Transaction | null {
-    const mapped: Partial<Transaction> = {};
 
+// Simple hash function for deterministic IDs
+function generateHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36);
+}
+
+function mapRow(row: any, type: Transaction['type'], index: number): Transaction | null {
+    const mapped: any = {}; // Use any to allow flexible mapping temporarily
+
+    // ... (existing data extraction logic remains same, we only need to change the return part)
     // Checking if row has necessary data
     let hasData = false;
-
-    // Use a fuzzy match for headers first
     const headers = Object.keys(row);
 
     for (const [rusHeader, engKey] of Object.entries(HEADERS_MAP)) {
         let value: any = row[rusHeader];
-
         if (value === undefined) {
             const key = headers.find(k => k.trim() === rusHeader);
             if (key) value = row[key];
         }
 
-        if (value !== undefined) {
+        if (value !== undefined && value !== '') { // Added check for empty string
             hasData = true;
 
+            // Logic for amount parsing
             if (engKey === 'amount' || engKey === 'originalAmount') {
+                // ... numeric parsing logic ...
                 if (typeof value === 'string') {
                     value = parseFloat(value.replace(/[^\d.,-]/g, '').replace(',', '.'));
                 }
                 if (isNaN(value)) value = 0;
-
-                if (engKey === 'amount' && type === 'expense' && value > 0) {
-                    value = -value;
-                }
-                mapped[engKey] = value;
-            } else if (engKey === 'date') {
+            }
+            // ... date logic ...
+            else if (engKey === 'date') {
+                // ... existing date logic ...
                 try {
-                    // With raw: false, value should be a formatted string like "07.01.2026"
                     const strVal = String(value).trim();
                     const parsed = parseDateString(strVal);
-
-                    if (parsed) {
-                        mapped[engKey] = parsed;
-                    } else {
-                        // Fallback check for number (Excel serial)
-                        if (typeof value === 'number') {
-                            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-                            const msPerDay = 86400 * 1000;
-                            const dateObj = new Date(excelEpoch.getTime() + value * msPerDay);
-
-                            const year = dateObj.getUTCFullYear();
-                            const month = (dateObj.getUTCMonth() + 1).toString().padStart(2, '0');
-                            const day = dateObj.getUTCDate().toString().padStart(2, '0');
-                            mapped[engKey] = `${year}-${month}-${day}`;
-                        } else {
-                            // Last resort basic parse
-                            const d = new Date(strVal);
-                            if (!isNaN(d.getTime())) {
-                                const year = d.getFullYear();
-                                const month = (d.getMonth() + 1).toString().padStart(2, '0');
-                                const day = d.getDate().toString().padStart(2, '0');
-                                mapped[engKey] = `${year}-${month}-${day}`;
-                            } else {
-                                mapped[engKey] = strVal;
-                            }
-                        }
-                    }
+                    if (parsed) value = parsed;
+                    else if (typeof value === 'number') {
+                        // ... excel date logic ...
+                        const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                        const msPerDay = 86400 * 1000;
+                        const dateObj = new Date(excelEpoch.getTime() + value * msPerDay);
+                        const year = dateObj.getUTCFullYear();
+                        const month = (dateObj.getUTCMonth() + 1).toString().padStart(2, '0');
+                        const day = dateObj.getUTCDate().toString().padStart(2, '0');
+                        value = `${year}-${month}-${day}`;
+                    } else value = strVal; // Fallback
                 } catch (e) {
-                    mapped[engKey] = String(value);
+                    value = String(value);
                 }
-            } else {
-                mapped[engKey] = value;
             }
+
+            // ASSIGNMENT with overwrite check?
+            // Since we reordered HEADERS_MAP to put preferred keys Last, overwriting is generally desired
+            // IF the value is valid. 
+            // We kept the check `value !== ''` at the top, so we are good.
+            mapped[engKey] = value;
         }
     }
 
-    if (!hasData || !mapped.date || !mapped.amount) return null;
+    if (!hasData || !mapped.date) return null;
 
-    return {
-        id: Math.random().toString(36).substr(2, 9),
+    // --- CURRENCY & AMOUNT NORMALIZATION ---
+
+    // Ensure signs are correct for expenses
+    if (type === 'expense') {
+        if (mapped.amount > 0) mapped.amount = -mapped.amount;
+        if (mapped.originalAmount > 0) mapped.originalAmount = -mapped.originalAmount;
+    }
+
+    // If originalAmount is practically the same as amount, remove it (redundant)
+    if (mapped.originalAmount !== undefined && mapped.originalAmount !== 0) {
+        if (Math.abs(mapped.amount - mapped.originalAmount) < 0.01 &&
+            (!mapped.originalCurrency || mapped.originalCurrency === mapped.currency)) {
+            delete mapped.originalAmount;
+            delete mapped.originalCurrency;
+        }
+    } else {
+        // If 0 or undefined, just remove to keep object clean
+        delete mapped.originalAmount;
+    }
+
+    const tags = String(mapped.tags || '').split(',')
+        .map((tag: string) => toSentenceCase(tag.trim()))
+        .filter(tag => tag !== '');
+
+    const signature = `${String(mapped.date)}|${Number(mapped.amount)}|${String(mapped.account || 'Unknown')}|${toSentenceCase(String(mapped.category || 'Uncategorized'))}|${String(mapped.note || '')}|${index}`;
+    const id = generateHash(signature);
+
+    const t: Transaction = {
+        id,
         date: String(mapped.date),
         category: toSentenceCase(String(mapped.category || 'Uncategorized')),
         amount: Number(mapped.amount),
+        currency: mapped.currency ? String(mapped.currency) : undefined, // Explicit currency from file
         account: String(mapped.account || 'Unknown'),
         note: String(mapped.note || ''),
-        tags: String(mapped.tags || '').split(',').map(tag => toSentenceCase(tag.trim())).join(', '),
+        tags: tags,
         originalAmount: mapped.originalAmount,
         originalCurrency: mapped.originalCurrency ? String(mapped.originalCurrency) : undefined,
         type,
-    } as Transaction;
+        index, // Save the index/row number
+    };
+
+    return t;
 }
 
 // ==========================================
@@ -194,7 +234,7 @@ async function parseExcelData(fileData: ArrayBuffer): Promise<Transaction[]> {
 
         const jsonData = XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, raw: false });
         const sheetTransactions = jsonData
-            .map((row: any) => mapRow(row, type!))
+            .map((row: any, index: number) => mapRow(row, type!, index))
             .filter((t): t is Transaction => t !== null);
 
         allTransactions = [...allTransactions, ...sheetTransactions];
@@ -217,7 +257,7 @@ async function parseCSVData(fileContent: string, fileName: string): Promise<Tran
                 const type: Transaction['type'] = fileName.toLowerCase().includes('income') || fileName.toLowerCase().includes('доход') ? 'income' : 'expense';
 
                 const transactions = results.data
-                    .map((row: any) => mapRow(row, type))
+                    .map((row: any, index: number) => mapRow(row, type, index))
                     .filter((t): t is Transaction => t !== null);
 
                 if (transactions.length === 0) {

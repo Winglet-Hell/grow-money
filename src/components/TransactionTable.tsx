@@ -63,7 +63,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                 (t.note && t.note.toLowerCase().includes(lowerTerm)) ||
                 (t.account && t.account.toLowerCase().includes(lowerTerm)) ||
                 (t.amount.toString().includes(lowerTerm)) ||
-                (t.tags && t.tags.toLowerCase().includes(lowerTerm))
+                (t.tags && (
+                    (Array.isArray(t.tags) && t.tags.join(' ').toLowerCase().includes(lowerTerm)) ||
+                    (typeof t.tags === 'string' && (t.tags as any).toLowerCase().includes(lowerTerm))
+                ))
             );
         }
 
@@ -328,7 +331,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                                 }
 
                                 const t = item.data;
-                                const currency = getAccountCurrency(t.account);
+                                const currency = t.currency || getAccountCurrency(t.account);
 
                                 return (
                                     <>
@@ -378,7 +381,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                                                 <span className={`text-sm font-medium ${t.amount > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
                                                     {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount, currency)}
                                                 </span>
-                                                {t.originalAmount && t.originalCurrency && t.originalCurrency !== 'RUB' && (
+                                                {!!t.originalAmount && !!t.originalCurrency && t.originalCurrency !== 'RUB' && (
                                                     <span className="text-xs text-gray-500">
                                                         {(() => {
                                                             if (isPrivacyMode) return '••••••';

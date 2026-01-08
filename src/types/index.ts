@@ -5,9 +5,11 @@ export type Transaction = {
     amount: number;
     account: string;
     note: string;
-    tags?: string;
-    originalAmount?: number;
     originalCurrency?: string;
+    originalAmount?: number;
+    tags?: string[];
+    index?: number; // Row index for sorting same-day transactions
+    currency?: string; // Explicit currency for this transaction (overrides account default)
     type: 'expense' | 'income' | 'transfer';
 };
 
@@ -19,5 +21,7 @@ export type Account = {
     type: 'wallet' | 'crypto' | 'bank' | 'cash' | 'card';
     currency: string;
     balance: number;
+    balance_date?: string; // ISO date string for checkpoint
+    balance_checkpoint_tx_id?: string; // ID of the last transaction included in this balance
     is_hidden?: boolean;
 };

@@ -324,7 +324,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
         const matchingTransactions = transactions.filter(t => {
             if (t.type !== 'expense' || t.category !== category) return false;
-            const tTag = t.tags || 'No Tag';
+            const tTag = (Array.isArray(t.tags) ? t.tags.join(', ') : t.tags) || 'No Tag';
             return tTag === tag;
         });
 
@@ -359,7 +359,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         parentTransactions.forEach(t => {
             // If Global Mode -> Breakdown by Category
             // If Category Mode -> Breakdown by Tag
-            const key = viewMode === 'global' ? t.category : (t.tags || t.note || 'No Tag');
+            const tagKey = (Array.isArray(t.tags) ? t.tags.join(', ') : t.tags) || t.note || 'No Tag';
+            const key = viewMode === 'global' ? t.category : tagKey;
 
             // Aggregate Total
             if (!groups[key]) {

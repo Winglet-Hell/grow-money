@@ -176,8 +176,6 @@ export const generateTestData = (): Transaction[] => {
                 type: 'expense'
             });
         }
-
-        // Increment day
         currentDate.setDate(currentDate.getDate() + 1);
     }
 

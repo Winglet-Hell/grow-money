@@ -115,7 +115,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         const currentMonth = now.getMonth();
 
         categoryTransactions.forEach(t => {
-            const tag = t.tags || t.note || 'No Tag';
+            const tag = (Array.isArray(t.tags) ? t.tags.join(', ') : t.tags) || t.note || 'No Tag';
             if (!groups[tag]) {
                 groups[tag] = { total: 0, count: 0 };
             }
@@ -302,7 +302,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
         const matchingTransactions = transactions.filter(t => {
             if (t.type !== 'income' || t.category !== category) return false;
-            const tTag = t.tags || 'No Tag';
+            const tTag = (Array.isArray(t.tags) ? t.tags.join(', ') : t.tags) || 'No Tag';
             return tTag === tag;
         });
 
