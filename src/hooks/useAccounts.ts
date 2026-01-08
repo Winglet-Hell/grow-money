@@ -49,7 +49,7 @@ export function useAccounts(transactions: Transaction[]) {
             query = query.is('user_id', null);
         }
 
-        const { data } = await query;
+        const { data } = await query.order('created_at', { ascending: true });
         if (data) {
             setDbAccounts(data);
         }
@@ -132,7 +132,7 @@ export function useAccounts(transactions: Transaction[]) {
             // Sort transactions: Oldest -> Newest
             // We use slice() to avoid mutating the original array if it's not already a copy
             const sorted = [...transactions].sort((a, b) => {
-                if (a.date !== b.date) return a.date.localeCompare(a.date);
+                if (a.date !== b.date) return a.date.localeCompare(b.date);
                 return (b.index || 0) - (a.index || 0);
             });
 
@@ -245,6 +245,7 @@ export function useAccounts(transactions: Transaction[]) {
             b.rubEquivalent = b.current * rate;
         });
 
+        balances.sort((a, b) => a.name.localeCompare(b.name));
         return balances;
     }, [transactions, rates, dbAccounts]);
 
