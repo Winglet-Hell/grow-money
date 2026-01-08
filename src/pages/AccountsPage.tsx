@@ -44,13 +44,14 @@ export function AccountsPage({ transactions, userId }: AccountsPageProps) {
     };
 
     const getIcon = (type: string) => {
+        const props = { className: "w-10 h-10", strokeWidth: 1.5 };
         switch (type) {
-            case 'wallet': return <Wallet className="w-5 h-5" />;
-            case 'crypto': return <Bitcoin className="w-5 h-5" />;
-            case 'bank': return <Landmark className="w-5 h-5" />;
-            case 'cash': return <Banknote className="w-5 h-5" />;
-            case 'card': return <CreditCard className="w-5 h-5" />;
-            default: return <DollarSign className="w-5 h-5" />;
+            case 'wallet': return <Wallet {...props} />;
+            case 'crypto': return <Bitcoin {...props} />;
+            case 'bank': return <Landmark {...props} />;
+            case 'cash': return <Banknote {...props} />;
+            case 'card': return <CreditCard {...props} />;
+            default: return <DollarSign {...props} />;
         }
     };
 
@@ -76,46 +77,49 @@ export function AccountsPage({ transactions, userId }: AccountsPageProps) {
         const canEdit = !!userId;
 
         return (
-            <div className={`p-6 rounded-2xl border transition-all duration-300 group relative ${Math.abs(account.current) < 0.01
+            <div className={`p-6 rounded-2xl border transition-all duration-300 group relative flex items-start justify-between ${Math.abs(account.current) < 0.01
                 ? 'bg-gray-50 border-gray-100 opacity-60 hover:opacity-100'
                 : 'bg-white border-gray-100 shadow-sm hover:shadow-md'
                 }`}>
-                {canEdit && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingAccount(account);
-                        }}
-                        className="absolute top-4 right-4 p-2 text-gray-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-full opacity-0 group-hover:opacity-100 transition-all"
-                        title="Edit Account"
-                    >
-                        <Pencil className="w-4 h-4" />
-                    </button>
-                )}
-
-                <div className="flex items-center gap-3 mb-4">
-                    <div className={`p-2 rounded-xl ${Math.abs(account.current) < 0.01 ? 'bg-gray-100 text-gray-400' : 'bg-emerald-50 text-emerald-600'
-                        }`}>
-                        {getIcon(account.type)}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="flex-1">
+                            <h3 className={`font-semibold truncate ${Math.abs(account.current) < 0.01 ? 'text-gray-500' : 'text-gray-900'
+                                }`}>{account.name}</h3>
+                            {account.currency !== 'RUB' && (
+                                <div className="text-xs text-gray-400 font-medium mt-0.5">
+                                    Rate: {rate.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                    <div className="flex-1">
-                        <h3 className={`font-semibold ${Math.abs(account.current) < 0.01 ? 'text-gray-500' : 'text-gray-900'
-                            }`}>{account.name}</h3>
-                        {account.currency !== 'RUB' && (
-                            <div className="text-xs text-gray-400 font-medium mt-0.5">
-                                Rate: {rate.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </div>
-                        )}
+                    <div className="space-y-1">
+                        <div className={`text-2xl font-bold ${account.current < 0 ? 'text-red-500' : Math.abs(account.current) < 0.01 ? 'text-gray-400' : 'text-gray-900'
+                            }`}>
+                            {formatCurrency(account.current, account.currency)}
+                        </div>
+                        <div className="text-sm text-gray-500 font-medium">
+                            ≈ {formatCurrency(account.rubEquivalent, 'RUB')}
+                        </div>
                     </div>
                 </div>
-                <div className="space-y-1">
-                    <div className={`text-2xl font-bold ${account.current < 0 ? 'text-red-500' : Math.abs(account.current) < 0.01 ? 'text-gray-400' : 'text-gray-900'
-                        }`}>
-                        {formatCurrency(account.current, account.currency)}
+
+                <div className="flex-shrink-0 ml-4 flex flex-col items-end justify-between self-stretch">
+                    <div className={Math.abs(account.current) < 0.01 ? 'text-gray-300' : 'text-emerald-500'}>
+                        {getIcon(account.type)}
                     </div>
-                    <div className="text-sm text-gray-500 font-medium">
-                        ≈ {formatCurrency(account.rubEquivalent, 'RUB')}
-                    </div>
+                    {canEdit && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingAccount(account);
+                            }}
+                            className="p-2 text-gray-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-full opacity-0 group-hover:opacity-100 transition-all mt-auto"
+                            title="Edit Account"
+                        >
+                            <Pencil className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
             </div>
         );
@@ -124,15 +128,16 @@ export function AccountsPage({ transactions, userId }: AccountsPageProps) {
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
             {/* Header / Net Worth */}
-            <div className="relative">
-                <div className="bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-3xl p-8 text-white shadow-lg overflow-hidden relative">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
-                    <div className="relative z-10">
-                        <h2 className="text-emerald-100 font-medium text-lg mb-2">Total Net Worth</h2>
-                        <div className="text-5xl font-bold tracking-tight">
+            <div className="bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-3xl p-6 sm:p-8 text-white shadow-lg overflow-hidden relative">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+
+                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                    <div className="space-y-1">
+                        <h2 className="text-emerald-100/80 font-medium text-base sm:text-lg">Total Net Worth</h2>
+                        <div className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
                             {isPrivacyMode ? '••••••' : formatCurrency(totalNetWorth, 'RUB')}
                         </div>
-                        <div className="mt-4 flex items-center gap-2 text-emerald-100 text-sm">
+                        <div className="pt-2 flex items-center gap-2 text-emerald-100/70 text-xs sm:text-sm">
                             {isLoadingRates ? (
                                 <TrendingUp className="w-4 h-4 animate-pulse" />
                             ) : isLiveRates ? (
@@ -140,7 +145,7 @@ export function AccountsPage({ transactions, userId }: AccountsPageProps) {
                             ) : (
                                 <WifiOff className="w-4 h-4 text-emerald-300" />
                             )}
-                            <span>
+                            <span className="font-medium">
                                 {isLoadingRates
                                     ? 'Updating rates...'
                                     : isLiveRates
@@ -149,34 +154,34 @@ export function AccountsPage({ transactions, userId }: AccountsPageProps) {
                             </span>
                         </div>
                     </div>
-                </div>
 
-                <div className="absolute top-8 right-8 z-20 flex items-center gap-2">
-                    <button
-                        onClick={() => setShowHidden(!showHidden)}
-                        className="bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-                        title={showHidden ? "Hide zero balance accounts" : "Show zero balance accounts"}
-                    >
-                        {showHidden ? (
-                            <>
-                                <EyeOff className="w-4 h-4" />
-                                <span className="hidden sm:inline">Hide Empty</span>
-                            </>
-                        ) : (
-                            <>
-                                <Eye className="w-4 h-4" />
-                                <span className="hidden sm:inline">Show Empty</span>
-                            </>
-                        )}
-                    </button>
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <button
+                            onClick={() => setShowHidden(!showHidden)}
+                            className="flex-1 md:flex-none justify-center bg-white/10 hover:bg-white/20 text-white backdrop-blur-md px-4 py-2.5 rounded-xl font-semibold transition-all duration-300 flex items-center gap-2 border border-white/10 hover:border-white/20 active:scale-95"
+                            title={showHidden ? "Hide zero balance accounts" : "Show zero balance accounts"}
+                        >
+                            {showHidden ? (
+                                <>
+                                    <EyeOff className="w-4 h-4" />
+                                    <span>Hide Empty</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Eye className="w-4 h-4" />
+                                    <span>Show Empty</span>
+                                </>
+                            )}
+                        </button>
 
-                    <button
-                        onClick={() => setIsCreateModalOpen(true)}
-                        className="bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-                    >
-                        <Plus className="w-4 h-4" />
-                        Add Account
-                    </button>
+                        <button
+                            onClick={() => setIsCreateModalOpen(true)}
+                            className="flex-1 md:flex-none justify-center bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg px-4 py-2.5 rounded-xl font-semibold transition-all duration-300 flex items-center gap-2 border border-emerald-400/30 active:scale-95"
+                        >
+                            <Plus className="w-4 h-4" />
+                            <span>Add Account</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 

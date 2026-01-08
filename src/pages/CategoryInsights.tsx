@@ -8,12 +8,13 @@ import {
     TableHeader,
     TableRow,
 } from "../components/ui/table"
-import { ArrowUpDown, TrendingUp, Wallet, AlertCircle, Calendar, Search, X } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, Wallet, AlertCircle, Calendar, Search, X, ArrowDownCircle } from 'lucide-react';
 import { cn, stringToColor, getFormattedDateRange } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
 import { getGlobalCategory } from '../lib/categoryGroups';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { MetricCard } from '../components/MetricCard';
 
 interface CategoryInsightsProps {
     transactions: Transaction[];
@@ -603,37 +604,37 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
             {summaryMetrics && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <p className="text-sm font-medium text-gray-500 mb-2">Avg. Monthly Spending</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(summaryMetrics.avgMonthly)}</h3>
-                        <p className="text-xs text-gray-400 mt-1">Based on {Object.keys(transactions).length > 0 ? 'all data' : '0'} months</p>
-                    </div>
+                    <MetricCard
+                        title="Avg. Monthly Spending"
+                        amount={summaryMetrics.avgMonthly}
+                        icon={<ArrowDownCircle className="w-10 h-10 text-red-500" strokeWidth={1.5} />}
+                        description={`Based on ${Object.keys(transactions).length > 0 ? 'all data' : '0'} months`}
+                        isPrivacy={isPrivacyMode}
+                    />
 
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <p className="text-sm font-medium text-gray-500 mb-2">Year Forecast</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(summaryMetrics.yearForecast)}</h3>
-                        <p className="text-xs text-gray-400 mt-1">Estimated total for {new Date().getFullYear()}</p>
-                    </div>
+                    <MetricCard
+                        title="Year Forecast"
+                        amount={summaryMetrics.yearForecast}
+                        icon={<TrendingUp className="w-10 h-10 text-blue-500" strokeWidth={1.5} />}
+                        description={`Estimated total for ${new Date().getFullYear()}`}
+                        isPrivacy={isPrivacyMode}
+                    />
 
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <p className="text-sm font-medium text-gray-500 mb-2">Last Year Spending</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(summaryMetrics.lastYearTotal)}</h3>
-                        <p className="text-xs text-gray-400 mt-1">{new Date().getFullYear() - 1} Total</p>
-                    </div>
+                    <MetricCard
+                        title="Last Year Spending"
+                        amount={summaryMetrics.lastYearTotal}
+                        icon={<ArrowDownCircle className="w-10 h-10 text-gray-400" strokeWidth={1.5} />}
+                        description={`${new Date().getFullYear() - 1} Total`}
+                        isPrivacy={isPrivacyMode}
+                    />
 
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <p className="text-sm font-medium text-gray-500 mb-2">Last Completed Month</p>
-                        <div className="flex items-baseline gap-2">
-                            <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(summaryMetrics.lastMonthTotal)}</h3>
-                            <span className={cn(
-                                "text-sm font-medium",
-                                summaryMetrics.trendRatio > 0 ? "text-red-500" : "text-emerald-500"
-                            )}>
-                                {isPrivacyMode ? '•••' : (summaryMetrics.trendRatio > 0 ? '+' : '') + (summaryMetrics.trendRatio * 100).toFixed(1) + '%'}
-                            </span>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">vs Average</p>
-                    </div>
+                    <MetricCard
+                        title="Last Completed Month"
+                        amount={summaryMetrics.lastMonthTotal}
+                        icon={<Calendar className="w-10 h-10 text-blue-500" strokeWidth={1.5} />}
+                        trend={isPrivacyMode ? '•••' : `${(summaryMetrics.trendRatio > 0 ? '+' : '')}${(summaryMetrics.trendRatio * 100).toFixed(1)}% vs Avg`}
+                        isPrivacy={isPrivacyMode}
+                    />
                 </div>
             )}
 
@@ -642,9 +643,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 {/* 1. Budget Health */}
                 <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
                     <div>
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between mb-2 gap-4">
                             <span className="text-sm font-medium text-gray-500">Overall Budget</span>
-                            <Wallet className="w-4 h-4 text-emerald-500" />
+                            <Wallet className="w-10 h-10 text-emerald-500" strokeWidth={1.5} />
                         </div>
                         <div className="flex items-baseline gap-2">
                             <span className="text-2xl font-bold text-gray-900">
@@ -670,9 +671,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 {/* 2. Daily Pace */}
                 <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
                     <div>
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between mb-2 gap-4">
                             <span className="text-sm font-medium text-gray-500">Daily Pace</span>
-                            <Calendar className="w-4 h-4 text-blue-500" />
+                            <Calendar className="w-10 h-10 text-blue-500" strokeWidth={1.5} />
                         </div>
                         <div className="flex items-baseline gap-2">
                             <span className={cn(
@@ -711,9 +712,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 {/* 3. Top Spender */}
                 <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
                     <div>
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between mb-2 gap-4">
                             <span className="text-sm font-medium text-gray-500">Top Spender</span>
-                            <AlertCircle className="w-4 h-4 text-orange-500" />
+                            <AlertCircle className="w-10 h-10 text-orange-500" strokeWidth={1.5} />
                         </div>
                         {infographics.topCategory ? (
                             <>

@@ -442,16 +442,20 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
 
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                         <span>Step size:</span>
-                        <select
-                            value={loadStep}
-                            onChange={(e) => setLoadStep(Number(e.target.value))}
-                            className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                        >
-                            <option value={20}>20</option>
-                            <option value={50}>50</option>
-                            <option value={100}>100</option>
-                            <option value={500}>500</option>
-                        </select>
+                        <div className="relative flex items-center group">
+                            <select
+                                value={loadStep}
+                                onChange={(e) => setLoadStep(Number(e.target.value))}
+                                className="bg-white border border-gray-200 rounded-lg pl-2 pr-8 py-1 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 appearance-none cursor-pointer hover:border-gray-300 transition-all"
+                                style={{ WebkitTapHighlightColor: 'transparent' }}
+                            >
+                                <option value={20}>20</option>
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                                <option value={500}>500</option>
+                            </select>
+                            <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-gray-400 group-hover:text-emerald-500 pointer-events-none transition-colors" />
+                        </div>
                     </div>
 
                     <p className="text-xs text-gray-400">

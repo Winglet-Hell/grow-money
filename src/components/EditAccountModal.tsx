@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Wallet, Bitcoin, Landmark, Banknote, CreditCard, Calendar } from 'lucide-react';
+import { X, Wallet, Bitcoin, Landmark, Banknote, CreditCard, Calendar, ChevronDown } from 'lucide-react';
 import type { Transaction, Account } from '../types';
 import { updateAccount } from '../lib/accountUtils';
 import { db } from '../lib/db';
@@ -215,16 +215,20 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                                 Currency
                             </label>
-                            <select
-                                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm py-2.5 px-3 border"
-                                value={currency}
-                                onChange={(e) => setCurrency(e.target.value)}
-                            >
-                                {SUPPORTED_CURRENCIES.map(c => (
-                                    <option key={c} value={c}>{c}</option>
-                                ))}
-                                <option value="CUSTOM">Other...</option>
-                            </select>
+                            <div className="relative flex items-center group">
+                                <select
+                                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 sm:text-sm py-2.5 pl-3 pr-10 border appearance-none cursor-pointer bg-white transition-all hover:border-emerald-300 outline-none focus:outline-none"
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                                    value={currency}
+                                    onChange={(e) => setCurrency(e.target.value)}
+                                >
+                                    {SUPPORTED_CURRENCIES.map(c => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                    <option value="CUSTOM">Other...</option>
+                                </select>
+                                <ChevronDown className="absolute right-3 w-4 h-4 text-gray-400 group-hover:text-emerald-500 pointer-events-none transition-colors" />
+                            </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -283,7 +283,7 @@ function WishlistCard({ item, netWorth, savingPower, onDelete, onEdit, isPrivacy
                 {!isUrl && (
                     <div className="flex justify-between items-start mb-4">
                         <div className="text-emerald-500">
-                            {IconComponent ? <IconComponent className="w-10 h-10" /> : <ShoppingBag className="w-10 h-10" />}
+                            {IconComponent ? <IconComponent className="w-10 h-10" strokeWidth={1.5} /> : <ShoppingBag className="w-10 h-10" strokeWidth={1.5} />}
                         </div>
                         <span className={`px-2 py-1 rounded text-xs font-bold ${item.priority === 'High' ? 'bg-red-100 text-red-600' :
                             item.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :

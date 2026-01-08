@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, ChevronDown } from 'lucide-react';
 import {
     ComposedChart,
     Line,
@@ -254,29 +254,35 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
                         </button>
                     </div>
 
-                    {/* Category Selector with Icon */}
-                    <div className="flex items-center gap-2">
+                    {/* Category Selector with Icon and Arrow */}
+                    <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl hover:border-emerald-400 hover:bg-white transition-all focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500 group">
                         {selectedCategory && (
-                            <div className={cn(
-                                "p-1.5 rounded-md transition-colors",
-                                stringToColor(selectedCategory).bg,
-                                stringToColor(selectedCategory).text
-                            )}>
-                                {(() => {
-                                    const Icon = getCategoryIcon(selectedCategory);
-                                    return <Icon className="w-5 h-5" />;
-                                })()}
+                            <div className="pl-3 flex items-center">
+                                <div className={cn(
+                                    "p-1 rounded-md transition-colors",
+                                    stringToColor(selectedCategory).bg,
+                                    stringToColor(selectedCategory).text
+                                )}>
+                                    {(() => {
+                                        const Icon = getCategoryIcon(selectedCategory);
+                                        return <Icon className="w-4 h-4" />;
+                                    })()}
+                                </div>
                             </div>
                         )}
                         <select
                             value={selectedCategory}
                             onChange={(e) => setSelectedCategory(e.target.value)}
-                            className="block w-48 px-3 py-1.5 text-base border-gray-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md bg-gray-50 border transition-all hover:bg-white appearance-none"
+                            className="bg-transparent border-none py-2 pl-2 pr-10 text-sm font-medium text-gray-700 focus:ring-0 focus:outline-none cursor-pointer appearance-none w-full min-w-[140px] md:w-48"
+                            style={{ WebkitTapHighlightColor: 'transparent' }}
                         >
                             {categories.map(c => (
                                 <option key={c} value={c}>{c}</option>
                             ))}
                         </select>
+                        <div className="absolute right-3 pointer-events-none text-gray-400 group-hover:text-emerald-500 transition-colors">
+                            <ChevronDown className="w-4 h-4" />
+                        </div>
                     </div>
                 </div>
             </div>

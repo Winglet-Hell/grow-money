@@ -16,13 +16,14 @@ import {
     Cell,
     LabelList
 } from 'recharts';
-import { TrendingUp, Wallet, PiggyBank } from 'lucide-react';
+import { Wallet, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 import type { Transaction } from '../types';
 import { CategoryTrendsSection } from '../components/CategoryTrendsSection';
 import { AnomaliesSection } from '../components/AnomaliesSection';
 import { SpendingHeatmap } from '../components/SpendingHeatmap';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { CustomTooltip } from '../components/CustomTooltip';
+import { MetricCard } from '../components/MetricCard';
 
 interface TrendsPageProps {
     transactions: Transaction[];
@@ -174,25 +175,22 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <KPICard
+                <MetricCard
                     title="Avg. Monthly Income"
                     amount={kpis.avgIncome}
-                    icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
-                    color="emerald"
+                    icon={<ArrowUpCircle className="w-10 h-10 text-emerald-500" strokeWidth={1.5} />}
                     isPrivacy={isPrivacyMode}
                 />
-                <KPICard
+                <MetricCard
                     title="Avg. Monthly Spend"
                     amount={kpis.avgSpend}
-                    icon={<Wallet className="w-5 h-5 text-rose-600" />}
-                    color="rose"
+                    icon={<ArrowDownCircle className="w-10 h-10 text-red-500" strokeWidth={1.5} />}
                     isPrivacy={isPrivacyMode}
                 />
-                <KPICard
+                <MetricCard
                     title="Total Saved"
                     amount={kpis.totalSaved}
-                    icon={<PiggyBank className="w-5 h-5 text-blue-600" />}
-                    color="blue"
+                    icon={<Wallet className="w-10 h-10 text-blue-500" strokeWidth={1.5} />}
                     isPrivacy={isPrivacyMode}
                 />
             </div>
@@ -394,28 +392,6 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
     );
 }
 
-// Sub-components for cleaner code
-function KPICard({ title, amount, icon, color, isPrivacy }: { title: string; amount: number; icon: React.ReactNode; color: 'emerald' | 'rose' | 'blue', isPrivacy: boolean }) {
-    const bgColors = {
-        emerald: 'bg-emerald-50',
-        rose: 'bg-rose-50',
-        blue: 'bg-blue-50'
-    };
-
-    return (
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between group hover:shadow-md transition-shadow">
-            <div>
-                <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
-                <h3 className="text-2xl font-bold text-gray-900">
-                    {isPrivacy ? '••••••' : new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(amount)}
-                </h3>
-            </div>
-            <div className={`p-3 rounded-lg ${bgColors[color]} group-hover:scale-110 transition-transform`}>
-                {icon}
-            </div>
-        </div>
-    );
-}
 
 function ChartCard({ title, children, headerRight }: { title: string; children: React.ReactNode; headerRight?: React.ReactNode }) {
     return (
