@@ -33,20 +33,20 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions }) => {
             <Card
                 title="Total Income"
                 amount={income}
-                icon={<ArrowUpCircle className="w-6 h-6 text-emerald-500" />}
+                icon={<ArrowUpCircle className="w-8 h-8 text-emerald-500" />}
                 trend="Good job!"
                 isPrivacy={isPrivacyMode}
             />
             <Card
                 title="Total Expenses"
                 amount={expenses}
-                icon={<ArrowDownCircle className="w-6 h-6 text-red-500" />}
+                icon={<ArrowDownCircle className="w-8 h-8 text-red-500" />}
                 isPrivacy={isPrivacyMode}
             />
             <Card
                 title="Net Balance"
                 amount={netBalance}
-                icon={<Wallet className="w-6 h-6 text-blue-500" />}
+                icon={<Wallet className="w-8 h-8 text-blue-500" />}
                 isPrivacy={isPrivacyMode}
             />
         </div>
@@ -66,7 +66,7 @@ const Card = ({ title, amount, icon, trend, isPrivacy }: any) => (
             </h3>
             {trend && <p className="text-xs text-emerald-600 mt-2 font-medium">{trend}</p>}
         </div>
-        <div className="p-3 bg-gray-50 rounded-lg">
+        <div>
             {icon}
         </div>
     </div>

@@ -126,7 +126,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                 />
                                 <YAxis hide />
                                 <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
-                                <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={48}>
+                                <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={48} isAnimationActive={false}>
                                     <LabelList
                                         dataKey="value"
                                         position="top"
@@ -160,7 +160,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                 />
                                 <YAxis hide />
                                 <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
-                                <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={48}>
+                                <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={48} isAnimationActive={false}>
                                     <LabelList
                                         dataKey="value"
                                         position="top"

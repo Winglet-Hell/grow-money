@@ -92,14 +92,14 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
         return filteredAndSortedTransactions.slice(0, visibleCount);
     }, [filteredAndSortedTransactions, visibleCount]);
 
-    // Calculate stats for PAGINATED transactions per currency
+    // Calculate stats for PAGINATED transactions - always in RUB
     const dailyStats = useMemo(() => {
         const stats: Record<string, Record<string, { income: number; expense: number }>> = {};
         if (sortConfig.key !== 'date') return stats;
 
         paginatedTransactions.forEach(t => {
             const dateKey = formatDate(t.date);
-            const currency = getAccountCurrency(t.account);
+            const currency = 'RUB'; // t.amount is always in RUB
 
             if (!stats[dateKey]) {
                 stats[dateKey] = {};
@@ -115,7 +115,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
             }
         });
         return stats;
-    }, [paginatedTransactions, sortConfig.key, accounts]);
+    }, [paginatedTransactions, sortConfig.key]);
 
     // Flatten for virtualization
     const virtualItems = useMemo(() => {
@@ -183,7 +183,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
     const MobileCard = ({ transaction: t }: { transaction: Transaction }) => {
         const color = stringToColor(t.category);
         const Icon = getCategoryIcon(t.category);
-        const currency = getAccountCurrency(t.account);
+
+        // t.amount is always in RUB (converted)
+        // Show original currency if present
+        const showOriginalCurrency = t.originalAmount && t.originalCurrency;
 
         return (
             <div className="bg-white p-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
@@ -192,34 +195,32 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                         <div className={cn("p-2 rounded-lg", color.bg, color.text)}>
                             <Icon className="w-5 h-5" />
                         </div>
-                        <div>
+                        <div className="flex flex-col gap-1">
                             <div className="font-medium text-gray-900">{t.tags || t.note || t.category}</div>
-                            <div className="text-xs text-gray-500">{formatDate(t.date)}</div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs bg-gray-100 px-2 py-1 rounded-full text-gray-600">
+                                    {t.tags ? (t.note || t.category) : (t.note ? t.category : 'No category')}
+                                </span>
+                                <span className="text-xs text-gray-400">• {t.account}</span>
+                            </div>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <span className={`font-semibold ${t.amount > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
-                            {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount, currency)}
-                        </span>
+                    <div className="text-right flex-shrink-0 ml-3">
+                        {/* Primary amount - RUB (converted) - t.amount is always in RUB */}
+                        <div className={`font-semibold text-lg ${t.amount > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
+                            {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount, 'RUB')}
+                        </div>
+                        {/* Secondary amount - Original currency */}
+                        {showOriginalCurrency && t.originalAmount && t.originalCurrency && (
+                            <div className="text-sm text-gray-500 mt-0.5">
+                                {(() => {
+                                    if (isPrivacyMode) return '••••••';
+                                    return formatCurrency(t.originalAmount, t.originalCurrency);
+                                })()}
+                            </div>
+                        )}
                     </div>
                 </div>
-
-                <div className="flex justify-between items-center text-sm text-gray-500 pl-[3.25rem]">
-                    <span className="truncate max-w-[150px]">{t.tags ? (t.note || t.category) : (t.note ? t.category : 'No description')}</span>
-                    <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">{t.account}</span>
-                </div>
-                {t.originalAmount && t.originalCurrency && t.originalCurrency !== 'RUB' && (
-                    <div className="text-right text-xs text-gray-400 mt-1">
-                        {(() => {
-                            if (isPrivacyMode) return '••••••';
-                            try {
-                                return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: t.originalCurrency }).format(t.originalAmount);
-                            } catch (e) {
-                                return `${t.originalAmount.toLocaleString('ru-RU')} ${t.originalCurrency}`;
-                            }
-                        })()}
-                    </div>
-                )}
             </div>
         );
     };

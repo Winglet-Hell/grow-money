@@ -224,10 +224,10 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                             />
                             <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} />
                             <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#6B7280', paddingTop: '10px', fontWeight: 400, fontFamily: 'inherit' }} />
-                            <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={50}>
+                            <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={50} isAnimationActive={false}>
                                 <LabelList dataKey="income" position="top" formatter={formatShortValue} style={{ fontSize: '10px', fill: '#6B7280' }} />
                             </Bar>
-                            <Bar dataKey="expenses" name="Expenses" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={50}>
+                            <Bar dataKey="expenses" name="Expenses" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={50} isAnimationActive={false}>
                                 <LabelList dataKey="expenses" position="top" formatter={formatShortValue} style={{ fontSize: '10px', fill: '#6B7280' }} />
                             </Bar>
                         </BarChart>
@@ -255,7 +255,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                             />
                             <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
                             <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#6B7280', paddingTop: '10px', fontWeight: 400, fontFamily: 'inherit' }} />
-                            <Bar dataKey="netFlow" name="Net Flow" radius={[4, 4, 0, 0]} maxBarSize={50}>
+                            <Bar dataKey="netFlow" name="Net Flow" radius={[4, 4, 0, 0]} maxBarSize={50} isAnimationActive={false}>
                                 {chartData.map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={entry.netFlow > 0 ? '#10b981' : '#f43f5e'} />
                                 ))}
@@ -371,6 +371,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                     strokeWidth={2}
                                     fillOpacity={1}
                                     fill="url(#colorSavings)"
+                                    isAnimationActive={false}
                                 >
                                     <LabelList dataKey="savingsRate" position="top" formatter={(val: any) => Math.round(Number(val)) + '%'} style={{ fontSize: '10px', fill: '#6B7280' }} />
                                 </Area>
