@@ -49,7 +49,7 @@ const CustomXAxisTick = (props: any) => {
     );
 };
 
-export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
+export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
     const { isPrivacyMode } = usePrivacy();
     const expensesByCategory = useMemo(() => {
         const categories: Record<string, number> = {};
@@ -62,12 +62,9 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                 categories[cat] = (categories[cat] || 0) + amount;
             });
 
-        const sorted = Object.entries(categories)
+        return Object.entries(categories)
             .map(([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value);
-
-        // Return full list for scrolling
-        return sorted;
     }, [transactions]);
 
     const monthlySpending = useMemo(() => {
@@ -76,21 +73,20 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
         transactions
             .filter(t => t.type === 'expense')
             .forEach(t => {
-                let dateObj = new Date(t.date);
-                if (isNaN(dateObj.getTime())) {
-                    // Try parsing DD.MM.YYYY
-                    const parts = t.date.split(/[ .]/);
+                const dateKey = t.date.slice(0, 7); // Assuming YYYY-MM-DD or DD.MM.YYYY
+                let key = '';
+
+                if (t.date.includes('-')) {
+                    key = dateKey; // YYYY-MM
+                } else if (t.date.includes('.')) {
+                    // DD.MM.YYYY -> YYYY-MM
+                    const parts = t.date.split('.');
                     if (parts.length >= 3) {
-                        // strict assumption: day.month.year
-                        dateObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                        key = `${parts[2]}-${parts[1]}`;
                     }
                 }
 
-                if (!isNaN(dateObj.getTime())) {
-                    // Use sortable key YYYY-MM
-                    const year = dateObj.getFullYear();
-                    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-                    const key = `${year}-${month}`;
+                if (key) {
                     months[key] = (months[key] || 0) + Math.abs(t.amount);
                 }
             });
@@ -106,6 +102,12 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                 };
             });
     }, [transactions]);
+
+    // Pre-calculate max for severity colors and current month string
+    const { maxValue, currentMonthStr } = useMemo(() => ({
+        maxValue: Math.max(...monthlySpending.map(m => m.value), 0),
+        currentMonthStr: new Date().toLocaleString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' })
+    }), [monthlySpending]);
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
@@ -174,11 +176,10 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                         style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 500 }}
                                     />
                                     {monthlySpending.map((entry, index) => {
-                                        const current = new Date().toLocaleString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' });
-                                        const isCurrent = entry.name === current;
+                                        const isCurrent = entry.name === currentMonthStr;
                                         const color = isCurrent
                                             ? '#cbd5e1' // Gray for incomplete (current) month
-                                            : getSeverityColor(entry.value, Math.max(...monthlySpending.map(m => m.value)));
+                                            : getSeverityColor(entry.value, maxValue);
 
                                         return <Cell key={`cell-${index}`} fill={color} />;
                                     })}
@@ -190,4 +191,4 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
             </div>
         </div>
     );
-};
+});

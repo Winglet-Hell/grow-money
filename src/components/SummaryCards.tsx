@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ArrowUpCircle, ArrowDownCircle, Wallet } from 'lucide-react';
 import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -8,19 +8,25 @@ interface SummaryCardsProps {
     transactions: Transaction[];
 }
 
-export const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions }) => {
+export const SummaryCards: React.FC<SummaryCardsProps> = React.memo(({ transactions }) => {
     const { isPrivacyMode } = usePrivacy();
 
     // Calculate income and expenses
-    const income = transactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + t.amount, 0);
+    const { income, expenses, netBalance } = useMemo(() => {
+        const income = transactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
 
-    const expenses = transactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        const expenses = transactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-    const netBalance = income - expenses;
+        return {
+            income,
+            expenses,
+            netBalance: income - expenses
+        };
+    }, [transactions]);
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -45,4 +51,4 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions }) => {
             />
         </div>
     );
-};
+});

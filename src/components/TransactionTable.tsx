@@ -24,7 +24,7 @@ type VirtualItem =
     | { type: 'header'; date: string; stats: Record<string, { income: number; expense: number }> }
     | { type: 'transaction'; data: Transaction; originalIndex: number };
 
-export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions }) => {
+export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ transactions }) => {
     const { isPrivacyMode } = usePrivacy();
     const { settings: { preferences } } = useUserSettings();
     const { accounts } = useAccounts(transactions);
@@ -40,9 +40,14 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
     const isCompact = preferences?.tableCompactMode === true;
     const py = isCompact ? 'py-2' : 'py-4';
 
+    const accountCurrencyMap = useMemo(() => {
+        const map = new Map<string, string>();
+        accounts.forEach(a => map.set(a.name, a.currency || 'RUB'));
+        return map;
+    }, [accounts]);
+
     const getAccountCurrency = (accountName: string) => {
-        const account = accounts.find(a => a.name === accountName);
-        return account?.currency || 'RUB';
+        return accountCurrencyMap.get(accountName) || 'RUB';
     };
 
     const handleSort = (key: SortKey) => {
@@ -465,4 +470,4 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
             )}
         </div>
     );
-};
+});

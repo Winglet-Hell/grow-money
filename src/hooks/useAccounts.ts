@@ -108,8 +108,11 @@ export function useAccounts(transactions: Transaction[]) {
         const useDynamicAccounts = true;
 
         // 1. Initialize from DB Accounts if available
+        const accountMap = new Map<string, number>(); // Name -> Index in balances
+
         if (dbAccounts.length > 0) {
             dbAccounts.forEach(acc => {
+                const idx = balances.length;
                 balances.push({
                     id: acc.id || normalize(acc.name),
                     name: acc.name,
@@ -121,70 +124,45 @@ export function useAccounts(transactions: Transaction[]) {
                     balance_date: acc.balance_date,
                     balance_checkpoint_tx_id: acc.balance_checkpoint_tx_id
                 });
+                accountMap.set(normalize(acc.name), idx);
             });
         }
 
-        // 2. Process Transactions to update balances
-        // If NO DB accounts, we generate dynamic ones on the fly (Hybrid/Legacy mode)
-        // const useDynamicAccounts = dbAccounts.length === 0; // Moved to top
-
-        if (Array.isArray(transactions)) {
-            // Sort transactions
+        if (Array.isArray(transactions) && transactions.length > 0) {
+            // Sort transactions: Oldest -> Newest
+            // We use slice() to avoid mutating the original array if it's not already a copy
             const sorted = [...transactions].sort((a, b) => {
-                // Primary sort: Date ASC (Oldest -> Newest)
-                if (a.date !== b.date) return a.date.localeCompare(b.date);
-
-                // Secondary sort: Index DESC (File Bottom/Oldest -> File Top/Newest)
-                // Assuming high index = older transaction in file
+                if (a.date !== b.date) return a.date.localeCompare(a.date);
                 return (b.index || 0) - (a.index || 0);
             });
 
-            if (sorted.length > 0) {
-                // Removed info log to reduce noise, kept rub debug
-            }
+            // Pre-parse checkpoint dates to avoid repeated split/parsing
+            const accountCheckpoints = balances.map(acc => {
+                if (!acc.balance_date) return null;
+                return acc.balance_date.split('T')[0];
+            });
 
-
-
-
-            // Helper to check if a transaction should be applied based on account checkpoint
-            // Uses a closure to update the account's runtime state (hasPassedCheckpoint)
-            const shouldApplyToAccount = (account: AccountStatus, t: Transaction): boolean => {
-                // 1. Checkpoint Logic
-                if (account.balance_date) {
-                    const checkpointDateStr = account.balance_date.split('T')[0];
+            const shouldApplyToAccount = (account: AccountStatus, t: Transaction, accIdx: number): boolean => {
+                const checkpointDateStr = accountCheckpoints[accIdx];
+                if (checkpointDateStr) {
                     const txDateStr = t.date;
-
-                    // Past
                     if (txDateStr < checkpointDateStr) return false;
-
-                    // Future
-                    if (txDateStr > checkpointDateStr) {
-                        // DEBUG TIMEZONE
-                        // console.log(`[Date Debug] ${account.name}: Tx ${txDateStr} > Checkpoint ${checkpointDateStr} -> INCLUDED`);
-                        return true;
-                    }
+                    if (txDateStr > checkpointDateStr) return true;
 
                     // Same Date
-                    if (txDateStr === checkpointDateStr) {
-                        if (account.balance_checkpoint_tx_id) {
-                            if (account.hasPassedCheckpoint) return true;
-
-                            if (t.id === account.balance_checkpoint_tx_id) {
-                                account.hasPassedCheckpoint = true;
-                                return false; // Exclude checkpoint itself
-                            }
-                            return false; // Not passed yet
+                    if (account.balance_checkpoint_tx_id) {
+                        if (account.hasPassedCheckpoint) return true;
+                        if (t.id === account.balance_checkpoint_tx_id) {
+                            account.hasPassedCheckpoint = true;
+                            return false;
                         }
-                        // If no checkpoint ID is set, assume the balance provided is the CLOSING balance for this date.
-                        // Therefore, ignore all transactions on this date (they are already baked in).
                         return false;
                     }
+                    return false;
                 } else {
-                    // Legacy/Anchor Logic
                     if (new Date(t.date) <= ANCHOR_DATE && useDynamicAccounts) return false;
                 }
 
-                // 2. Initial Balance Logic
                 const noteLower = (t.note || '').toLowerCase();
                 const isInitialTx = noteLower.includes('initial balance') || noteLower.includes('start balance');
                 if (isInitialTx && !useDynamicAccounts && Math.abs(account.initial) > 0.01) {
@@ -195,28 +173,13 @@ export function useAccounts(transactions: Transaction[]) {
             };
 
             sorted.forEach(t => {
-                // ACCOUNT MATCHING (Source)
-                let idx = -1;
                 const txAccountNorm = normalize(t.account);
-
-                const matchingIndices: number[] = [];
-                balances.forEach((b, i) => {
-                    const accNorm = normalize(b.name);
-                    if (accNorm === txAccountNorm) matchingIndices.push(i);
-                });
-
-                if (matchingIndices.length === 0) {
-                    idx = -1;
-                }
-                else if (matchingIndices.length === 1) idx = matchingIndices[0];
-                else {
-                    const bestMatch = matchingIndices.find(i => balances[i].balance_date);
-                    idx = bestMatch !== undefined ? bestMatch : matchingIndices[0];
-                }
+                let idx = accountMap.has(txAccountNorm) ? accountMap.get(txAccountNorm)! : -1;
 
                 // Dynamic Account Creation
                 if (idx === -1 && useDynamicAccounts) {
                     const { type, currency } = inferAccountDetails(t.account, t.originalCurrency);
+                    idx = balances.length;
                     balances.push({
                         id: normalize(t.account),
                         name: t.account,
@@ -226,19 +189,13 @@ export function useAccounts(transactions: Transaction[]) {
                         current: 0,
                         rubEquivalent: 0,
                     });
-                    idx = balances.length - 1;
+                    accountMap.set(txAccountNorm, idx);
                 }
 
                 // APPLY TO SOURCE
                 if (idx !== -1) {
                     const sourceAccount = balances[idx];
-
-                    const shouldApply = shouldApplyToAccount(sourceAccount, t);
-
-                    if (shouldApply) {
-                        // Determine which amount to use:
-                        // If account currency matches original transaction currency, use originalAmount (e.g. USDT)
-                        // Otherwise use the default amount (which is usually converted or primary)
+                    if (shouldApplyToAccount(sourceAccount, t, idx)) {
                         let txAmount = t.amount;
                         const accountCurrency = (sourceAccount.currency || '').trim().toUpperCase();
                         const txOriginalCurrency = (t.originalCurrency || '').trim().toUpperCase();
@@ -248,69 +205,35 @@ export function useAccounts(transactions: Transaction[]) {
                             t.originalAmount) {
                             txAmount = t.originalAmount;
                         }
-
-                        // Apply to Current Balance
                         sourceAccount.current += txAmount;
-
-                        // Debug RUB account - WIDENED FILTER
-                        // if (sourceAccount.name.toLowerCase().includes('rub')) {
-                        //     console.log(`[RUB DEBUG] ${sourceAccount.name} | ${t.date} | ${t.type} | Amount: ${txAmount} | NewBalance: ${sourceAccount.current} | ID: ${t.id} | Note: ${t.note}`);
-                        // }
-
-                        // // DEBUG 100k
-                        // if (sourceAccount.name.toLowerCase().includes('bybit') || sourceAccount.name.toLowerCase().includes('usdt')) {
-                        //     console.log(`[100k Debug] Applied ${t.type} ${txAmount} (ID: ${t.id}, Date: ${t.date}, Note: ${t.note}). New Balance: ${sourceAccount.current}`);
-                        // }
-                        // if (Math.abs(txAmount - 100000) < 1) {
-                        //     console.log(`[100k Debug] FOUND THE 100k TRANSACTION! Account: ${sourceAccount.name}, Date: ${t.date}, Note: ${t.note}, ID: ${t.id}`);
-                        // }
                     }
-                    // else if (sourceAccount.name.toLowerCase().includes('bybit') || sourceAccount.name.toLowerCase().includes('usdt')) {
-                    //     console.log(`[100k Debug] Skipped ${t.type} ${t.amount} (ID: ${t.id}, Date: ${t.date}, CheckpointID: ${sourceAccount.balance_checkpoint_tx_id})`);
-                    // }
                 }
 
                 // APPLY TO DESTINATION (Transfers)
-                if (t.type === 'transfer') {
-                    const destName = t.category;
-                    if (destName && destName !== 'Uncategorized') {
-                        // Find Dest Account using same matching logic
-                        const destNorm = normalize(destName);
-                        let destIdx = -1;
-                        const destMatches: number[] = [];
-                        balances.forEach((b, i) => {
-                            if (normalize(b.name) === destNorm) destMatches.push(i);
+                if (t.type === 'transfer' && t.category && t.category !== 'Uncategorized') {
+                    const destNorm = normalize(t.category);
+                    let destIdx = accountMap.has(destNorm) ? accountMap.get(destNorm)! : -1;
+
+                    if (destIdx === -1 && useDynamicAccounts) {
+                        const { type, currency } = inferAccountDetails(t.category, t.originalCurrency);
+                        destIdx = balances.length;
+                        balances.push({
+                            id: destNorm,
+                            name: t.category,
+                            currency: currency || 'THB',
+                            initial: 0,
+                            type: type || 'cash',
+                            current: 0,
+                            rubEquivalent: 0,
                         });
+                        accountMap.set(destNorm, destIdx);
+                    }
 
-                        if (destMatches.length === 1) destIdx = destMatches[0];
-                        else if (destMatches.length > 1) {
-                            const best = destMatches.find(i => balances[i].balance_date);
-                            destIdx = best !== undefined ? best : destMatches[0];
-                        }
-
-                        // Dynamic Account Creation for DESTINATION
-                        // Allows creating 'Btc' or other wallets that only receive funds even if not in DB list
-                        if (destIdx === -1) {
-                            const { type, currency } = inferAccountDetails(destName, t.originalCurrency);
-                            balances.push({
-                                id: normalize(destName),
-                                name: destName,
-                                currency: currency || 'THB',
-                                initial: 0,
-                                type: type || 'cash',
-                                current: 0,
-                                rubEquivalent: 0,
-                            });
-                            destIdx = balances.length - 1;
-                        }
-
-                        if (destIdx !== -1) {
-                            const destAccount = balances[destIdx];
-                            // CRITICAL: Check checkpoint for DESTINATION too
-                            if (shouldApplyToAccount(destAccount, t)) {
-                                const creditAmount = Math.abs((t.originalAmount && t.originalAmount > 0) ? t.originalAmount : t.amount);
-                                destAccount.current += creditAmount;
-                            }
+                    if (destIdx !== -1) {
+                        const destAccount = balances[destIdx];
+                        if (shouldApplyToAccount(destAccount, t, destIdx)) {
+                            const creditAmount = Math.abs((t.originalAmount && t.originalAmount > 0) ? t.originalAmount : t.amount);
+                            destAccount.current += creditAmount;
                         }
                     }
                 }

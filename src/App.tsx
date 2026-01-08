@@ -92,10 +92,6 @@ function AppContent() {
   const [showAuth, setShowAuth] = useState(false);
   const { settings } = useUserSettings();
 
-  const DynamicUserIcon = ({ name, className }: { name: string, className?: string }) => {
-    const IconComponent = (Icons as any)[name] || Icons.User;
-    return <IconComponent className={className} />;
-  };
 
   // Define navigation items for desktop and potentially BottomNav
   const navItems = [
@@ -450,6 +446,11 @@ function AppContent() {
     </div >
   );
 }
+
+const DynamicUserIcon = ({ name, className }: { name: string, className?: string }) => {
+  const IconComponent = (Icons as any)[name] || Icons.User;
+  return <IconComponent className={className} />;
+};
 
 function App() {
   return (
