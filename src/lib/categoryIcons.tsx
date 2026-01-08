@@ -36,26 +36,31 @@ import {
     DollarSign,
     PiggyBank,
     Hotel,
+    Wallet,
+    TrendingUp,
+    Repeat,
     type LucideIcon
 } from 'lucide-react';
 
 const ICON_MAP: Record<string, LucideIcon> = {
-    // Food & Drink
-    'food': Utensils,
+    // Food & Drink - Each category gets unique icon
+    'groceries': ShoppingCart,       // 🛒 Groceries
+    'dining out': Utensils,          // 🍴 Dining Out
+    'diningout': Utensils,
+    'food': Coffee,                   // ☕ General Food
     'restaurant': Utensils,
     'cafe': Coffee,
     'coffee': Coffee,
-    'bar': Utensils,
-    'groceries': ShoppingCart,
+    'bar': Coffee,
     'supermarket': ShoppingCart,
     'products': ShoppingCart,
     'продукты': ShoppingCart,
-    'еда': Utensils,
+    'еда': Coffee,
     'ресторан': Utensils,
     'кафе': Coffee,
 
-    // Transport
-    'transport': Car,
+    // Transport - Each category gets unique icon
+    'transport': Car,                 // 🚗 Transport
     'taxi': Car,
     'uber': Car,
     'bus': Bus,
@@ -70,8 +75,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
     'транспорт': Car,
     'бензин': Fuel,
 
-    // Shopping
-    'shopping': ShoppingBag,
+    // Shopping - Each category gets unique icon
+    'shopping': ShoppingBag,          // 🛍️ Shopping
     'clothes': Shirt,
     'clothing': Shirt,
     'fashion': Shirt,
@@ -81,11 +86,11 @@ const ICON_MAP: Record<string, LucideIcon> = {
     'одежда': Shirt,
     'покупки': ShoppingBag,
 
-    // Housing & Utilities
+    // Housing & Utilities - Each category gets unique icon
+    'rent': Home,                     // 🏠 Rent
     'housing': Home,
-    'rent': Home,
     'mortgage': Home,
-    'utilities': Zap,
+    'utilities': Zap,                 // ⚡ Utilities
     'electricity': Zap,
     'water': Zap,
     'internet': Wifi,
@@ -94,7 +99,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
     'дом': Home,
     'коммуналка': Zap,
 
-    // Health & Fitness
+    // Health & Fitness - Each category gets unique icon
+    'healthcare': Stethoscope,        // 🩺 Healthcare
     'health': Stethoscope,
     'medical': Stethoscope,
     'doctor': Stethoscope,
@@ -107,8 +113,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
     'аптека': Stethoscope,
     'спорт': Dumbbell,
 
-    // Entertainment & Leisure
-    'entertainment': Gamepad2,
+    // Entertainment & Leisure - Each category gets unique icon
+    'entertainment': Gamepad2,        // 🎮 Entertainment
     'games': Gamepad2,
     'gaming': Gamepad2,
     'movies': Film,
@@ -119,15 +125,15 @@ const ICON_MAP: Record<string, LucideIcon> = {
     'развлечения': Gamepad2,
     'кино': Film,
 
-    // Travel
-    'travel': Plane,
+    // Travel - Each category gets unique icon
+    'travel': Plane,                  // ✈️ Travel
     'flight': Plane,
     'hotel': Hotel,
     'vacation': Plane,
     'путешествия': Plane,
 
-    // Education
-    'education': GraduationCap,
+    // Education - Each category gets unique icon
+    'education': GraduationCap,       // 🎓 Education
     'course': GraduationCap,
     'school': GraduationCap,
     'university': GraduationCap,
@@ -151,15 +157,21 @@ const ICON_MAP: Record<string, LucideIcon> = {
     'дети': Baby,
     'животные': Dog,
 
-    // Income/Financial
-    'salary': DollarSign,
+    // Income/Financial - Each category gets unique icon
+    'salary': DollarSign,             // 💵 Salary
     'wages': DollarSign,
-    'bonus': Gift,
-    'investment': Briefcase,
-    'savings': PiggyBank,
-    'transfer': CreditCard,
+    'bonus': Gift,                    // 🎁 Bonus
+    'freelance': Briefcase,           // 💼 Freelance
+    'investment': TrendingUp,         // 📈 Investment
+    'investing': TrendingUp,
+    'savings': PiggyBank,             // 🐷 Savings
+    'transfer': CreditCard,           // 💳 Transfer
     'зарплата': DollarSign,
     'перевод': CreditCard,
+
+    // Subscription - Unique icon
+    'subscription': RefreshCw,        // 🔄 Subscription
+    'subscriptions': RefreshCw,
 
     // Tools/Services
     'services': Hammer,
@@ -176,7 +188,6 @@ const ICON_MAP: Record<string, LucideIcon> = {
     'tech': Smartphone,
     'marketplace': ShoppingBag,
     'market': ShoppingBag,
-    'subscriptions': RefreshCw,
     'excursions': Map,
     'leisure': Smile,
     'delivery': Truck,
@@ -188,10 +199,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
     // Income Specific
     'paycheck': DollarSign,
-    'oretex': Briefcase,
-    'addrea': Briefcase,
-    'investing': Briefcase,
-    'refund': RefreshCw,
+    'oretex': Wallet,
+    'addrea': Wallet,
+    'refund': Repeat,
 };
 
 export function getCategoryIcon(categoryName: string): LucideIcon {

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useUserSettings } from '../hooks/useUserSettings';
-import { Loader2, Save, Lock, Layout, CheckCircle2, AlertCircle, User, UserCircle } from 'lucide-react';
+import { Loader2, Lock, Layout, CheckCircle2, AlertCircle, User } from 'lucide-react';
 import * as Icons from 'lucide-react';
 
 const AVATAR_ICONS = ['User', 'Smile', 'Zap', 'Star', 'Heart', 'Ghost', 'Crown', 'Sun', 'Moon', 'Music'];

@@ -46,7 +46,7 @@ export function useAccounts(transactions: Transaction[]) {
                 query = query.is('user_id', null);
             }
 
-            const { data, error } = await query;
+            const { data } = await query;
             if (data) {
                 setDbAccounts(data);
             }
