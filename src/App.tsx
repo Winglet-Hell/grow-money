@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, LogOut, PieChart, TrendingUp, ShieldCheck, Import, Eye, EyeOff, Wallet, Heart, LineChart } from 'lucide-react';
-import { parseFile } from './lib/parser';
+import { useState, useEffect } from 'react';
+import { LayoutDashboard, PieChart, TrendingUp, ShieldCheck, Import, Eye, EyeOff, Wallet, Heart, LineChart, ChevronDown } from 'lucide-react';
+import * as Icons from 'lucide-react';
+import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { PrivacyProvider, usePrivacy } from './contexts/PrivacyContext';
+import { useUserSettings, UserSettingsProvider } from './contexts/UserSettingsContext';
+
 import { getFormattedDateRange, cn } from './lib/utils';
 import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
@@ -14,9 +18,11 @@ import { TrendsPage } from './pages/TrendsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { WishlistPage } from './pages/WishlistPage';
 import { AIExportPage } from './pages/AIExportPage';
-import { PrivacyProvider, usePrivacy } from './contexts/PrivacyContext';
+import { SettingsPage } from './pages/SettingsPage';
+import { supabase } from './lib/supabase';
+import { Auth } from './components/Auth';
 import type { Transaction } from './types';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+
 
 // Feature Data
 const FEATURES = [
@@ -70,11 +76,25 @@ const FEATURES = [
   }
 ];
 
+
+
+// ... existing code ...
+
 function AppContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [session, setSession] = useState<any>(null); // Add session state
   const location = useLocation();
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
+  const [showAuth, setShowAuth] = useState(false);
+  const { settings } = useUserSettings();
+
+  const DynamicUserIcon = ({ name, className }: { name: string, className?: string }) => {
+    const IconComponent = (Icons as any)[name] || Icons.User;
+    return <IconComponent className={className} />;
+  };
 
   // Define navigation items for desktop and potentially BottomNav
   const navItems = [
@@ -84,30 +104,36 @@ function AppContent() {
     { path: '/trends', label: 'Trends', icon: LineChart },
     { path: '/accounts', label: 'Wallets', icon: Wallet },
     { path: '/wishlist', label: 'Goals', icon: Heart },
-    { path: '/ai-export', label: 'AI Sync', icon: Import },
+    { path: '/ai-export', label: 'AI', icon: Import },
   ];
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Try to load from IndexedDB first
-        const count = await db.transactions.count();
+    // Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUserEmail(session?.user?.email);
+    });
 
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUserEmail(session?.user?.email);
+    });
+
+    // Load Data
+    const loadData = async () => {
+      // Only auto-load data from DB if we have a session
+      if (!session) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const count = await db.transactions.count();
         if (count > 0) {
           const savedTransactions = await db.transactions.toArray();
           setTransactions(savedTransactions);
-        } else {
-          // Fallback to default dataset if DB is empty
-          const response = await fetch('/default_dataset.xlsx');
-          if (response.ok) {
-            const blob = await response.blob();
-            const file = new File([blob], 'default_dataset.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            const data = await parseFile(file);
-            setTransactions(data);
-            // Optionally save default data to DB? user didn't ask for it, but consistency is good.
-            // Let's NOT save default data to DB to avoid "stickiness" of default data if they reset.
-            // Actually, if they reset, we clear DB.
-          }
         }
       } catch (error) {
         console.error('Error loading data:', error);
@@ -117,11 +143,12 @@ function AppContent() {
     };
 
     loadData();
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleDataLoaded = async (data: Transaction[]) => {
     setTransactions(data);
-    // Save to DB
     await db.transactions.clear();
     await db.transactions.bulkAdd(data);
   };
@@ -131,6 +158,12 @@ function AppContent() {
     await db.transactions.clear();
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    // Optional: Clear local data on logout? 
+    // await handleReset(); 
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-emerald-50">
@@ -138,6 +171,12 @@ function AppContent() {
       </div>
     );
   }
+
+  // If not authenticated and explicitly asked for auth, show Auth screen
+  if (!session && showAuth) {
+    return <Auth onLogin={() => setShowAuth(false)} />;
+  }
+
 
   return (
     <div className={`min-h-screen pb-4 md:pb-8 font-sans selection:bg-emerald-200 selection:text-emerald-900 overflow-x-hidden relative transition-colors duration-700 ${transactions.length > 0 ? 'bg-slate-50' : 'bg-[#F0FDF9]'}`}>
@@ -159,7 +198,7 @@ function AppContent() {
       {/* Header */}
       <header className={`${transactions.length > 0 ? 'bg-white/80' : 'bg-transparent'} backdrop-blur-md border-b ${transactions.length > 0 ? 'border-gray-200/50' : 'border-transparent'} fixed top-0 inset-x-0 z-50 rounded-b-3xl transition-all duration-500 h-16`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
-          <div className="flex items-center gap-8">
+          <div className="flex-none flex items-center">
             <Link to="/" className="flex items-center gap-2 group cursor-pointer" onClick={handleReset}>
               {/* Note: Added onClick reset for logo to go back to home/reset if needed, or just standard link */}
               <div className="bg-white/40 border border-white/60 p-2 rounded-xl backdrop-blur-md shadow-sm group-hover:bg-white/60 transition-colors">
@@ -169,9 +208,11 @@ function AppContent() {
                 Grow <span className="text-emerald-600">money</span>
               </h1>
             </Link>
+          </div>
 
-            {transactions.length > 0 && (
-              <nav className="hidden md:flex items-center gap-1">
+          {transactions.length > 0 && (
+            <div className="hidden md:flex flex-1 items-center justify-center gap-4">
+              <nav className="flex items-center gap-1">
                 {navItems.map((item) => (
                   <Link
                     key={item.path}
@@ -186,11 +227,20 @@ function AppContent() {
                   </Link>
                 ))}
               </nav>
-            )}
-          </div>
 
-          {transactions.length > 0 && (
-            <div className="flex items-center gap-2">
+              {/* Test Mode Indicator - Positioned after menu */}
+              {!session && (
+                <div className="px-3 py-1 bg-amber-100 border border-amber-200 rounded-full text-[10px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-2 shadow-sm whitespace-nowrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                  Test Mode
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex-none flex items-center gap-2">
+
+            {transactions.length > 0 && (
               <button
                 onClick={togglePrivacyMode}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -198,15 +248,73 @@ function AppContent() {
               >
                 {isPrivacyMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
+            )}
+
+            {/* Auth / User Menu */}
+            {!session ? (
               <button
-                onClick={handleReset}
-                className="hidden md:flex text-sm font-medium text-gray-400 hover:text-red-500 items-center gap-2 transition-colors px-3 py-2 rounded-lg hover:bg-gray-50"
+                onClick={() => setShowAuth(true)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95"
               >
-                <LogOut className="w-4 h-4" />
-                Reset
+                Sign In
               </button>
-            </div>
-          )}
+            ) : (
+              transactions.length > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 overflow-hidden">
+                      {settings.profile.avatar_icon ? (
+                        <DynamicUserIcon name={settings.profile.avatar_icon} className="w-5 h-5" />
+                      ) : (
+                        userEmail ? userEmail[0].toUpperCase() : <Wallet className="w-4 h-4" />
+                      )}
+                    </div>
+                    <span className="hidden md:block max-w-[100px] truncate">
+                      {settings.profile.full_name || userEmail?.split('@')[0]}
+                    </span>
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                  </button>
+
+                  {isUserMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setIsUserMenuOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20 animate-in fade-in zoom-in-95 duration-200">
+                        <Link
+                          to="/settings"
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          Settings
+                        </Link>
+                        <button
+                          onClick={() => {
+                            handleReset();
+                            setIsUserMenuOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          Clear Data
+                        </button>
+                        <div className="h-px bg-gray-100 my-1" />
+                        <button
+                          onClick={() => {
+                            handleLogout();
+                            setIsUserMenuOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                        >
+                          Sign Out
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            )}
+          </div>
         </div>
       </header >
 
@@ -260,7 +368,7 @@ function AppContent() {
                 </p>
               </div>
 
-              <FileUploader onDataLoaded={handleDataLoaded} />
+              <FileUploader onDataLoaded={handleDataLoaded} isAuthenticated={!!session} onSignIn={() => setShowAuth(true)} />
 
               {/* Comprehensive Features Grid */}
               <div className="mt-32 w-full">
@@ -294,7 +402,7 @@ function AppContent() {
                         <p className="text-gray-500">Overview of your current financial health</p>
                       </div>
                       {transactions.length > 0 && (
-                        <div className="px-3 py-1 bg-white/50 border border-emerald-100 rounded-lg text-xs font-medium text-emerald-700 flex items-center gap-2 shadow-sm">
+                        <div className="px-3 py-1 bg-white/50 border border-emerald-100 rounded-lg text-xs md:text-sm font-medium text-emerald-700 flex items-center gap-2 shadow-sm">
                           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                           {getFormattedDateRange(transactions)}
                         </div>
@@ -312,6 +420,7 @@ function AppContent() {
                 <Route path="/wishlist" element={<WishlistPage transactions={transactions} />} />
                 <Route path="/accounts" element={<AccountsPage transactions={transactions} />} />
                 <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
+                <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </div>
           )
@@ -326,7 +435,9 @@ function App() {
   return (
     <BrowserRouter>
       <PrivacyProvider>
-        <AppContent />
+        <UserSettingsProvider>
+          <AppContent />
+        </UserSettingsProvider>
       </PrivacyProvider>
     </BrowserRouter>
   );

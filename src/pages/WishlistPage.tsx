@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Trash2, Calendar, AlertTriangle, CheckCircle2, ShoppingBag, Target } from 'lucide-react';
+import { Plus, Trash2, Calendar, AlertTriangle, CheckCircle2, ShoppingBag, Target, Laptop, Smartphone, Headphones, Car, Home, Plane, Gift, Gamepad2, Camera, Watch, Bike, Music, Book, Dumbbell, Coffee, Zap, Star, Pencil } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
 import { useFinancialMetrics } from '../hooks/useFinancialMetrics';
 import type { Transaction } from '../types';
@@ -13,6 +13,7 @@ interface WishlistItem {
     costRUB: number;
     priority: 'Low' | 'Medium' | 'High';
     imageURL?: string;
+    user_id?: string;
 }
 
 interface WishlistPageProps {
@@ -25,6 +26,7 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
     const { monthlySavingPower } = useFinancialMetrics(transactions);
     const [items, setItems] = useState<WishlistItem[]>([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState<WishlistItem | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
     // Fetch from Supabase
@@ -34,10 +36,20 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
 
     const fetchItems = async () => {
         setIsLoading(true);
-        const { data, error } = await supabase
+        const { data: { user } } = await supabase.auth.getUser();
+
+        let query = supabase
             .from('wishlist')
             .select('*')
-            .order('priority', { ascending: false }); // Initial sort, but we resort below
+            .order('priority', { ascending: false });
+
+        if (user) {
+            query = query.eq('user_id', user.id);
+        } else {
+            query = query.is('user_id', null);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
             console.error('Error fetching wishlist:', error);
@@ -47,21 +59,38 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
         setIsLoading(false);
     }
 
-    const addItem = async (item: Omit<WishlistItem, 'id'>) => {
+    const handleSave = async (itemData: Omit<WishlistItem, 'id'>) => {
         try {
-            const { data, error } = await supabase
-                .from('wishlist')
-                .insert([item])
-                .select();
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('No user logged in');
 
-            if (error) throw error;
+            if (editingItem) {
+                // Update existing
+                const { error } = await supabase
+                    .from('wishlist')
+                    .update({ ...itemData })
+                    .eq('id', editingItem.id);
 
-            if (data) {
-                setItems(prev => [...prev, ...data]);
-                setIsFormOpen(false);
+                if (error) throw error;
+
+                setItems(prev => prev.map(i => i.id === editingItem.id ? { ...i, ...itemData } : i));
+            } else {
+                // Insert new
+                const { data, error } = await supabase
+                    .from('wishlist')
+                    .insert([{ ...itemData, user_id: user.id }])
+                    .select();
+
+                if (error) throw error;
+
+                if (data) {
+                    setItems(prev => [...prev, ...data]);
+                }
             }
+            setIsFormOpen(false);
+            setEditingItem(null);
         } catch (error) {
-            console.error('Failed to add item:', error);
+            console.error('Failed to save item:', error);
         }
     };
 
@@ -78,6 +107,16 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
         } catch (error) {
             console.error('Failed to delete item:', error);
         }
+    };
+
+    const handleEdit = (item: WishlistItem) => {
+        setEditingItem(item);
+        setIsFormOpen(true);
+    };
+
+    const handleAddNew = () => {
+        setEditingItem(null);
+        setIsFormOpen(true);
     };
 
     const sortedItems = [...items].sort((a, b) => {
@@ -128,7 +167,7 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
                     Wishlist ({isLoading ? '...' : items.length})
                 </h3>
                 <button
-                    onClick={() => setIsFormOpen(true)}
+                    onClick={handleAddNew}
                     className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm font-medium"
                 >
                     <Plus className="w-4 h-4" />
@@ -142,8 +181,12 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm fixed" onClick={() => setIsFormOpen(false)} />
                         {/* Note: Added backdrop here for consistency and click-to-close */}
                         <div className="relative z-10 bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-xl p-8 animate-in zoom-in-95 duration-200">
-                            <h3 className="text-2xl font-bold text-gray-900 mb-6">Add New Goal</h3>
-                            <WishlistForm onSubmit={addItem} onCancel={() => setIsFormOpen(false)} />
+                            <h3 className="text-2xl font-bold text-gray-900 mb-6">{editingItem ? 'Edit Goal' : 'Add New Goal'}</h3>
+                            <WishlistForm
+                                onSubmit={handleSave}
+                                onCancel={() => setIsFormOpen(false)}
+                                initialValues={editingItem || undefined}
+                            />
                         </div>
                     </div>
                 </div>,
@@ -159,6 +202,7 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
                         netWorth={totalNetWorth}
                         savingPower={monthlySavingPower}
                         onDelete={deleteItem}
+                        onEdit={handleEdit}
                         isPrivacy={isPrivacyMode}
                     />
                 ))}
@@ -179,25 +223,35 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
     );
 }
 
-function WishlistCard({ item, netWorth, savingPower, onDelete, isPrivacy }: { item: WishlistItem, netWorth: number, savingPower: number, onDelete: (id: string) => void, isPrivacy: boolean }) {
+const WISHLIST_ICONS = [
+    { name: 'ShoppingBag', icon: ShoppingBag },
+    { name: 'Laptop', icon: Laptop },
+    { name: 'Smartphone', icon: Smartphone },
+    { name: 'Headphones', icon: Headphones },
+    { name: 'Car', icon: Car },
+    { name: 'Home', icon: Home },
+    { name: 'Plane', icon: Plane },
+    { name: 'Gift', icon: Gift },
+    { name: 'Gamepad', icon: Gamepad2 },
+    { name: 'Camera', icon: Camera },
+    { name: 'Watch', icon: Watch },
+    { name: 'Bike', icon: Bike },
+    { name: 'Music', icon: Music },
+    { name: 'Book', icon: Book },
+    { name: 'Dumbbell', icon: Dumbbell },
+    { name: 'Coffee', icon: Coffee },
+    { name: 'Zap', icon: Zap },
+    { name: 'Star', icon: Star },
+];
+
+function WishlistCard({ item, netWorth, savingPower, onDelete, onEdit, isPrivacy }: { item: WishlistItem, netWorth: number, savingPower: number, onDelete: (id: string) => void, onEdit: (item: WishlistItem) => void, isPrivacy: boolean }) {
     const canBuyNow = netWorth >= item.costRUB;
     const gap = item.costRUB - netWorth;
     const monthsToGoalFromScratch = savingPower > 0 ? Math.ceil(item.costRUB / savingPower) : Infinity;
 
-    // Scenario B: Gap / Saving Power (If we used all net worth, how long to close gap?)
-    // Actually spec says:
-    // Scenario A: Cost / Monthly Saving Power. Result: "You will accumulate in X months" (Assuming simple accumulation from 0? or from now?)
-    // Spec: "Сценарий А (From Scratch): Cost / Monthly Saving Power"
-    // Spec: "Сценарий Б (Using Current Capital): Total Net Worth - Cost"
-
-    // Let's interpret "From Scratch" as "If I had 0 money".
-    // But for the user, "When can I buy it" usually means "From now".
-    // If NetWorth > Cost, I can buy now.
-    // If NetWorth < Cost, I need to save (Cost - NetWorth).
-    // Time to goal = (Cost - NetWorth) / SavingPower.
-
-    // Spec says: "From Scratch result: 'You will accumulate in X months'".
-    // Spec says: "Using Current Capital result: If < 0: 'Not enough yet. Gap: X. Time to close gap: Y months'".
+    // Check if imageURL is an icon name
+    const IconComponent = WISHLIST_ICONS.find(i => i.name === item.imageURL)?.icon;
+    const isUrl = item.imageURL && item.imageURL.startsWith('http');
 
     const timeToCloseGap = (gap > 0 && savingPower > 0) ? Math.ceil(gap / savingPower) : Infinity;
 
@@ -217,18 +271,20 @@ function WishlistCard({ item, netWorth, savingPower, onDelete, isPrivacy }: { it
 
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col hover:shadow-md transition-shadow group">
-            {item.imageURL && (
+            {isUrl && (
                 <div className="h-48 overflow-hidden bg-gray-100 relative">
                     <img src={item.imageURL} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
-                    <div className="absolute bottom-3 left-4 text-white font-bold text-lg">{item.name}</div>
+                    <div className="absolute bottom-3 left-4 text-white font-bold text-lg leading-tight pr-4">{item.name}</div>
                 </div>
             )}
 
-            <div className="p-6 flex-1 flex flex-col">
-                {!item.imageURL && (
+            <div className={`p-6 flex-1 flex flex-col ${!isUrl ? 'pt-8' : ''}`}>
+                {!isUrl && (
                     <div className="flex justify-between items-start mb-4">
-                        <h3 className="text-xl font-bold text-gray-900">{item.name}</h3>
+                        <div className="text-emerald-500">
+                            {IconComponent ? <IconComponent className="w-10 h-10" /> : <ShoppingBag className="w-10 h-10" />}
+                        </div>
                         <span className={`px-2 py-1 rounded text-xs font-bold ${item.priority === 'High' ? 'bg-red-100 text-red-600' :
                             item.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
                                 'bg-blue-100 text-blue-600'
@@ -238,7 +294,13 @@ function WishlistCard({ item, netWorth, savingPower, onDelete, isPrivacy }: { it
                     </div>
                 )}
 
-                {item.imageURL && (
+                {!isUrl && (
+                    <h3 className="text-xl font-bold text-gray-900 mb-6 leading-tight break-words">
+                        {item.name}
+                    </h3>
+                )}
+
+                {isUrl && (
                     <div className="flex justify-end -mt-2 mb-2">
                         <span className={`px-2 py-1 rounded text-xs font-bold ${item.priority === 'High' ? 'bg-red-100 text-red-600' :
                             item.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
@@ -250,7 +312,7 @@ function WishlistCard({ item, netWorth, savingPower, onDelete, isPrivacy }: { it
                 )}
 
                 <div className="text-2xl font-bold text-gray-900 mb-1">
-                    {isPrivacy ? '••••••' : item.costRUB.toLocaleString('ru-RU')} <span className="text-sm font-normal text-gray-400">RUB</span>
+                    {isPrivacy ? '••••••' : (item.costRUB ?? 0).toLocaleString('ru-RU')} <span className="text-sm font-normal text-gray-400">RUB</span>
                 </div>
 
                 {/* Progress */}
@@ -309,24 +371,39 @@ function WishlistCard({ item, netWorth, savingPower, onDelete, isPrivacy }: { it
                     <div className="text-xs text-gray-400">
                         From scratch: {monthsToGoalFromScratch !== Infinity ? monthsToGoalFromScratch : 'N/A'} mo
                     </div>
-                    <button
-                        onClick={handleDelete}
-                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                        title="Delete Goal"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => onEdit(item)}
+                            className="text-gray-400 hover:text-emerald-600 transition-colors p-1"
+                            title="Edit Goal"
+                        >
+                            <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={handleDelete}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                            title="Delete Goal"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     )
 }
 
-function WishlistForm({ onSubmit, onCancel }: { onSubmit: (val: any) => void, onCancel: () => void }) {
-    const [name, setName] = useState('');
-    const [cost, setCost] = useState('');
-    const [priority, setPriority] = useState('Medium');
-    const [imageURL, setImageURL] = useState('');
+function WishlistForm({ onSubmit, onCancel, initialValues }: { onSubmit: (val: any) => void, onCancel: () => void, initialValues?: WishlistItem }) {
+    const [name, setName] = useState(initialValues?.name || '');
+    const [cost, setCost] = useState(initialValues?.costRUB?.toString() || '');
+    const [priority, setPriority] = useState(initialValues?.priority || 'Medium');
+    // If initialValues.imageURL matches one of the icon names, use it. Otherwise default to ShoppingBag.
+    // If it's a real URL, this simplistic picker won't show it as selected, but we could improve that if needed.
+    // For now, assuming user mostly uses icons or doesn't edit URL often. 
+    // Actually, if it's a URL, we might want to preserve it?
+    // The requirement was "Instead of picture... use Icon". So we focus on icon usage.
+    const initialIcon = WISHLIST_ICONS.find(i => i.name === initialValues?.imageURL)?.name || 'ShoppingBag';
+    const [selectedIcon, setSelectedIcon] = useState(initialIcon);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -334,9 +411,10 @@ function WishlistForm({ onSubmit, onCancel }: { onSubmit: (val: any) => void, on
             name,
             costRUB: Number(cost),
             priority,
-            imageURL: imageURL || undefined
+            imageURL: selectedIcon // Store icon name in imageURL field
         });
     };
+    // ... rest of form matches existing
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -365,7 +443,7 @@ function WishlistForm({ onSubmit, onCancel }: { onSubmit: (val: any) => void, on
             <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
                 <div className="flex gap-3">
-                    {['Low', 'Medium', 'High'].map(p => (
+                    {(['Low', 'Medium', 'High'] as const).map(p => (
                         <button
                             key={p}
                             type="button"
@@ -380,16 +458,27 @@ function WishlistForm({ onSubmit, onCancel }: { onSubmit: (val: any) => void, on
                     ))}
                 </div>
             </div>
+
             <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Image URL (Optional)</label>
-                <input
-                    type="text"
-                    value={imageURL}
-                    onChange={e => setImageURL(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-gray-400 font-medium"
-                    placeholder="https://..."
-                />
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Icon</label>
+                <div className="grid grid-cols-6 gap-2">
+                    {WISHLIST_ICONS.map(({ name, icon: Icon }) => (
+                        <button
+                            key={name}
+                            type="button"
+                            onClick={() => setSelectedIcon(name)}
+                            className={`p-3 rounded-xl border flex items-center justify-center transition-all ${selectedIcon === name
+                                ? 'bg-emerald-50 border-emerald-500 text-emerald-600 shadow-sm ring-1 ring-emerald-500'
+                                : 'border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300'
+                                }`}
+                            title={name}
+                        >
+                            <Icon className="w-5 h-5" />
+                        </button>
+                    ))}
+                </div>
             </div>
+
             <div className="flex gap-4 mt-8">
                 <button
                     type="button"

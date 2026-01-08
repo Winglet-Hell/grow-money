@@ -10,3 +10,14 @@ export type Transaction = {
     originalCurrency?: string;
     type: 'expense' | 'income' | 'transfer';
 };
+
+export type Account = {
+    id: string;
+    created_at?: string;
+    user_id?: string | null;
+    name: string;
+    type: 'wallet' | 'crypto' | 'bank' | 'cash' | 'card';
+    currency: string;
+    balance: number;
+    is_hidden?: boolean;
+};

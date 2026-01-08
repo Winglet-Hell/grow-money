@@ -28,7 +28,7 @@ const getSeverityColor = (value: number, max: number) => {
 };
 
 const truncateLabel = (str: string) => {
-    return str.length > 8 ? str.slice(0, 6) + '..' : str;
+    return str.length > 10 ? str.slice(0, 8) + '..' : str;
 };
 
 const CustomXAxisTick = (props: any) => {
@@ -113,7 +113,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-96">
                 <h3 className="text-lg font-semibold text-gray-800 mb-6 flex-shrink-0">Expenses by Category</h3>
                 <div className="flex-1 overflow-x-auto pb-2">
-                    <div style={{ minWidth: '100%', width: Math.max(expensesByCategory.length * 50, 300), height: '100%' }}>
+                    <div style={{ minWidth: '100%', width: Math.max(expensesByCategory.length * 80, 300), height: '100%' }}>
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                             <BarChart data={expensesByCategory} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
                                 <XAxis
@@ -126,7 +126,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                 />
                                 <YAxis hide />
                                 <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
-                                <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={32}>
+                                <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={48}>
                                     <LabelList
                                         dataKey="value"
                                         position="top"
@@ -147,7 +147,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-96">
                 <h3 className="text-lg font-semibold text-gray-800 mb-6 flex-shrink-0">Monthly Spending Trend</h3>
                 <div className="flex-1 overflow-x-auto pb-2">
-                    <div style={{ minWidth: '100%', width: Math.max(monthlySpending.length * 50, 300), height: '100%' }}>
+                    <div style={{ minWidth: '100%', width: Math.max(monthlySpending.length * 80, 300), height: '100%' }}>
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                             <BarChart data={monthlySpending} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
                                 <XAxis
@@ -160,7 +160,7 @@ export const Charts: React.FC<ChartsProps> = ({ transactions }) => {
                                 />
                                 <YAxis hide />
                                 <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
-                                <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={32}>
+                                <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={48}>
                                     <LabelList
                                         dataKey="value"
                                         position="top"

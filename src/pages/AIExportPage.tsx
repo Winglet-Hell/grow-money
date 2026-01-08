@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Download, Copy, CheckCircle, FileJson, Bot, Info, Eye } from 'lucide-react';
+import { Download, Copy, CheckCircle, FileJson, Bot, Eye } from 'lucide-react';
 import { getGlobalCategory } from '../lib/categoryGroups';
 import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -269,50 +269,30 @@ Output: Structure your answer with clear headings and bullet points.`;
                             </div>
                             <h2 className="text-lg font-semibold text-gray-900">Copy Instructions</h2>
                         </div>
-                        {isCopied ? (
-                            <CheckCircle className="w-5 h-5 text-emerald-500 transition-all scale-110" />
-                        ) : (
-                            <Copy className="w-5 h-5 text-gray-400" />
-                        )}
+                        <button
+                            onClick={handleCopy}
+                            className="p-2 hover:bg-gray-50 rounded-lg transition-colors group"
+                            title="Copy instructions"
+                        >
+                            {isCopied ? (
+                                <CheckCircle className="w-5 h-5 text-emerald-500 transition-all scale-110" />
+                            ) : (
+                                <Copy className="w-5 h-5 text-gray-400 group-hover:text-indigo-500" />
+                            )}
+                        </button>
                     </div>
 
-                    <div className="relative mb-6 group">
+                    <div className="relative group">
                         <textarea
                             readOnly
                             value={instructionText}
-                            className="w-full h-32 p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs text-gray-600 font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            className="w-full h-32 p-4 bg-gray-50 rounded-xl border border-gray-200 text-xs text-gray-600 font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                         />
                     </div>
-
-                    <button
-                        onClick={handleCopy}
-                        className={`w-full py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-all shadow-sm ${isCopied
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
-                            }`}
-                    >
-                        {isCopied ? 'Copied to Clipboard!' : 'Copy Prompt Text'}
-                    </button>
                 </div>
             </div>
 
-            {/* How it works Hint */}
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-6 border border-gray-200/60">
-                <div className="flex items-start gap-4">
-                    <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-100">
-                        <Info className="w-5 h-5 text-indigo-500" />
-                    </div>
-                    <div>
-                        <h3 className="font-semibold text-gray-900 mb-2">How to use</h3>
-                        <ol className="space-y-2 text-sm text-gray-600 list-decimal list-inside marker:text-gray-400 marker:font-medium">
-                            <li>Click <strong>Download Data File</strong> to save your processed financial data.</li>
-                            <li>Open <strong>ChatGPT</strong> (Plus recommended) or <strong>Google Gemini</strong>.</li>
-                            <li>Upload the downloaded <code className="px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 text-xs font-mono">.json</code> file.</li>
-                            <li>Paste the copied instructions into the chat input.</li>
-                        </ol>
-                    </div>
-                </div>
-            </div>
+
 
             <div className="border-t border-gray-200 my-8"></div>
 
@@ -328,7 +308,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                     {/* Monthly Stats Preview */}
-                    <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-baseline mb-4">
                             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Monthly Summary</h3>
                             <span className="text-xs font-medium text-gray-400">
@@ -339,7 +319,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                             {Object.entries(dataPayload.monthlyStats.data)
                                 .sort((a, b) => b[0].localeCompare(a[0])) // Sort by date desc
                                 .map(([month, stats]) => (
-                                    <div key={month} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm">
+                                    <div key={month} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm transition-colors hover:bg-gray-100">
                                         <span className="font-medium text-gray-700">{month}</span>
                                         <div className="text-right">
                                             <div className="text-emerald-600 font-medium">{isPrivacyMode ? '•••' : '+' + stats.income.toLocaleString('ru-RU')}</div>
@@ -351,7 +331,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                     </div>
 
                     {/* Income Breakdown Preview */}
-                    <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-baseline mb-4">
                             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Income Sources</h3>
                             <span className="text-xs font-medium text-gray-400">
@@ -360,8 +340,8 @@ Output: Structure your answer with clear headings and bullet points.`;
                         </div>
                         <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                             {dataPayload.incomeSources.data.map((item, idx) => (
-                                <div key={idx} className="flex items-center justify-between text-sm">
-                                    <span className="text-gray-600">{item.source}</span>
+                                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm transition-colors hover:bg-gray-100">
+                                    <span className="font-medium text-gray-700">{item.source}</span>
                                     <span className="font-semibold text-emerald-600">{isPrivacyMode ? '•••' : '+' + item.amount.toLocaleString('ru-RU')}</span>
                                 </div>
                             ))}
@@ -372,7 +352,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                     </div>
 
                     {/* All Expenses Preview */}
-                    <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-baseline mb-4">
                             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Expense Categories <span className="text-gray-400 normal-case">({dataPayload.expensesByCategory.data.length})</span></h3>
                             <span className="text-xs font-medium text-gray-400">
@@ -381,8 +361,8 @@ Output: Structure your answer with clear headings and bullet points.`;
                         </div>
                         <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                             {dataPayload.expensesByCategory.data.slice(0, 5).map((item, idx) => (
-                                <div key={idx} className="flex items-center justify-between text-sm">
-                                    <span className="text-gray-600 truncate max-w-[180px]">{item.category}</span>
+                                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm transition-colors hover:bg-gray-100">
+                                    <span className="font-medium text-gray-700 truncate max-w-[180px]">{item.category}</span>
                                     <span className="font-semibold text-gray-900">{isPrivacyMode ? '•••' : item.amount.toLocaleString('ru-RU')}</span>
                                 </div>
                             ))}
@@ -393,19 +373,19 @@ Output: Structure your answer with clear headings and bullet points.`;
                     </div>
 
                     {/* Top Merchants Preview */}
-                    <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-baseline mb-4">
                             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Top Payees (Tags)</h3>
                             <span className="text-xs font-medium text-gray-400">
                                 {dataPayload.topMerchants.period}
                             </span>
                         </div>
-                        <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                             {dataPayload.topMerchants.data.slice(0, 8).map((item, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-xs">
+                                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm transition-colors hover:bg-gray-100">
                                     <span className="font-medium text-gray-700 truncate max-w-[60%]">{item.name}</span>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-gray-500">{item.count}x</span>
+                                        <span className="text-gray-500 text-xs">{item.count}x</span>
                                         <span className="font-semibold text-gray-900">{isPrivacyMode ? '•••' : item.amount.toLocaleString('ru-RU')}</span>
                                     </div>
                                 </div>
@@ -417,7 +397,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                     </div>
 
                     {/* Detected Subscriptions Preview */}
-                    <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-baseline mb-4">
                             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Subscriptions <span className="text-gray-400 normal-case">({dataPayload.subscriptions.data.length})</span></h3>
                             <span className="text-xs font-medium text-gray-400">
@@ -427,7 +407,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                         <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
                             {dataPayload.subscriptions.data.length > 0 ? (
                                 dataPayload.subscriptions.data.map((sub, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg text-sm">
+                                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 border border-transparent rounded-lg text-sm transition-colors hover:bg-gray-100">
                                         <span className="font-medium text-gray-700 truncate max-w-[70%]">{sub.name}</span>
                                         <span className="text-indigo-600 font-semibold">{isPrivacyMode ? '•••' : sub.amount.toLocaleString('ru-RU')}</span>
                                     </div>
@@ -439,21 +419,21 @@ Output: Structure your answer with clear headings and bullet points.`;
                     </div>
 
                     {/* Recent Transactions Peek */}
-                    <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-baseline mb-4">
                             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Recent Transactions</h3>
                             <span className="text-xs font-medium text-gray-400">
                                 {dataPayload.recentTransactions.period}
                             </span>
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                             {dataPayload.recentTransactions.data.slice(0, 5).map((t, idx) => (
-                                <div key={idx} className="flex justify-between items-center text-xs text-gray-500 border-b border-gray-50 pb-2 last:border-0">
+                                <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg text-sm transition-colors hover:bg-gray-100">
                                     <div>
-                                        <span className="block font-medium text-gray-700">{t.date}</span>
-                                        <span className="truncate max-w-[150px] inline-block">{t.note || t.category}</span>
+                                        <span className="block font-medium text-gray-700 mb-0.5">{t.note || t.category}</span>
+                                        <span className="text-xs text-gray-400 block">{t.date}</span>
                                     </div>
-                                    <span className={t.type === 'income' ? 'text-emerald-600' : 'text-gray-900'}>
+                                    <span className={`font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-gray-900'}`}>
                                         {isPrivacyMode ? '•••' : (t.type === 'income' ? '+' : '') + t.amount.toLocaleString('ru-RU')}
                                     </span>
                                 </div>
@@ -466,6 +446,6 @@ Output: Structure your answer with clear headings and bullet points.`;
 
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

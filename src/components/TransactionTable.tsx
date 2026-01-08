@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { TableVirtuoso, Virtuoso } from 'react-virtuoso';
 import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { useUserSettings } from '../hooks/useUserSettings';
+import { useAccounts } from '../hooks/useAccounts';
 import { cn, stringToColor, formatDate } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown } from 'lucide-react';
@@ -19,15 +21,29 @@ interface SortConfig {
 }
 
 type VirtualItem =
-    | { type: 'header'; date: string; stats: { income: number; expense: number } }
+    | { type: 'header'; date: string; stats: Record<string, { income: number; expense: number }> }
     | { type: 'transaction'; data: Transaction; originalIndex: number };
 
 export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions }) => {
     const { isPrivacyMode } = usePrivacy();
+    const { settings: { preferences } } = useUserSettings();
+    const { accounts } = useAccounts(transactions);
     const [searchTerm, setSearchTerm] = useState('');
     const [visibleCount, setVisibleCount] = useState(20);
     const [loadStep, setLoadStep] = useState(20);
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'date', direction: 'desc' });
+
+    // Preferences defaults
+    const showCategory = preferences?.tableShowCategory !== false;
+    const showAccount = preferences?.tableShowAccount !== false;
+    const showNotes = preferences?.tableShowNotes !== false;
+    const isCompact = preferences?.tableCompactMode === true;
+    const py = isCompact ? 'py-2' : 'py-4';
+
+    const getAccountCurrency = (accountName: string) => {
+        const account = accounts.find(a => a.name === accountName);
+        return account?.currency || 'RUB';
+    };
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -76,24 +92,30 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
         return filteredAndSortedTransactions.slice(0, visibleCount);
     }, [filteredAndSortedTransactions, visibleCount]);
 
-    // Calculate stats for PAGINATED transactions
+    // Calculate stats for PAGINATED transactions per currency
     const dailyStats = useMemo(() => {
-        const stats: Record<string, { income: number; expense: number }> = {};
+        const stats: Record<string, Record<string, { income: number; expense: number }>> = {};
         if (sortConfig.key !== 'date') return stats;
 
         paginatedTransactions.forEach(t => {
             const dateKey = formatDate(t.date);
+            const currency = getAccountCurrency(t.account);
+
             if (!stats[dateKey]) {
-                stats[dateKey] = { income: 0, expense: 0 };
+                stats[dateKey] = {};
             }
+            if (!stats[dateKey][currency]) {
+                stats[dateKey][currency] = { income: 0, expense: 0 };
+            }
+
             if (t.amount > 0) {
-                stats[dateKey].income += t.amount;
+                stats[dateKey][currency].income += t.amount;
             } else {
-                stats[dateKey].expense += t.amount;
+                stats[dateKey][currency].expense += t.amount;
             }
         });
         return stats;
-    }, [paginatedTransactions, sortConfig.key]);
+    }, [paginatedTransactions, sortConfig.key, accounts]);
 
     // Flatten for virtualization
     const virtualItems = useMemo(() => {
@@ -111,7 +133,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                     items.push({
                         type: 'header',
                         date: dateKey,
-                        stats: dailyStats[dateKey] || { income: 0, expense: 0 }
+                        stats: dailyStats[dateKey] || {}
                     });
                     lastDate = dateKey;
                 }
@@ -125,12 +147,29 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
         setVisibleCount(prev => prev + loadStep);
     };
 
-    const formatCurrency = (amount: number) => {
+    const formatCurrency = (amount: number, currency: string = 'RUB') => {
         if (isPrivacyMode) return '••••••';
+
+        // 1. Handle Crypto / Custom Currencies manually
+        if (['USDT', 'BTC', 'ETH'].includes(currency)) {
+            let decimals = 2;
+            if (currency === 'BTC' || currency === 'ETH') decimals = 6;
+
+            const value = new Intl.NumberFormat('ru-RU', {
+                style: 'decimal',
+                maximumFractionDigits: decimals,
+                minimumFractionDigits: 0
+            }).format(amount);
+
+            return `${value} ${currency}`;
+        }
+
+        // 2. Handle Standard Fiat Currencies via Intl
         return new Intl.NumberFormat('ru-RU', {
             style: 'currency',
-            currency: 'RUB',
-            maximumFractionDigits: 0
+            currency: currency,
+            maximumFractionDigits: 0,
+            minimumFractionDigits: 0
         }).format(amount);
     };
 
@@ -144,6 +183,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
     const MobileCard = ({ transaction: t }: { transaction: Transaction }) => {
         const color = stringToColor(t.category);
         const Icon = getCategoryIcon(t.category);
+        const currency = getAccountCurrency(t.account);
 
         return (
             <div className="bg-white p-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
@@ -153,19 +193,19 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                             <Icon className="w-5 h-5" />
                         </div>
                         <div>
-                            <div className="font-medium text-gray-900">{t.tags || t.category}</div>
+                            <div className="font-medium text-gray-900">{t.tags || t.note || t.category}</div>
                             <div className="text-xs text-gray-500">{formatDate(t.date)}</div>
                         </div>
                     </div>
                     <div className="text-right">
                         <span className={`font-semibold ${t.amount > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
-                            {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount)}
+                            {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount, currency)}
                         </span>
                     </div>
                 </div>
 
                 <div className="flex justify-between items-center text-sm text-gray-500 pl-[3.25rem]">
-                    <span className="truncate max-w-[150px]">{t.tags ? t.category : (t.note || 'No description')}</span>
+                    <span className="truncate max-w-[150px]">{t.tags ? (t.note || t.category) : (t.note ? t.category : 'No description')}</span>
                     <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">{t.account}</span>
                 </div>
                 {t.originalAmount && t.originalCurrency && t.originalCurrency !== 'RUB' && (
@@ -221,25 +261,31 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                                 <tr>
                                     <th className="px-6 py-3 text-left w-12 text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">#</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3 bg-gray-50">Name</th>
-                                    <th
-                                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50"
-                                        onClick={() => handleSort('category')}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            Category
-                                            <SortIcon columnKey="category" />
-                                        </div>
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Account</th>
-                                    <th
-                                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50"
-                                        onClick={() => handleSort('date')}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            Note / Date
-                                            <SortIcon columnKey="date" />
-                                        </div>
-                                    </th>
+                                    {showCategory && (
+                                        <th
+                                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50"
+                                            onClick={() => handleSort('category')}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                Category
+                                                <SortIcon columnKey="category" />
+                                            </div>
+                                        </th>
+                                    )}
+                                    {showAccount && (
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[140px] min-w-[140px]">Account</th>
+                                    )}
+                                    {showNotes && (
+                                        <th
+                                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50 w-[180px] min-w-[180px]"
+                                            onClick={() => handleSort('date')}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                Note / Date
+                                                <SortIcon columnKey="date" />
+                                            </div>
+                                        </th>
+                                    )}
                                     <th
                                         className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50"
                                         onClick={() => handleSort('amount')}
@@ -255,20 +301,24 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                                 if (item.type === 'header') {
                                     return (
                                         <>
-                                            <td colSpan={6} className="px-6 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/90 backdrop-blur-sm sticky top-0 z-10 border-t border-b border-gray-100">
+                                            <td colSpan={10} className="px-6 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/90 backdrop-blur-sm sticky top-0 z-10 border-t border-b border-gray-100">
                                                 <div className="flex items-center justify-between">
                                                     <span>{item.date}</span>
-                                                    <div className="flex items-center gap-4">
-                                                        {item.stats.income > 0 && (
-                                                            <span className="text-emerald-600 font-medium normal-case">
-                                                                +{formatCurrency(item.stats.income)}
-                                                            </span>
-                                                        )}
-                                                        {item.stats.expense < 0 && (
-                                                            <span className="text-gray-500 font-medium normal-case">
-                                                                {formatCurrency(item.stats.expense)}
-                                                            </span>
-                                                        )}
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        {Object.entries(item.stats).map(([currency, stat]) => (
+                                                            <div key={currency} className="flex items-center gap-3">
+                                                                {stat.income > 0 && (
+                                                                    <span className="text-emerald-600 font-medium normal-case">
+                                                                        +{formatCurrency(stat.income, currency)}
+                                                                    </span>
+                                                                )}
+                                                                {stat.expense < 0 && (
+                                                                    <span className="text-gray-500 font-medium normal-case">
+                                                                        {formatCurrency(stat.expense, currency)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 </div>
                                             </td>
@@ -277,9 +327,11 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                                 }
 
                                 const t = item.data;
+                                const currency = getAccountCurrency(t.account);
+
                                 return (
                                     <>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400 font-mono">
+                                        <td className={`px-6 ${py} whitespace-nowrap text-sm text-gray-400 font-mono`}>
                                             {(() => {
                                                 const total = filteredAndSortedTransactions.length;
                                                 const displayIndex = (sortConfig.key === 'date' && sortConfig.direction === 'desc')
@@ -288,36 +340,42 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                                                 return displayIndex;
                                             })()}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                            {t.tags || t.category}
+                                        <td className={`px-6 ${py} whitespace-nowrap text-sm font-medium text-gray-900`}>
+                                            {t.tags || t.note || t.category}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            {(() => {
-                                                const color = stringToColor(t.category);
-                                                const Icon = getCategoryIcon(t.category);
-                                                return (
-                                                    <span className={cn(
-                                                        "flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium w-fit",
-                                                        color.bg,
-                                                        color.text
-                                                    )}>
-                                                        <Icon className="w-3.5 h-3.5" />
-                                                        {t.category}
-                                                    </span>
-                                                );
-                                            })()}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{t.account}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={t.note}>
-                                            {t.note}
-                                            {!t.note && sortConfig.key !== 'date' && (
-                                                <span className="text-xs text-gray-400 ml-2">{formatDate(t.date)}</span>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                                        {showCategory && (
+                                            <td className={`px-6 ${py} whitespace-nowrap`}>
+                                                {(() => {
+                                                    const color = stringToColor(t.category);
+                                                    const Icon = getCategoryIcon(t.category);
+                                                    return (
+                                                        <span className={cn(
+                                                            "flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium w-fit",
+                                                            color.bg,
+                                                            color.text
+                                                        )}>
+                                                            <Icon className="w-3.5 h-3.5" />
+                                                            {t.category}
+                                                        </span>
+                                                    );
+                                                })()}
+                                            </td>
+                                        )}
+                                        {showAccount && (
+                                            <td className={`px-6 ${py} whitespace-nowrap text-sm text-gray-500 w-[140px] min-w-[140px] max-w-[140px] truncate`}>{t.account}</td>
+                                        )}
+                                        {showNotes && (
+                                            <td className={`px-6 ${py} text-sm text-gray-500 w-[180px] min-w-[180px] max-w-[180px] truncate`} title={t.note}>
+                                                {t.note}
+                                                {!t.note && sortConfig.key !== 'date' && (
+                                                    <span className="text-xs text-gray-400 ml-2">{formatDate(t.date)}</span>
+                                                )}
+                                            </td>
+                                        )}
+                                        <td className={`px-6 ${py} whitespace-nowrap text-right`}>
                                             <div className="flex flex-col items-end gap-0.5">
                                                 <span className={`text-sm font-medium ${t.amount > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
-                                                    {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount)}
+                                                    {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount, currency)}
                                                 </span>
                                                 {t.originalAmount && t.originalCurrency && t.originalCurrency !== 'RUB' && (
                                                     <span className="text-xs text-gray-500">
@@ -349,9 +407,13 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                                     return (
                                         <div className="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider flex justify-between items-center sticky top-0 z-10 border-b border-gray-100">
                                             <span>{item.date}</span>
-                                            <div className="flex gap-2">
-                                                {item.stats.income > 0 && <span className="text-emerald-600">+{formatCurrency(item.stats.income)}</span>}
-                                                {item.stats.expense < 0 && <span className="text-gray-500">{formatCurrency(item.stats.expense)}</span>}
+                                            <div className="flex flex-col items-end gap-1">
+                                                {Object.entries(item.stats).map(([currency, stat]) => (
+                                                    <div key={currency} className="flex gap-2">
+                                                        {stat.income > 0 && <span className="text-emerald-600">+{formatCurrency(stat.income, currency)}</span>}
+                                                        {stat.expense < 0 && <span className="text-gray-500">{formatCurrency(stat.expense, currency)}</span>}
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     );

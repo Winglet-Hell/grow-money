@@ -205,7 +205,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
 
                 {/* Chart 1: Income vs Expenses */}
                 <ChartCard title="Income vs Expenses">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                         <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                             <XAxis
@@ -236,7 +236,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
 
                 {/* Chart 2: Net Flow Dynamics */}
                 <ChartCard title="Net Flow Dynamics">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                         <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                             <XAxis
@@ -339,7 +339,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                             </div>
                         }
                     >
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                 <defs>
                                     <linearGradient id="colorSavings" x1="0" y1="0" x2="0" y2="1">

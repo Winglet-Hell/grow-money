@@ -359,7 +359,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         parentTransactions.forEach(t => {
             // If Global Mode -> Breakdown by Category
             // If Category Mode -> Breakdown by Tag
-            const key = viewMode === 'global' ? t.category : (t.tags || 'No Tag');
+            const key = viewMode === 'global' ? t.category : (t.tags || t.note || 'No Tag');
 
             // Aggregate Total
             if (!groups[key]) {
@@ -594,7 +594,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                     <h2 className="text-2xl font-bold text-gray-900">Expenses</h2>
                     <p className="text-gray-500">Detailed breakdown of your spending by category and tags</p>
                 </div>
-                <div className="px-3 py-1 bg-gray-100 rounded-lg text-xs font-medium text-gray-600 flex items-center gap-2">
+                <div className="px-3 py-1 bg-gray-100 rounded-lg text-xs md:text-sm font-medium text-gray-600 flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                     {getFormattedDateRange(transactions)}
                 </div>

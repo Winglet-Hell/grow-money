@@ -115,7 +115,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         const currentMonth = now.getMonth();
 
         categoryTransactions.forEach(t => {
-            const tag = t.tags || 'No Tag';
+            const tag = t.tags || t.note || 'No Tag';
             if (!groups[tag]) {
                 groups[tag] = { total: 0, count: 0 };
             }
@@ -410,7 +410,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                     <h2 className="text-2xl font-bold text-gray-900">Income</h2>
                     <p className="text-gray-500">Track your earnings and revenue sources</p>
                 </div>
-                <div className="px-3 py-1 bg-gray-100 rounded-lg text-xs font-medium text-gray-600 flex items-center gap-2">
+                <div className="px-3 py-1 bg-gray-100 rounded-lg text-xs md:text-sm font-medium text-gray-600 flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                     {getFormattedDateRange(transactions)}
                 </div>

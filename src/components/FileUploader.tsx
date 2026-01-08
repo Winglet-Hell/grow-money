@@ -1,22 +1,26 @@
 import React, { useCallback, useState } from 'react';
-import { Upload, FileSpreadsheet } from 'lucide-react';
+import { Upload, FileSpreadsheet, Database, Lock } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { parseFile } from '../lib/parser';
+import { generateTestData } from '../lib/testData';
 import type { Transaction } from '../types';
 
 interface FileUploaderProps {
     onDataLoaded: (data: Transaction[]) => void;
+    isAuthenticated?: boolean;
+    onSignIn?: () => void;
 }
 
-export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded }) => {
+export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, isAuthenticated = false, onSignIn }) => {
     const [isDragOver, setIsDragOver] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
+        if (!isAuthenticated) return;
         e.preventDefault();
         setIsDragOver(true);
-    }, []);
+    }, [isAuthenticated]);
 
     const handleDragLeave = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -38,6 +42,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded }) => {
     };
 
     const handleDrop = useCallback((e: React.DragEvent) => {
+        if (!isAuthenticated) return;
         e.preventDefault();
         setIsDragOver(false);
 
@@ -45,13 +50,32 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded }) => {
         if (files.length > 0) {
             processFile(files[0]);
         }
-    }, []);
+    }, [isAuthenticated]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             processFile(e.target.files[0]);
         }
     }
+
+    const handleLoadTestData = async (e?: React.MouseEvent) => {
+        e?.preventDefault();
+        e?.stopPropagation();
+        setLoading(true);
+
+        try {
+            console.log("Generating local test data...");
+            const transactionData = generateTestData();
+            onDataLoaded(transactionData);
+        } catch (err) {
+            console.error("Error loading test data:", err);
+            onDataLoaded(generateTestData());
+        } finally {
+            setTimeout(() => {
+                setLoading(false);
+            }, 500);
+        }
+    };
 
     return (
         <div className="w-full max-w-2xl mx-auto mt-6 md:mt-12 relative group z-20 perspective-1000">
@@ -67,7 +91,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded }) => {
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 className={cn(
-                    "relative rounded-[2.5rem] p-10 md:p-16 text-center transition-all duration-500 cursor-pointer flex flex-col items-center justify-center gap-8 overflow-hidden min-h-[500px]",
+                    "relative rounded-[2.5rem] p-10 md:p-16 text-center transition-all duration-500 flex flex-col items-center justify-center gap-8 overflow-hidden min-h-[500px]",
                     // Glass Base
                     "backdrop-blur-md bg-white/20",
                     // Borders & Depth
@@ -80,7 +104,41 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded }) => {
                     loading && "opacity-50 pointer-events-none"
                 )}
             >
-                {/* 3. Shine / Reflection Layer */}
+                {/* 3. Guest Opaque Overlay */}
+                {!isAuthenticated && (
+                    <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center p-6 bg-white/95 backdrop-blur-md overflow-y-auto">
+                        <div className="flex flex-col items-center gap-6 max-w-sm text-center animate-in zoom-in-95 duration-500 py-4">
+                            <div className="w-16 h-16 rounded-[1.25rem] bg-emerald-50 border border-emerald-100 flex items-center justify-center shadow-inner">
+                                <Lock className="w-8 h-8 text-emerald-600" />
+                            </div>
+
+                            <div className="space-y-2">
+                                <h3 className="text-2xl font-bold text-emerald-950 tracking-tight">Secure Your Data</h3>
+                                <p className="text-emerald-800/60 text-base font-medium leading-relaxed">
+                                    Sign in to securely upload and analyze your financial statements.
+                                </p>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-3 w-full pt-2">
+                                <button
+                                    onClick={onSignIn}
+                                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] text-sm whitespace-nowrap"
+                                >
+                                    Sign In to Upload
+                                </button>
+                                <button
+                                    onClick={() => handleLoadTestData()}
+                                    className="flex-1 py-3 bg-white border border-emerald-100 text-emerald-600 font-bold rounded-2xl hover:bg-emerald-50 transition-all flex items-center justify-center gap-2 active:scale-[0.98] text-sm whitespace-nowrap"
+                                >
+                                    <Database className="w-4 h-4" />
+                                    Try Test Data
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 4. Shine / Reflection Layer */}
                 <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-transparent to-transparent opacity-60 pointer-events-none" />
                 <div className="absolute -inset-full bg-gradient-to-tr from-transparent via-white/10 to-transparent rotate-12 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
 
@@ -91,57 +149,69 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded }) => {
                     id="file-upload"
                     onChange={handleInputChange}
                 />
-                <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-10 w-full relative z-10">
 
-                    {/* 4. Central Icon "Jewel" */}
-                    <div className="relative group/icon">
-                        {/* Pulse Ring */}
-                        <div className={cn(
-                            "absolute inset-0 bg-emerald-400 rounded-full blur-xl opacity-0 transition-all duration-500",
-                            isDragOver ? "opacity-40 scale-150 animate-pulse" : "group-hover/icon:opacity-20"
-                        )} />
+                <div className="flex flex-col items-center gap-10 w-full relative z-10">
+                    <div className="relative w-full">
+                        <label
+                            htmlFor={isAuthenticated ? "file-upload" : undefined}
+                            className={cn(
+                                "flex flex-col items-center gap-10 w-full transition-all duration-500",
+                                isAuthenticated ? "cursor-pointer" : "opacity-40 grayscale-[0.5] pointer-events-none"
+                            )}
+                        >
+                            {/* 5. Central Icon "Jewel" */}
+                            <div className="relative group/icon">
+                                {/* Pulse Ring */}
+                                <div className={cn(
+                                    "absolute inset-0 bg-emerald-400 rounded-full blur-xl opacity-0 transition-all duration-500",
+                                    isDragOver ? "opacity-40 scale-150 animate-pulse" : "group-hover/icon:opacity-20"
+                                )} />
 
-                        <div className={cn(
-                            "relative w-24 h-24 rounded-[1.5rem] bg-gradient-to-br from-white/80 to-white/40 border border-white shadow-lg backdrop-blur-xl flex items-center justify-center transition-all duration-500",
-                            "shadow-[inset_0_2px_4px_rgba(255,255,255,1),_0_8px_20px_-4px_rgba(16,185,129,0.2)]",
-                            isDragOver ? "scale-110 rotate-3 border-emerald-200" : "group-hover/icon:-translate-y-1"
-                        )}>
-                            <Upload className={cn(
-                                "w-10 h-10 text-emerald-500/80 transition-all duration-300",
-                                isDragOver ? "text-emerald-600 scale-110" : "group-hover/icon:text-emerald-500"
-                            )} />
+                                <div className={cn(
+                                    "relative w-24 h-24 rounded-[1.5rem] bg-gradient-to-br from-white/80 to-white/40 border border-white shadow-lg backdrop-blur-xl flex items-center justify-center transition-all duration-500",
+                                    "shadow-[inset_0_2px_4px_rgba(255,255,255,1),_0_8px_20px_-4px_rgba(16,185,129,0.2)]",
+                                    isDragOver ? "scale-110 rotate-3 border-emerald-200" : "group-hover/icon:-translate-y-1"
+                                )}>
+                                    <Upload className={cn(
+                                        "w-10 h-10 text-emerald-500/80 transition-all duration-300",
+                                        isDragOver ? "text-emerald-600 scale-110" : "group-hover/icon:text-emerald-500"
+                                    )} />
+                                </div>
+
+                                {/* Floating 'Upload' text below icon on hover */}
+                                <div className={cn(
+                                    "absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-emerald-600 uppercase tracking-widest opacity-0 transform translate-y-2 transition-all duration-300",
+                                    (isDragOver || "group-hover:opacity-100 group-hover:translate-y-0")
+                                )}>
+                                    Click or Drag
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 max-w-md md:max-w-full px-4 text-center">
+                                <h3 className={cn(
+                                    "text-3xl font-bold tracking-tight text-emerald-950/90 transition-colors drop-shadow-sm",
+                                    isDragOver && "text-emerald-800"
+                                )}>
+                                    Drop Statement Here
+                                </h3>
+                                <p className="text-emerald-900/50 text-lg font-medium leading-relaxed">
+                                    Drag & drop your Excel file to unlock <span className="text-emerald-600/80 font-semibold">instant</span> analytics.
+                                </p>
+                            </div>
+                        </label>
+                    </div>
+
+                    {/* 6. Actions Row: Supported Formats */}
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 mt-2 w-full max-w-md">
+                        <div className="flex items-center gap-3">
+                            {['XLSX', 'CSV'].map((ext) => (
+                                <span key={ext} className="flex items-center gap-1.5 bg-white/40 border border-white/60 px-4 py-2 rounded-xl text-xs text-emerald-800/70 font-bold uppercase tracking-widest backdrop-blur-md shadow-sm transition-transform hover:scale-105 hover:bg-white/60 pointer-events-none select-none cursor-default">
+                                    <FileSpreadsheet className="w-3.5 h-3.5" /> {ext}
+                                </span>
+                            ))}
                         </div>
-
-                        {/* Floating 'Upload' text below icon on hover */}
-                        <div className={cn(
-                            "absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-emerald-600 uppercase tracking-widest opacity-0 transform translate-y-2 transition-all duration-300",
-                            (isDragOver || "group-hover:opacity-100 group-hover:translate-y-0")
-                        )}>
-                            Click or Drag
-                        </div>
                     </div>
-
-                    <div className="space-y-4 max-w-md md:max-w-full px-4">
-                        <h3 className={cn(
-                            "text-3xl font-bold tracking-tight text-emerald-950/90 transition-colors drop-shadow-sm",
-                            isDragOver && "text-emerald-800"
-                        )}>
-                            Drop Statement Here
-                        </h3>
-                        <p className="text-emerald-900/50 text-lg font-medium leading-relaxed">
-                            Drag & drop your Excel file to unlock <span className="text-emerald-600/80 font-semibold">instant</span> analytics.
-                        </p>
-                    </div>
-
-                    {/* 5. Supported Formats Pills */}
-                    <div className="flex items-center justify-center gap-3">
-                        {['XLSX', 'CSV'].map((ext) => (
-                            <span key={ext} className="flex items-center gap-1.5 bg-white/40 border border-white/60 px-4 py-2 rounded-xl text-xs text-emerald-800/70 font-bold uppercase tracking-widest backdrop-blur-md shadow-sm transition-transform hover:scale-105 hover:bg-white/60">
-                                <FileSpreadsheet className="w-3.5 h-3.5" /> {ext}
-                            </span>
-                        ))}
-                    </div>
-                </label>
+                </div>
             </div>
 
             {error && (

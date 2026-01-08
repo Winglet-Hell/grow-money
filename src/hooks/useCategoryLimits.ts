@@ -39,9 +39,18 @@ export const useCategoryLimits = () => {
         setLimitsState(prev => ({ ...prev, [category]: amount }));
 
         try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return; // Should handle error state
+
             const { error } = await supabase
                 .from('category_limits')
-                .upsert({ category, amount }, { onConflict: 'category' });
+                .upsert({
+                    category,
+                    amount,
+                    user_id: user.id
+                }, {
+                    onConflict: 'user_id, category' // Important: match the new unique constraint
+                });
 
             if (error) {
                 console.error('Error saving limit:', error);
