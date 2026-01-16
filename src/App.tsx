@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, PieChart, TrendingUp, ShieldCheck, Import, Eye, EyeOff, Wallet, Heart, LineChart, ChevronDown } from 'lucide-react';
-import * as Icons from 'lucide-react';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { PrivacyProvider, usePrivacy } from './contexts/PrivacyContext';
-import { useUserSettings, UserSettingsProvider } from './contexts/UserSettingsContext';
+import { LayoutDashboard, PieChart, TrendingUp, Wallet, LineChart, ShieldCheck, Import, Heart } from 'lucide-react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { PrivacyProvider } from './contexts/PrivacyContext';
+import { UserSettingsProvider } from './contexts/UserSettingsContext';
 
 import { getFormattedDateRange, cn } from './lib/utils';
 import { db } from './lib/db';
@@ -20,6 +19,8 @@ import { AccountsPage } from './pages/AccountsPage';
 import { WishlistPage } from './pages/WishlistPage';
 import { AIExportPage } from './pages/AIExportPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TripAnalyticsPage } from './pages/TripAnalyticsPage';
+import { Navigation } from './components/Navigation';
 import { supabase } from './lib/supabase';
 import { Auth } from './components/Auth';
 import type { Transaction } from './types';
@@ -85,24 +86,11 @@ function AppContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<any>(null); // Add session state
-  const location = useLocation();
-  const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
   const [showAuth, setShowAuth] = useState(false);
-  const { settings } = useUserSettings();
 
 
-  // Define navigation items for desktop and potentially BottomNav
-  const navItems = [
-    { path: '/', label: 'Overview', icon: LayoutDashboard },
-    { path: '/category-insights', label: 'Expenses', icon: PieChart },
-    { path: '/income-insights', label: 'Income', icon: TrendingUp },
-    { path: '/trends', label: 'Trends', icon: LineChart },
-    { path: '/accounts', label: 'Wallets', icon: Wallet },
-    { path: '/wishlist', label: 'Goals', icon: Heart },
-    { path: '/ai-export', label: 'AI', icon: Import },
-  ];
+  // Navigation items handled in Navigation component
 
   useEffect(() => {
     // Check active session
@@ -211,128 +199,15 @@ function AppContent() {
         </div>
       )}
 
-      {/* Header */}
-      <header className={`${transactions.length > 0 ? 'bg-white/80' : 'bg-transparent'} backdrop-blur-md border-b ${transactions.length > 0 ? 'border-gray-200/50' : 'border-transparent'} fixed top-0 inset-x-0 z-50 rounded-b-3xl transition-all duration-500 h-16`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
-          <div className="flex-none flex items-center">
-            <Link to="/" className="flex items-center gap-2 group cursor-pointer" onClick={handleReset}>
-              {/* Note: Added onClick reset for logo to go back to home/reset if needed, or just standard link */}
-              <div className="bg-white/40 border border-white/60 p-2 rounded-xl backdrop-blur-md shadow-sm group-hover:bg-white/60 transition-colors">
-                <LayoutDashboard className="w-5 h-5 text-emerald-600" />
-              </div>
-              <h1 className="text-xl font-bold tracking-tight text-emerald-950">
-                Grow <span className="text-emerald-600">money</span>
-              </h1>
-            </Link>
-          </div>
-
-          {transactions.length > 0 && (
-            <div className="hidden md:flex flex-1 items-center justify-center gap-4">
-              <nav className="flex items-center gap-1">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${location.pathname === item.path
-                      ? (item.path === '/' ? 'bg-emerald-50 text-emerald-700' : 'bg-emerald-50 text-emerald-700')
-                      : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                      }`}
-                  >
-                    <item.icon className="w-4 h-4" />
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
-
-              {/* Test Mode Indicator - Positioned after menu */}
-              {!session && (
-                <div className="px-3 py-1 bg-amber-100 border border-amber-200 rounded-full text-[10px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-2 shadow-sm whitespace-nowrap">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                  Test Mode
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex-none flex items-center gap-2">
-
-            {transactions.length > 0 && (
-              <button
-                onClick={togglePrivacyMode}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                title={isPrivacyMode ? "Show sensitive data" : "Hide sensitive data"}
-              >
-                {isPrivacyMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            )}
-
-            {/* Auth / User Menu */}
-            {!session ? (
-              <button
-                onClick={() => setShowAuth(true)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95"
-              >
-                Sign In
-              </button>
-            ) : (
-              transactions.length > 0 && (
-                <div className="relative">
-                  <button
-                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 overflow-hidden">
-                      {settings.profile.avatar_icon ? (
-                        <DynamicUserIcon name={settings.profile.avatar_icon} className="w-5 h-5" />
-                      ) : (
-                        userEmail ? userEmail[0].toUpperCase() : <Wallet className="w-4 h-4" />
-                      )}
-                    </div>
-                    <span className="hidden md:block max-w-[100px] truncate">
-                      {settings.profile.full_name || userEmail?.split('@')[0]}
-                    </span>
-                    <ChevronDown className="w-4 h-4 text-gray-400" />
-                  </button>
-
-                  {isUserMenuOpen && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setIsUserMenuOpen(false)} />
-                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-20 animate-in fade-in zoom-in-95 duration-200">
-                        <Link
-                          to="/settings"
-                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                          onClick={() => setIsUserMenuOpen(false)}
-                        >
-                          Settings
-                        </Link>
-                        <button
-                          onClick={() => {
-                            handleReset();
-                            setIsUserMenuOpen(false);
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                        >
-                          Clear Data
-                        </button>
-                        <div className="h-px bg-gray-100 my-1" />
-                        <button
-                          onClick={() => {
-                            handleLogout();
-                            setIsUserMenuOpen(false);
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                        >
-                          Sign Out
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )
-            )}
-          </div>
-        </div>
-      </header >
+      {/* Navigation */}
+      <Navigation
+        onReset={handleReset}
+        isAuthenticated={!!session}
+        onSignIn={() => setShowAuth(true)}
+        onLogout={handleLogout}
+        userEmail={userEmail}
+        isLandingPage={transactions.length === 0}
+      />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 md:pt-24 pb-8 relative">
         {
@@ -436,6 +311,7 @@ function AppContent() {
                 <Route path="/wishlist" element={<WishlistPage transactions={transactions} />} />
                 <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} />} />
                 <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
+                <Route path="/trip-analytics" element={<TripAnalyticsPage transactions={transactions} />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </div>
@@ -447,10 +323,6 @@ function AppContent() {
   );
 }
 
-const DynamicUserIcon = ({ name, className }: { name: string, className?: string }) => {
-  const IconComponent = (Icons as any)[name] || Icons.User;
-  return <IconComponent className={className} />;
-};
 
 function App() {
   return (

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart, LineChart } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart, LineChart, Map } from 'lucide-react';
 import { cn } from '../lib/utils';
 import menuIllustration from '../assets/menu-illustration.png';
 
@@ -30,6 +30,7 @@ export function BottomNav({ onReset }: { onReset: () => void }) {
     const menuItems = [
         { path: '/category-insights', label: 'Expenses', icon: PieChart },
         { path: '/income-insights', label: 'Income', icon: TrendingUp },
+        { path: '/trip-analytics', label: 'Trips', icon: Map },
         { path: '/wishlist', label: 'Goals', icon: Heart },
         { path: '/ai-export', label: 'AI Sync', icon: Import },
     ];

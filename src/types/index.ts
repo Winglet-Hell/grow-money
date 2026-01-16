@@ -25,3 +25,12 @@ export type Account = {
     balance_checkpoint_tx_id?: string; // ID of the last transaction included in this balance
     is_hidden?: boolean;
 };
+
+export type Trip = {
+    id: string; // generated ID
+    name: string;
+    startDate: string; // ISO string
+    endDate: string; // ISO string
+    excludedTransactionIds: string[]; // List of transaction IDs to exclude
+    additionalTransactionIds?: string[]; // List of transaction IDs to manually include (e.g. outside date range)
+};

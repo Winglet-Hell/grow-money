@@ -6,6 +6,7 @@ export interface UserPreferences {
     tableShowNotes?: boolean;
     tableShowAccount?: boolean;
     tableShowCategory?: boolean;
+    customSearchTags?: string[];
 }
 
 export interface UserProfile {
