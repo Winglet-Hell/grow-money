@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Calendar, Plus, Trash2, CheckCircle2, Map, Plane, Calculator, Search, X, Pencil, Check, Sparkles, Wallet, TrendingUp } from 'lucide-react';
-import type { Transaction, Trip } from '../types';
+import { ArrowLeft, Calendar, Plus, Trash2, Map, Plane, Calculator, Search, X, Pencil, Check, Sparkles, Wallet, TrendingUp } from 'lucide-react';
+import type { Transaction, Trip, TransactionSnapshot } from '../types';
 import { db } from '../lib/db';
 import { cn, stringToColor, formatDate } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -109,11 +109,159 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
                 startDate: t.start_date,
                 endDate: t.end_date,
                 excludedTransactionIds: t.excluded_transaction_ids || [],
-                additionalTransactionIds: t.additional_transaction_ids || []
+                additionalTransactionIds: t.additional_transaction_ids || [],
+                transactionSnapshots: t.transaction_snapshots || {}
             }));
             setTrips(mappedTrips);
         }
     };
+
+    // --- SNAPSHOT & AUTO-HEAL LOGIC ---
+
+    // Helper: Find a transaction by fuzzy matching its snapshot
+    const findTransactionWithSnapshot = (snapshot: TransactionSnapshot, candidates: Transaction[]): Transaction | undefined => {
+        return candidates.find(t =>
+            t.date === snapshot.date &&
+            t.amount === snapshot.amount &&
+            t.category === snapshot.category &&
+            (t.note || '') === snapshot.note &&
+            (t.originalCurrency || '') === (snapshot.originalCurrency || '')
+        );
+    };
+
+    // Helper: Resolve active transactions for a trip (handling stable IDs + snapshot recovery)
+    const resolveTripActiveTransactions = (trip: Trip, allTxs: Transaction[]) => {
+        const start = trip.startDate;
+        const end = trip.endDate;
+        const snapshots = trip.transactionSnapshots || {};
+
+        // 1. Base transactions in range
+        let candidates = allTxs.filter(t => {
+            const txDate = t.date.split('T')[0];
+            return txDate >= start && txDate <= end && t.type === 'expense';
+        });
+
+        // 2. Add Additional (Recovered via ID or Snapshot)
+        (trip.additionalTransactionIds || []).forEach(id => {
+            // Check if already in list (avoid duplicates if ID matches)
+            if (candidates.some(c => c.id === id)) return;
+
+            // Try to find by ID
+            let tx = allTxs.find(t => t.id === id);
+
+            // If not found by ID, try Snapshot
+            if (!tx && snapshots[id]) {
+                tx = findTransactionWithSnapshot(snapshots[id], allTxs);
+            }
+
+            if (tx) {
+                // Check if we already have it (resolving duplicates)
+                if (!candidates.some(c => c.id === tx!.id)) {
+                    candidates.push(tx);
+                }
+            }
+        });
+
+        // 3. Apply Exclusions (Recovered via ID or Snapshot)
+        // We need to know which IDs to exclude.
+        // Some might be "stale" IDs that resolve to new IDs via snapshot.
+        const resolvedExcludedIds = new Set<string>();
+
+        trip.excludedTransactionIds.forEach(id => {
+            // If ID exists in current set? 
+            // We just need to find "what transaction does this ID refer to?"
+            let targetId = id;
+
+            // If this ID doesn't exist in our candidate list...
+            // It might be an old ID.
+            // But we only care if it Matches something in our candidate list.
+
+            // Try to match strict ID
+            const exists = allTxs.some(t => t.id === id);
+
+            if (!exists && snapshots[id]) {
+                // Recover via snapshot
+                const recovered = findTransactionWithSnapshot(snapshots[id], allTxs);
+                if (recovered) {
+                    targetId = recovered.id;
+                }
+            }
+            resolvedExcludedIds.add(targetId);
+        });
+
+        return candidates.filter(t => !resolvedExcludedIds.has(t.id));
+    };
+
+    // Effect: Auto-Heal Trips on Load/Change
+    useEffect(() => {
+        if (!selectedTrip || transactions.length === 0) return;
+
+        const newExcludedIds = [...selectedTrip.excludedTransactionIds];
+        const newAdditionalIds = [...(selectedTrip.additionalTransactionIds || [])];
+        const snapshots = selectedTrip.transactionSnapshots || {};
+
+        // 1. Check Excluded IDs
+        // If an ID is NOT found in current transactions, but we have a snapshot for it,
+        // try to find the new ID and update the list.
+        const activeIds = new Set(transactions.map(t => t.id));
+
+        const healList = (currentIds: string[], listName: 'excluded' | 'additional') => {
+            const updatedList = [...currentIds];
+            let listChanged = false;
+
+            for (let i = 0; i < updatedList.length; i++) {
+                const id = updatedList[i];
+                if (!activeIds.has(id)) {
+                    // CASE A: ID is missing (File changed?)
+                    // Do we have a snapshot to recover it?
+                    const snapshot = snapshots[id];
+                    if (snapshot) {
+                        const candidate = findTransactionWithSnapshot(snapshot, transactions);
+                        if (candidate) {
+                            // Found it! Update ID.
+                            console.log(`[Auto-Heal] Repaired ${listName} transaction: ${id} -> ${candidate.id}`);
+                            updatedList[i] = candidate.id;
+
+                            // Migrate snapshot to new ID
+                            snapshots[candidate.id] = snapshot;
+                            listChanged = true;
+                        }
+                    }
+                } else {
+                    // CASE B: ID exists (File is correct/original), BUT might be missing snapshot (Legacy data)
+                    // We must backfill the snapshot now, so it survives future file changes.
+                    if (!snapshots[id]) {
+                        const tx = transactions.find(t => t.id === id);
+                        if (tx) {
+                            console.log(`[Auto-Heal] Backfilling snapshot for existing ${listName} transaction: ${id}`);
+                            snapshots[id] = createSnapshot(tx);
+                            listChanged = true; // Mark as changed to trigger save
+                        }
+                    }
+                }
+            }
+            return { list: updatedList, changed: listChanged };
+        };
+
+        const healedExcluded = healList(newExcludedIds, 'excluded');
+        const healedAdditional = healList(newAdditionalIds, 'additional');
+
+        if (healedExcluded.changed || healedAdditional.changed) {
+            // Apply updates
+            updateTripTransactions(healedExcluded.list, healedAdditional.list, snapshots);
+        }
+
+    }, [selectedTrip?.id, transactions]); // Re-run when trip selection or transaction dataset changes
+
+
+    // Helper: Create Snapshot from Transaction
+    const createSnapshot = (t: Transaction): TransactionSnapshot => ({
+        date: t.date,
+        amount: t.amount,
+        category: t.category,
+        note: t.note || '',
+        originalCurrency: t.originalCurrency
+    });
 
     const handleCreateTrip = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -128,7 +276,8 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
                     start_date: newTripStart,
                     end_date: newTripEnd,
                     excluded_transaction_ids: [],
-                    additional_transaction_ids: []
+                    additional_transaction_ids: [],
+                    transaction_snapshots: {}
                 })
                 .select()
                 .single();
@@ -145,7 +294,8 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
                 startDate: data.start_date,
                 endDate: data.end_date,
                 excludedTransactionIds: data.excluded_transaction_ids || [],
-                additionalTransactionIds: data.additional_transaction_ids || []
+                additionalTransactionIds: data.additional_transaction_ids || [],
+                transactionSnapshots: data.transaction_snapshots || {}
             };
             setTrips(prev => [newTrip, ...prev]);
 
@@ -156,7 +306,8 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
                 startDate: newTripStart,
                 endDate: newTripEnd,
                 excludedTransactionIds: [],
-                additionalTransactionIds: []
+                additionalTransactionIds: [],
+                transactionSnapshots: {}
             };
 
             await db.trips.add(newTrip);
@@ -210,13 +361,14 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
         setNewTripEnd('');
     };
 
-    const updateTripTransactions = async (newExcludedIds: string[], newAdditionalIds: string[]) => {
+    const updateTripTransactions = async (newExcludedIds: string[], newAdditionalIds: string[], newSnapshots?: Record<string, TransactionSnapshot>) => {
         if (!selectedTrip) return;
 
         const updatedTrip = {
             ...selectedTrip,
             excludedTransactionIds: newExcludedIds,
-            additionalTransactionIds: newAdditionalIds
+            additionalTransactionIds: newAdditionalIds,
+            transactionSnapshots: newSnapshots || selectedTrip.transactionSnapshots
         };
 
         setSelectedTrip(updatedTrip);
@@ -227,14 +379,16 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
                 .from('trips')
                 .update({
                     excluded_transaction_ids: newExcludedIds,
-                    additional_transaction_ids: newAdditionalIds
+                    additional_transaction_ids: newAdditionalIds,
+                    transaction_snapshots: newSnapshots || selectedTrip.transactionSnapshots
                 })
                 .eq('id', selectedTrip.id);
             if (error) console.error('Error updating txs:', error);
         } else {
             await db.trips.update(selectedTrip.id, {
                 excludedTransactionIds: newExcludedIds,
-                additionalTransactionIds: newAdditionalIds
+                additionalTransactionIds: newAdditionalIds,
+                transactionSnapshots: newSnapshots || selectedTrip.transactionSnapshots
             });
         }
     };
@@ -246,7 +400,18 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
             ? selectedTrip.excludedTransactionIds.filter(id => id !== txId)
             : [...selectedTrip.excludedTransactionIds, txId];
 
-        await updateTripTransactions(newExcludedIds, selectedTrip.additionalTransactionIds || []);
+        // Update snapshot if adding to excluded
+        // Wait, excluded transactions also need snapshots to be recovered!
+        const snapshots = { ...selectedTrip.transactionSnapshots };
+        if (!isExcluded) {
+            // We are excluding it now. Save snapshot.
+            const tx = transactions.find(t => t.id === txId);
+            if (tx) {
+                snapshots[txId] = createSnapshot(tx);
+            }
+        }
+
+        await updateTripTransactions(newExcludedIds, selectedTrip.additionalTransactionIds || [], snapshots);
     };
 
     const handleAddExistingTransaction = async (txId: string) => {
@@ -255,7 +420,15 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
         if (currentAdditional.includes(txId)) return; // Already added
 
         const newAdditionalIds = [...currentAdditional, txId];
-        await updateTripTransactions(selectedTrip.excludedTransactionIds, newAdditionalIds);
+
+        // Add snapshot
+        const snapshots = { ...selectedTrip.transactionSnapshots };
+        const tx = transactions.find(t => t.id === txId);
+        if (tx) {
+            snapshots[txId] = createSnapshot(tx);
+        }
+
+        await updateTripTransactions(selectedTrip.excludedTransactionIds, newAdditionalIds, snapshots);
     };
 
 
@@ -399,25 +572,11 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
 
     }, [transactions, selectedTrip, tripStats]);
 
+
     const allTripsTotalCost = useMemo(() => {
         return trips.reduce((acc, trip) => {
-            const start = trip.startDate;
-            const end = trip.endDate;
-            const additionalIds = trip.additionalTransactionIds || [];
-
-            const tripCost = transactions.reduce((sum, t) => {
-                const txDate = t.date.split('T')[0];
-                const inRange = txDate >= start && txDate <= end && t.type === 'expense';
-                const isAdditional = additionalIds.includes(t.id);
-                const isExcluded = (trip.excludedTransactionIds || []).includes(t.id);
-
-                if ((inRange || isAdditional) && !isExcluded) {
-                    return sum + t.amount;
-                }
-                return sum;
-            }, 0);
-
-            return acc + tripCost;
+            const activeTxs = resolveTripActiveTransactions(trip, transactions);
+            return acc + activeTxs.reduce((sum, t) => sum + t.amount, 0);
         }, 0);
     }, [trips, transactions]);
 
@@ -853,9 +1012,9 @@ ${JSON.stringify(data, null, 2)}`;
                                 : (typeof t.tags === 'string' ? t.tags : (t.note || t.category));
 
                             return (
-                                <div key={t.id} className={cn("flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer group", isExcluded && "opacity-60 bg-gray-50/50")} onClick={() => toggleTransactionExclusion(t.id)}>
+                                <div key={t.id} className={cn("flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer group relative", isExcluded && "opacity-60 bg-gray-50/50")} onClick={() => toggleTransactionExclusion(t.id)}>
                                     <div className={cn("w-5 h-5 rounded border flex items-center justify-center transition-all flex-shrink-0", isExcluded ? "border-gray-300 bg-transparent" : "border-emerald-500 bg-emerald-500")}>
-                                        {!isExcluded && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                                        {!isExcluded && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
                                     </div>
 
                                     <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", color.bg, color.text, isExcluded && "grayscale opacity-70")}>
@@ -885,6 +1044,21 @@ ${JSON.stringify(data, null, 2)}`;
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* Visual Indicator for Manually Added Transactions */}
+                                    {selectedTrip.additionalTransactionIds?.includes(t.id) && !isExcluded && (
+                                        <div className="absolute top-2 right-2 flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                        </div>
+                                    )}
+                                    {selectedTrip.additionalTransactionIds?.includes(t.id) && !isExcluded && (
+                                        <div className="absolute -left-1 -top-1">
+                                            <div className="bg-emerald-100 text-emerald-700 p-0.5 rounded-full border border-emerald-200 shadow-sm" title="Manually Added">
+                                                <Plus className="w-3 h-3" strokeWidth={3} />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )
                         })}
@@ -895,139 +1069,141 @@ ${JSON.stringify(data, null, 2)}`;
                 </div>
 
                 {/* Add Transaction Modal */}
-                {isAddTransactionOpen && createPortal(
-                    <div className="fixed inset-0 z-[100] overflow-y-auto">
-                        <div className="min-h-full flex items-center justify-center p-4">
-                            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm fixed" onClick={() => setIsAddTransactionOpen(false)} />
-                            <div className="relative z-10 bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
-                                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 flex-none">
-                                    <h3 className="text-lg font-bold text-gray-900">Add Transaction</h3>
-                                    <button onClick={() => setIsAddTransactionOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg text-gray-400">
-                                        <X className="w-5 h-5" />
-                                    </button>
-                                </div>
-
-                                <div className="p-4 flex-none border-b border-gray-100 flex flex-col gap-3">
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search by category, note, amount..."
-                                            value={searchQuery}
-                                            onChange={e => setSearchQuery(e.target.value)}
-                                            className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition-all"
-                                            autoFocus
-                                        />
+                {
+                    isAddTransactionOpen && createPortal(
+                        <div className="fixed inset-0 z-[100] overflow-y-auto">
+                            <div className="min-h-full flex items-center justify-center p-4">
+                                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm fixed" onClick={() => setIsAddTransactionOpen(false)} />
+                                <div className="relative z-10 bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+                                    <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 flex-none">
+                                        <h3 className="text-lg font-bold text-gray-900">Add Transaction</h3>
+                                        <button onClick={() => setIsAddTransactionOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg text-gray-400">
+                                            <X className="w-5 h-5" />
+                                        </button>
                                     </div>
-                                    <div className="flex items-center gap-2 pb-1">
-                                        <div className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-hide">
-                                            <button
-                                                onClick={() => setSearchQuery(selectedTrip.name)}
-                                                className="px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-lg hover:bg-emerald-100 transition-colors whitespace-nowrap flex-shrink-0"
-                                            >
-                                                {selectedTrip.name}
-                                            </button>
-                                            {(settings.preferences.customSearchTags || ['Travel', 'Hotels', 'Flights']).map((tag: string) => (
-                                                <div key={tag} className="flex items-center bg-gray-100 rounded-lg border border-gray-200 overflow-hidden flex-shrink-0 group">
-                                                    <button
-                                                        onClick={() => setSearchQuery(tag)}
-                                                        className="px-3 py-1.5 text-gray-600 text-xs font-medium hover:bg-gray-200 transition-colors whitespace-nowrap border-r border-transparent group-hover:border-gray-200"
-                                                    >
-                                                        {tag}
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            const currentTags = settings.preferences.customSearchTags || ['Travel', 'Hotels', 'Flights'];
-                                                            const newTags = currentTags.filter(t => t !== tag);
-                                                            updatePreferences({ customSearchTags: newTags });
-                                                        }}
-                                                        className="px-1.5 py-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                                                        title="Remove tag"
-                                                    >
-                                                        <X className="w-3 h-3" />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
 
-                                        {searchQuery && !(settings.preferences.customSearchTags || ['Travel', 'Hotels', 'Flights']).includes(searchQuery) && (
-                                            <button
-                                                onClick={() => {
-                                                    const currentTags = settings.preferences.customSearchTags || ['Travel', 'Hotels', 'Flights'];
-                                                    updatePreferences({ customSearchTags: [...currentTags, searchQuery] });
-                                                }}
-                                                className="flex-none px-2 py-1 bg-gray-50 border border-gray-200 text-gray-600 rounded-lg hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-colors"
-                                                title="Save as tag"
-                                            >
-                                                <Plus className="w-4 h-4" />
-                                            </button>
+                                    <div className="p-4 flex-none border-b border-gray-100 flex flex-col gap-3">
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search by category, note, amount..."
+                                                value={searchQuery}
+                                                onChange={e => setSearchQuery(e.target.value)}
+                                                className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition-all"
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2 pb-1">
+                                            <div className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                                                <button
+                                                    onClick={() => setSearchQuery(selectedTrip.name)}
+                                                    className="px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-lg hover:bg-emerald-100 transition-colors whitespace-nowrap flex-shrink-0"
+                                                >
+                                                    {selectedTrip.name}
+                                                </button>
+                                                {(settings.preferences.customSearchTags || ['Travel', 'Hotels', 'Flights']).map((tag: string) => (
+                                                    <div key={tag} className="flex items-center bg-gray-100 rounded-lg border border-gray-200 overflow-hidden flex-shrink-0 group">
+                                                        <button
+                                                            onClick={() => setSearchQuery(tag)}
+                                                            className="px-3 py-1.5 text-gray-600 text-xs font-medium hover:bg-gray-200 transition-colors whitespace-nowrap border-r border-transparent group-hover:border-gray-200"
+                                                        >
+                                                            {tag}
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const currentTags = settings.preferences.customSearchTags || ['Travel', 'Hotels', 'Flights'];
+                                                                const newTags = currentTags.filter(t => t !== tag);
+                                                                updatePreferences({ customSearchTags: newTags });
+                                                            }}
+                                                            className="px-1.5 py-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                            title="Remove tag"
+                                                        >
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {searchQuery && !(settings.preferences.customSearchTags || ['Travel', 'Hotels', 'Flights']).includes(searchQuery) && (
+                                                <button
+                                                    onClick={() => {
+                                                        const currentTags = settings.preferences.customSearchTags || ['Travel', 'Hotels', 'Flights'];
+                                                        updatePreferences({ customSearchTags: [...currentTags, searchQuery] });
+                                                    }}
+                                                    className="flex-none px-2 py-1 bg-gray-50 border border-gray-200 text-gray-600 rounded-lg hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-colors"
+                                                    title="Save as tag"
+                                                >
+                                                    <Plus className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin bg-gray-50/30">
+                                        {searchResults.map(t => {
+                                            const Icon = getCategoryIcon(t.category);
+                                            const color = stringToColor(t.category);
+                                            const tagName = (Array.isArray(t.tags) && t.tags.length > 0)
+                                                ? t.tags[0]
+                                                : (typeof t.tags === 'string' ? t.tags : (t.note || t.category));
+
+                                            return (
+                                                <div key={t.id} className="bg-white p-3 rounded-2xl border border-gray-100 hover:border-emerald-200 shadow-sm hover:shadow-md transition-all group flex items-center gap-3">
+                                                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", color.bg, color.text)}>
+                                                        <Icon className="w-5 h-5" />
+                                                    </div>
+
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-0.5">
+                                                            <span className="font-bold text-gray-900 truncate">{tagName}</span>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                            <span className="font-medium text-gray-600">
+                                                                {t.category}
+                                                            </span>
+                                                            <span>•</span>
+                                                            <span className="">{formatDate(t.date)}</span>
+                                                            <span>•</span>
+                                                            <span className="truncate max-w-[80px]" title={t.account}>
+                                                                {t.account}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="text-right">
+                                                        <div className="font-bold text-gray-900 whitespace-nowrap">{formatMoney(t.amount, t.currency)}</div>
+                                                    </div>
+
+                                                    <div className="flex items-center pl-1">
+                                                        <button
+                                                            onClick={() => handleAddExistingTransaction(t.id)}
+                                                            className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                                            title="Add to Trip"
+                                                        >
+                                                            <Plus className="w-5 h-5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+
+                                        {searchResults.length === 0 && (
+                                            <div className="text-center py-12 flex flex-col items-center text-gray-400">
+                                                <Search className="w-12 h-12 mb-3 opacity-20" />
+                                                <p>No transactions found matching your criteria</p>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
-
-                                <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin bg-gray-50/30">
-                                    {searchResults.map(t => {
-                                        const Icon = getCategoryIcon(t.category);
-                                        const color = stringToColor(t.category);
-                                        const tagName = (Array.isArray(t.tags) && t.tags.length > 0)
-                                            ? t.tags[0]
-                                            : (typeof t.tags === 'string' ? t.tags : (t.note || t.category));
-
-                                        return (
-                                            <div key={t.id} className="bg-white p-3 rounded-2xl border border-gray-100 hover:border-emerald-200 shadow-sm hover:shadow-md transition-all group flex items-center gap-3">
-                                                <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", color.bg, color.text)}>
-                                                    <Icon className="w-5 h-5" />
-                                                </div>
-
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-0.5">
-                                                        <span className="font-bold text-gray-900 truncate">{tagName}</span>
-                                                    </div>
-
-                                                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                        <span className="font-medium text-gray-600">
-                                                            {t.category}
-                                                        </span>
-                                                        <span>•</span>
-                                                        <span className="">{formatDate(t.date)}</span>
-                                                        <span>•</span>
-                                                        <span className="truncate max-w-[80px]" title={t.account}>
-                                                            {t.account}
-                                                        </span>
-                                                    </div>
-                                                </div>
-
-                                                <div className="text-right">
-                                                    <div className="font-bold text-gray-900 whitespace-nowrap">{formatMoney(t.amount, t.currency)}</div>
-                                                </div>
-
-                                                <div className="flex items-center pl-1">
-                                                    <button
-                                                        onClick={() => handleAddExistingTransaction(t.id)}
-                                                        className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                                                        title="Add to Trip"
-                                                    >
-                                                        <Plus className="w-5 h-5" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-
-                                    {searchResults.length === 0 && (
-                                        <div className="text-center py-12 flex flex-col items-center text-gray-400">
-                                            <Search className="w-12 h-12 mb-3 opacity-20" />
-                                            <p>No transactions found matching your criteria</p>
-                                        </div>
-                                    )}
-                                </div>
                             </div>
-                        </div>
-                    </div>,
-                    document.body
-                )}
-            </div>
+                        </div>,
+                        document.body
+                    )
+                }
+            </div >
         );
     }
 
@@ -1142,13 +1318,7 @@ ${JSON.stringify(data, null, 2)}`;
                 {trips.map(trip => {
                     const start = trip.startDate;
                     const end = trip.endDate;
-                    const additionalIds = trip.additionalTransactionIds || [];
-                    const activeTransactions = transactions.filter(t => {
-                        const txDate = t.date.split('T')[0];
-                        const inRange = txDate >= start && txDate <= end && t.type === 'expense';
-                        const isAdditional = additionalIds.includes(t.id);
-                        return (inRange || isAdditional) && !trip.excludedTransactionIds.includes(t.id);
-                    });
+                    const activeTransactions = resolveTripActiveTransactions(trip, transactions);
                     const totalCost = activeTransactions.reduce((sum, t) => sum + t.amount, 0);
                     const startDate = new Date(start);
                     const endDate = new Date(end);

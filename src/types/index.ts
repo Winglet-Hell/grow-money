@@ -33,4 +33,13 @@ export type Trip = {
     endDate: string; // ISO string
     excludedTransactionIds: string[]; // List of transaction IDs to exclude
     additionalTransactionIds?: string[]; // List of transaction IDs to manually include (e.g. outside date range)
+    transactionSnapshots?: Record<string, TransactionSnapshot>; // Map of ID -> Snapshot for recovery
+};
+
+export type TransactionSnapshot = {
+    date: string;
+    amount: number;
+    category: string;
+    note: string;
+    originalCurrency?: string;
 };

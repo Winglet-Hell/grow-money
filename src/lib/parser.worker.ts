@@ -167,7 +167,11 @@ function mapRow(row: any, type: Transaction['type'], index: number): Transaction
         .map((tag: string) => toSentenceCase(tag.trim()))
         .filter(tag => tag !== '');
 
-    const signature = `${String(mapped.date)}|${Number(mapped.amount)}|${String(mapped.account || 'Unknown')}|${toSentenceCase(String(mapped.category || 'Uncategorized'))}|${String(mapped.note || '')}|${index}`;
+    // STABLE ID GENERATION (Content-Based)
+    // We intentionally OMIT the 'index' from the signature to ensure IDs match across file versions
+    // regardless of row position.
+    // Collisions (duplicates) will be handled in a post-processing step.
+    const signature = `${String(mapped.date)}|${Number(mapped.amount)}|${String(mapped.account || 'Unknown')}|${toSentenceCase(String(mapped.category || 'Uncategorized'))}|${String(mapped.note || '')}|${Number(mapped.originalAmount || 0)}`;
     const id = generateHash(signature);
 
     const t: Transaction = {
@@ -186,6 +190,24 @@ function mapRow(row: any, type: Transaction['type'], index: number): Transaction
     };
 
     return t;
+}
+
+// Post-processor to ensure unique IDs for identical transactions
+// Preserves stability by appending suffix based on occurrence order
+function uniquifyIds(transactions: Transaction[]): Transaction[] {
+    const idCounts = new Map<string, number>();
+
+    return transactions.map(t => {
+        const count = idCounts.get(t.id) || 0;
+        idCounts.set(t.id, count + 1);
+
+        if (count > 0) {
+            // Collision detected (e.g. 2nd identical coffee)
+            // Append suffix to make it unique but stable (assuming relative order is preserved)
+            return { ...t, id: `${t.id}_${count}` };
+        }
+        return t;
+    });
 }
 
 // ==========================================
@@ -244,7 +266,7 @@ async function parseExcelData(fileData: ArrayBuffer): Promise<Transaction[]> {
         throw new Error('No valid transactions found. Check file headers/sheet names (Расходы, Доходы, Переводы).');
     }
 
-    return allTransactions;
+    return uniquifyIds(allTransactions);
 }
 
 async function parseCSVData(fileContent: string, fileName: string): Promise<Transaction[]> {
@@ -263,7 +285,7 @@ async function parseCSVData(fileContent: string, fileName: string): Promise<Tran
                 if (transactions.length === 0) {
                     reject(new Error('No valid transactions found. Check file headers.'));
                 } else {
-                    resolve(transactions);
+                    resolve(uniquifyIds(transactions));
                 }
             },
             error: (error: any) => reject(error)

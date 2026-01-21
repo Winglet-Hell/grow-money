@@ -39,6 +39,7 @@ import {
     Wallet,
     TrendingUp,
     Repeat,
+    Receipt,
     type LucideIcon
 } from 'lucide-react';
 
@@ -91,6 +92,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
     'housing': Home,
     'mortgage': Home,
     'utilities': Zap,                 // ⚡ Utilities
+    'utility bills': Receipt,         // 🧾 Utility Bills
+    'bills': Receipt,
     'electricity': Zap,
     'water': Zap,
     'internet': Wifi,
