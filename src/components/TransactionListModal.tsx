@@ -39,11 +39,11 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
     if (!isOpen) return null;
 
     const formatCurrency = (val: number) => {
-        return new Intl.NumberFormat('ru-RU', {
-            style: 'currency',
-            currency: 'RUB',
+        const formatted = new Intl.NumberFormat('en-US', {
+            style: 'decimal',
             maximumFractionDigits: 0
         }).format(Math.abs(val));
+        return `${formatted} ₽`;
     };
 
 
@@ -104,36 +104,32 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
                     ) : (
                         <div className="divide-y divide-gray-50">
                             {sortedTransactions.map((t, i) => (
-                                <div key={t.id} className="p-4 hover:bg-gray-50 transition-colors flex items-start gap-4">
-                                    <div className="min-w-[40px] flex flex-col items-center justify-center bg-gray-100 rounded-lg p-2 text-xs font-medium text-gray-500 h-full self-stretch">
-                                        <span className="text-lg font-bold text-gray-900">
-                                            {sortedTransactions.length - i}
-                                        </span>
+                                <div key={t.id} className="p-4 hover:bg-gray-50 transition-colors flex items-center gap-4">
+                                    <div className="w-8 h-8 flex items-center justify-center bg-gray-50 rounded-lg text-[10px] font-bold text-gray-400 border border-gray-100 flex-shrink-0">
+                                        {sortedTransactions.length - i}
                                     </div>
 
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-start">
-                                            <p className="text-sm font-medium text-gray-900 truncate">
+                                        <div className="flex justify-between items-baseline gap-2 mb-0.5">
+                                            <h4 className="text-[15px] font-bold text-gray-900 truncate tracking-tight">
                                                 {t.tags || t.note || 'No description'}
-                                            </p>
-                                            <div className="flex flex-col items-end ml-4">
-                                                <span className="text-sm font-bold text-gray-900 whitespace-nowrap">
+                                            </h4>
+                                            <div className="flex flex-col items-end flex-shrink-0">
+                                                <span className="text-[15px] font-black text-gray-900 whitespace-nowrap tracking-tight">
                                                     {formatCurrency(t.amount)}
                                                 </span>
                                                 {t.originalAmount && t.originalCurrency && (
-                                                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                                                    <span className="text-[10px] font-medium text-gray-400 whitespace-nowrap -mt-1 uppercase tracking-wider">
                                                         {(() => {
                                                             try {
-                                                                return new Intl.NumberFormat('ru-RU', {
-                                                                    style: 'currency',
-                                                                    currency: t.originalCurrency,
+                                                                const formattedOriginal = new Intl.NumberFormat('en-US', {
+                                                                    style: 'decimal',
                                                                     maximumFractionDigits: 2
                                                                 }).format(Math.abs(t.originalAmount));
+                                                                return t.originalCurrency === 'RUB' ? `${formattedOriginal} ₽` : `${formattedOriginal} ${t.originalCurrency}`;
                                                             } catch (e) {
-                                                                // Fallback for invalid currency codes (e.g. USDT)
-                                                                return `${new Intl.NumberFormat('ru-RU', {
-                                                                    maximumFractionDigits: 2,
-                                                                    minimumFractionDigits: 2
+                                                                return `${new Intl.NumberFormat('en-US', {
+                                                                    maximumFractionDigits: 2
                                                                 }).format(Math.abs(t.originalAmount))} ${t.originalCurrency}`;
                                                             }
                                                         })()}
@@ -141,47 +137,31 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
-                                            {/* Date is redundant here too if we are in daily view, but useful in general list. 
-                                                However, user said "no need to duplicate date 500 times". 
-                                                If title is present (daily view context), let's hide date or keep it? 
-                                                User specifically complained about the big date box. 
-                                                Let's keep the small date here for reference or remove if strictly daily view.
-                                                Actually, let's leave it removed from the big box, and maybe keep here for context or remove?
-                                                If I look at the requested change: "No duplicated date 500 times... write number in order".
-                                                This applies to the list item left side.
-                                                I will keep the small date here as it is less intrusive, or remove it?
-                                                Let's keep it for now as it wasn't explicitly asked to be removed from everywhere, just the main indicator.
-                                                Actually, finding the line 147-150 block.
-                                            */}
-                                            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                                                <Calendar className="w-3.5 h-3.5" />
+                                        
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                            <div className="flex items-center gap-1 text-[11px] font-medium text-gray-400 uppercase tracking-wide">
+                                                <Calendar className="w-3 h-3 opacity-70" />
                                                 {formatDate(t.date)}
                                             </div>
+                                            
                                             {t.category && (
-                                                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                                                <div className="flex items-center gap-1.5">
                                                     {(() => {
                                                         const Icon = getCategoryIcon(t.category);
                                                         const color = stringToColor(t.category);
                                                         return (
-                                                            <div className={cn("flex items-center gap-1.5 px-2 py-0.5 rounded-full", color.bg, color.text)}>
-                                                                <Icon className="w-3 h-3" />
-                                                                <span className="font-medium">{t.category}</span>
+                                                            <div className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shadow-sm", color.bg, color.text)}>
+                                                                <Icon className="w-2.5 h-2.5" />
+                                                                <span>{t.category}</span>
                                                             </div>
                                                         );
                                                     })()}
                                                 </div>
                                             )}
-                                            {t.tags && t.note && (
-                                                <div className="flex items-center gap-1.5 text-xs text-gray-500 max-w-[200px]">
-                                                    <span className="truncate" title={t.note}>
-                                                        {t.note}
-                                                    </span>
-                                                </div>
-                                            )}
+                                            
                                             {t.account && (
-                                                <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                                                    <Banknote className="w-3.5 h-3.5" />
+                                                <div className="flex items-center gap-1 text-[11px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded opacity-80">
+                                                    <Banknote className="w-3 h-3" />
                                                     {t.account}
                                                 </div>
                                             )}

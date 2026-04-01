@@ -20,6 +20,7 @@ import { WishlistPage } from './pages/WishlistPage';
 import { AIExportPage } from './pages/AIExportPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TripAnalyticsPage } from './pages/TripAnalyticsPage';
+import { TravelIndexPage } from './pages/TravelIndexPage';
 import { Navigation } from './components/Navigation';
 import { supabase } from './lib/supabase';
 import { Auth } from './components/Auth';
@@ -312,6 +313,7 @@ function AppContent() {
                 <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} />} />
                 <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
                 <Route path="/trip-analytics" element={<TripAnalyticsPage transactions={transactions} />} />
+                <Route path="/travel-index" element={<TravelIndexPage transactions={transactions} />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </div>

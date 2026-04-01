@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList } from 'recharts';
 import { useUserSettings } from '../hooks/useUserSettings';
+import { createSnapshot, findTransactionWithSnapshot, resolveTripActiveTransactions } from '../lib/tripUtils';
 
 // Helper to format currency if not imported
 const formatMoney = (amount: number, currency = 'RUB') => {
@@ -119,78 +120,6 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
     // --- SNAPSHOT & AUTO-HEAL LOGIC ---
 
     // Helper: Find a transaction by fuzzy matching its snapshot
-    const findTransactionWithSnapshot = (snapshot: TransactionSnapshot, candidates: Transaction[]): Transaction | undefined => {
-        return candidates.find(t =>
-            t.date === snapshot.date &&
-            t.amount === snapshot.amount &&
-            t.category === snapshot.category &&
-            (t.note || '') === snapshot.note &&
-            (t.originalCurrency || '') === (snapshot.originalCurrency || '')
-        );
-    };
-
-    // Helper: Resolve active transactions for a trip (handling stable IDs + snapshot recovery)
-    const resolveTripActiveTransactions = (trip: Trip, allTxs: Transaction[]) => {
-        const start = trip.startDate;
-        const end = trip.endDate;
-        const snapshots = trip.transactionSnapshots || {};
-
-        // 1. Base transactions in range
-        let candidates = allTxs.filter(t => {
-            const txDate = t.date.split('T')[0];
-            return txDate >= start && txDate <= end && t.type === 'expense';
-        });
-
-        // 2. Add Additional (Recovered via ID or Snapshot)
-        (trip.additionalTransactionIds || []).forEach(id => {
-            // Check if already in list (avoid duplicates if ID matches)
-            if (candidates.some(c => c.id === id)) return;
-
-            // Try to find by ID
-            let tx = allTxs.find(t => t.id === id);
-
-            // If not found by ID, try Snapshot
-            if (!tx && snapshots[id]) {
-                tx = findTransactionWithSnapshot(snapshots[id], allTxs);
-            }
-
-            if (tx) {
-                // Check if we already have it (resolving duplicates)
-                if (!candidates.some(c => c.id === tx!.id)) {
-                    candidates.push(tx);
-                }
-            }
-        });
-
-        // 3. Apply Exclusions (Recovered via ID or Snapshot)
-        // We need to know which IDs to exclude.
-        // Some might be "stale" IDs that resolve to new IDs via snapshot.
-        const resolvedExcludedIds = new Set<string>();
-
-        trip.excludedTransactionIds.forEach(id => {
-            // If ID exists in current set? 
-            // We just need to find "what transaction does this ID refer to?"
-            let targetId = id;
-
-            // If this ID doesn't exist in our candidate list...
-            // It might be an old ID.
-            // But we only care if it Matches something in our candidate list.
-
-            // Try to match strict ID
-            const exists = allTxs.some(t => t.id === id);
-
-            if (!exists && snapshots[id]) {
-                // Recover via snapshot
-                const recovered = findTransactionWithSnapshot(snapshots[id], allTxs);
-                if (recovered) {
-                    targetId = recovered.id;
-                }
-            }
-            resolvedExcludedIds.add(targetId);
-        });
-
-        return candidates.filter(t => !resolvedExcludedIds.has(t.id));
-    };
 
     // Effect: Auto-Heal Trips on Load/Change
     useEffect(() => {
@@ -253,15 +182,6 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
 
     }, [selectedTrip?.id, transactions]); // Re-run when trip selection or transaction dataset changes
 
-
-    // Helper: Create Snapshot from Transaction
-    const createSnapshot = (t: Transaction): TransactionSnapshot => ({
-        date: t.date,
-        amount: t.amount,
-        category: t.category,
-        note: t.note || '',
-        originalCurrency: t.originalCurrency
-    });
 
     const handleCreateTrip = async (e: React.FormEvent) => {
         e.preventDefault();
