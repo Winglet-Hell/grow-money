@@ -8,7 +8,7 @@ import {
     TableHeader,
     TableRow,
 } from "../components/ui/table"
-import { ArrowUpDown, Search, X, ArrowUpCircle, TrendingUp, Calendar } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, Calendar, Search, X, ArrowUpCircle, ChevronDown } from 'lucide-react';
 import { cn, stringToColor, getFormattedDateRange } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
@@ -39,14 +39,39 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
     const [sortField, setSortField] = useState<SortField>('totalEarned');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null); // Format: "YYYY-M"
 
-    // Determine the "Effective Current Date" based on the latest transaction
-    // This allows "This Month" to show the last month with data even if the calendar has moved on
     const effectiveDate = useMemo(() => {
+        if (selectedMonthKey) {
+            const [y, m] = selectedMonthKey.split('-').map(Number);
+            // Use UTC to avoid timezone shifts affecting getUTCMonth()
+            return new Date(Date.UTC(y, m, 1)); 
+        }
+
         if (transactions.length === 0) return new Date();
         const timestamps = transactions.map(t => new Date(t.date).getTime()).filter(t => !isNaN(t));
         if (timestamps.length === 0) return new Date();
         return new Date(Math.max(...timestamps));
+    }, [transactions, selectedMonthKey]);
+
+    const availableMonths = useMemo(() => {
+        const months = new Set<string>();
+        transactions.forEach(t => {
+            const d = new Date(t.date);
+            if (!isNaN(d.getTime())) {
+                months.add(`${d.getUTCFullYear()}-${d.getUTCMonth()}`);
+            }
+        });
+        return Array.from(months)
+            .map(key => {
+                const [y, m] = key.split('-').map(Number);
+                return {
+                    key,
+                    label: new Date(y, m).toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+                    sortKey: y * 12 + m
+                };
+            })
+            .sort((a, b) => b.sortKey - a.sortKey);
     }, [transactions]);
 
     // Calculate global unique completed months for consistent averaging
@@ -447,9 +472,26 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                     <h2 className="text-2xl font-bold text-gray-900">Income</h2>
                     <p className="text-gray-500">Track your earnings and revenue sources</p>
                 </div>
-                <div className="px-3 py-1 bg-gray-100 rounded-lg text-xs md:text-sm font-medium text-gray-600 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    {getFormattedDateRange(transactions)}
+                <div className="flex items-center gap-2">
+                    {/* Month Selector Pill */}
+                    <div className="relative group">
+                        <select
+                            value={selectedMonthKey || ''}
+                            onChange={(e) => setSelectedMonthKey(e.target.value || null)}
+                            className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-1 pr-8 text-xs md:text-sm font-medium text-gray-700 hover:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer shadow-sm"
+                        >
+                            <option value="">Auto (Latest)</option>
+                            {availableMonths.map(m => (
+                                <option key={m.key} value={m.key}>{m.label}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none transition-transform group-hover:text-emerald-500" />
+                    </div>
+
+                    <div className="px-3 py-1 bg-gray-100 rounded-lg text-xs md:text-sm font-medium text-gray-600 flex items-center gap-2 border border-transparent">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        {getFormattedDateRange(transactions)}
+                    </div>
                 </div>
             </div>
 
