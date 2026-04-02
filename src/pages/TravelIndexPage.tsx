@@ -31,6 +31,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [selectedItem, setSelectedItem] = useState<{ type: 'tag' | 'category', value: string } | null>(null);
+    const [calcMethod, setCalcMethod] = useState<'avg' | 'median'>('avg');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalData, setModalData] = useState<{ transactions: Transaction[], title: string, subtitle: string }>({
         transactions: [],
@@ -134,6 +135,13 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
     }, [aggregatedData, searchQuery]);
 
 
+    const getMedian = (arr: number[]) => {
+        if (arr.length === 0) return 0;
+        const sorted = [...arr].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    };
+
     const indexResults = useMemo(() => {
         if (!selectedItem) return [];
 
@@ -157,14 +165,17 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
 
             const total = matchedTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
             const count = matchedTxs.length;
-            const avg = total / count;
             const amounts = matchedTxs.map(tx => Math.abs(tx.amount));
+            const avg = total / count;
+            const median = getMedian(amounts);
 
             return {
                 tripId: trip.id,
                 tripName: trip.name,
                 startDate: trip.startDate,
                 avgCheck: avg,
+                medianCheck: median,
+                displayValue: calcMethod === 'avg' ? avg : median,
                 totalAmount: total,
                 txCount: count,
                 minCheck: Math.min(...amounts),
@@ -173,8 +184,8 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
             };
         })
             .filter(Boolean)
-            .sort((a, b) => (b?.avgCheck || 0) - (a?.avgCheck || 0)) as any[];
-    }, [selectedItem, trips, transactions]);
+            .sort((a, b) => (b?.displayValue || 0) - (a?.displayValue || 0)) as any[];
+    }, [selectedItem, trips, transactions, calcMethod]);
 
 
     const showTransactions = (data: any) => {
@@ -188,7 +199,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
         setModalData({
             transactions: payload.transactions,
             title: `${selectedItem?.value.toUpperCase()} in ${payload.tripName}`,
-            subtitle: `${payload.txCount} transactions • Average ${formatMoney(payload.avgCheck)}`
+            subtitle: `${payload.txCount} transactions • ${calcMethod === 'avg' ? 'Average' : 'Median'} ${formatMoney(payload.displayValue)}`
         });
         setIsModalOpen(true);
     };
@@ -243,8 +254,8 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                     <p className="font-bold text-gray-900 mb-2 truncate">{data.tripName}</p>
                     <div className="space-y-1">
                         <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Average Check:</span>
-                            <span className="font-semibold text-emerald-600">{formatMoney(data.avgCheck)}</span>
+                            <span className="text-gray-500">{calcMethod === 'avg' ? 'Average' : 'Median'} Check:</span>
+                            <span className="font-semibold text-emerald-600">{formatMoney(data.displayValue)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                             <span className="text-gray-500">Transactions:</span>
@@ -268,7 +279,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
     const dynamicHeight = useMemo(() => {
         if (indexResults.length === 0) return 400;
         // Base (header + margins) + (number of rows * ideal row space)
-        return Math.max(500, (indexResults.length * 85) + 160);
+        return Math.max(500, (indexResults.length * 64) + 120);
     }, [indexResults.length]);
 
     return (
@@ -338,16 +349,13 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                 </h3>
                                 <div className="flex flex-wrap gap-2">
                                     {topTags.map(tag => {
-                                        const colors = stringToColor(tag.mainCategory);
                                         return (
                                             <button
                                                 key={tag.name}
                                                 onClick={() => setSelectedItem({ type: 'tag', value: tag.name })}
                                                 className={cn(
                                                     "px-4 py-2 rounded-lg transition-all text-sm font-bold border uppercase tracking-wide shadow-sm hover:scale-105 active:scale-95",
-                                                    colors.bg,
-                                                    colors.text,
-                                                    "border-current border-opacity-10"
+                                                    "text-slate-500 border-slate-200 bg-transparent"
                                                 )}
                                             >
                                                 {tag.name}
@@ -408,10 +416,40 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                             >
                                 <X className="w-5 h-5 text-gray-500" />
                             </button>
-                            <div className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-md font-semibold text-lg uppercase tracking-wide">
+                            <div className={cn(
+                                "px-3 py-1 rounded-md font-semibold text-lg uppercase tracking-wide border transition-all shadow-sm",
+                                selectedItem.type === 'tag' 
+                                    ? "bg-transparent border-slate-200 text-slate-600" 
+                                    : "bg-emerald-100 border-emerald-200 text-emerald-800"
+                            )}>
                                 {selectedItem.value}
                             </div>
                             <span className="text-gray-400 text-sm">across {indexResults.length} trips</span>
+                        </div>
+
+                        <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200">
+                            <button
+                                onClick={() => setCalcMethod('avg')}
+                                className={cn(
+                                    "px-4 py-1.5 rounded-lg text-sm font-bold transition-all",
+                                    calcMethod === 'avg' 
+                                        ? "bg-white text-emerald-600 shadow-sm" 
+                                        : "text-gray-400 hover:text-gray-600"
+                                )}
+                            >
+                                Average
+                            </button>
+                            <button
+                                onClick={() => setCalcMethod('median')}
+                                className={cn(
+                                    "px-4 py-1.5 rounded-lg text-sm font-bold transition-all",
+                                    calcMethod === 'median' 
+                                        ? "bg-white text-emerald-600 shadow-sm" 
+                                        : "text-gray-400 hover:text-gray-600"
+                                )}
+                            >
+                                Median
+                            </button>
                         </div>
                     </div>
 
@@ -420,14 +458,14 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                             No data found for this {selectedItem.type} in any trips.
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             
                             {/* CHART */}
                             <div 
-                                className="lg:col-span-2 bg-white rounded-2xl p-8 shadow-sm border border-gray-100 flex flex-col"
+                                className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col"
                                 style={{ height: dynamicHeight }}
                             >
-                                <h3 className="text-lg font-bold text-gray-900 mb-8 border-b pb-4 border-gray-50">Average Check Leaderboard</h3>
+                                <h3 className="text-lg font-bold text-gray-900 mb-6 border-b pb-4 border-gray-50">{calcMethod === 'avg' ? 'Average' : 'Median'} Check Leaderboard</h3>
                                 <div className="flex-1 min-h-0">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart 
@@ -455,15 +493,15 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                             />
                                             <Tooltip cursor={{ fill: '#f3f4f6', radius: 4 }} content={<CustomTooltip />} />
                                             <Bar 
-                                                name="Average price"
-                                                dataKey="avgCheck" 
+                                                name={calcMethod === 'avg' ? 'Average price' : 'Median price'}
+                                                dataKey="displayValue" 
                                                 radius={[0, 4, 4, 0]}
                                                 barSize={32}
                                                 onClick={(data) => showTransactions(data)}
                                                 style={{ cursor: 'pointer' }}
                                             >
                                                 <LabelList 
-                                                    dataKey="avgCheck" 
+                                                    dataKey="displayValue" 
                                                     position="right" 
                                                     formatter={(val: any) => val ? formatMoney(Number(val)) : ''}  
                                                     fill="#475569" 
@@ -492,10 +530,10 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
 
                             {/* LIST */}
                             <div 
-                                className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 overflow-hidden flex flex-col"
+                                className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 overflow-hidden flex flex-col"
                                 style={{ height: dynamicHeight }}
                             >
-                                <h3 className="text-lg font-bold text-gray-900 mb-8 sticky top-0 bg-white border-b pb-4 border-gray-50 z-10">Trip Breakdown</h3>
+                                <h3 className="text-lg font-bold text-gray-900 mb-6 sticky top-0 bg-white border-b pb-4 border-gray-50 z-10">Trip Breakdown</h3>
                                 <div className="flex-1 overflow-y-auto space-y-4 scrollbar-hide">
                                     {indexResults.map((result, idx) => (
                                         <div 
@@ -505,7 +543,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                                 setModalData({
                                                     transactions: result.transactions,
                                                     title: `${selectedItem?.value.toUpperCase()} in ${result.tripName}`,
-                                                    subtitle: `${result.txCount} transactions • Average ${formatMoney(result.avgCheck)}`
+                                                    subtitle: `${result.txCount} transactions • ${calcMethod === 'avg' ? 'Average' : 'Median'} ${formatMoney(result.displayValue)}`
                                                 });
                                                 setIsModalOpen(true);
                                             }}
@@ -519,7 +557,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                                     "font-bold shrink-0",
                                                     idx === 0 ? "text-red-600" : idx === indexResults.length - 1 ? "text-emerald-600" : "text-gray-900"
                                                 )}>
-                                                    {formatMoney(result.avgCheck)}
+                                                    {formatMoney(result.displayValue)}
                                                 </div>
                                             </div>
                                             <div className="flex justify-between text-xs text-gray-500">

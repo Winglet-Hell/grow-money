@@ -40,14 +40,45 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
     const [searchQuery, setSearchQuery] = useState('');
 
+    // Determine the "Effective Current Date" based on the latest transaction
+    // This allows "This Month" to show the last month with data even if the calendar has moved on
+    const effectiveDate = useMemo(() => {
+        if (transactions.length === 0) return new Date();
+        const timestamps = transactions.map(t => new Date(t.date).getTime()).filter(t => !isNaN(t));
+        if (timestamps.length === 0) return new Date();
+        return new Date(Math.max(...timestamps));
+    }, [transactions]);
+
+    // Calculate global unique completed months for consistent averaging
+    const uniqueMonthsCount = useMemo(() => {
+        const months = new Set<string>();
+        const relevantTransactions = transactions.filter(t => t.type === 'income');
+
+        const currentYear = effectiveDate.getUTCFullYear();
+        const currentMonth = effectiveDate.getUTCMonth();
+
+        relevantTransactions.forEach(t => {
+            const date = new Date(t.date);
+            if (!isNaN(date.getTime())) {
+                const year = date.getUTCFullYear();
+                const month = date.getUTCMonth();
+
+                // Exclude current incomplete month and future dates
+                if (year < currentYear || (year === currentYear && month < currentMonth)) {
+                    months.add(`${year}-${month}`);
+                }
+            }
+        });
+        return months.size || 1;
+    }, [transactions, effectiveDate]);
+
+
     const categoryData = useMemo(() => {
         const groups: Record<string, { total: number; count: number }> = {};
-        const months = new Set<string>();
         const currentMonthGroups: Record<string, number> = {};
 
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth();
+        const currentYear = effectiveDate.getUTCFullYear();
+        const currentMonth = effectiveDate.getUTCMonth();
 
         // Filter for income ONLY
         const incomeTransactions = transactions.filter(t => t.type === 'income');
@@ -65,8 +96,6 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             if (!isNaN(date.getTime())) {
                 const year = date.getUTCFullYear();
                 const month = date.getUTCMonth();
-                const monthKey = `${year}-${month}`;
-                months.add(monthKey);
 
                 if (year === currentYear && month === currentMonth) {
                     currentMonthGroups[t.category] = (currentMonthGroups[t.category] || 0) + amount;
@@ -74,7 +103,6 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             }
         });
 
-        const uniqueMonths = months.size || 1;
         const remainingMonths = 11 - currentMonth;
 
         const grandTotal = Object.values(groups).reduce((acc, curr) => acc + curr.total, 0);
@@ -82,8 +110,13 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         return Object.entries(groups).map(([category, { total, count }]) => {
             const totalEarned = total;
             const currentMonthEarned = currentMonthGroups[category] || 0;
-            const monthlyAvg = totalEarned / uniqueMonths;
-            const yearForecast = monthlyAvg * remainingMonths;
+            // Income avg math: total, but we really want completed month avg if possible?
+            // Actually income is often lump sum. But for consistency with Expenses:
+            // totalEarned includes current month. Let's separate it?
+            // To match Expense logic: 
+            const totalEarnedCompleted = totalEarned - currentMonthEarned;
+            const monthlyAvg = totalEarnedCompleted / uniqueMonthsCount;
+            const yearForecast = currentMonthEarned + (monthlyAvg * remainingMonths);
             const share = grandTotal > 0 ? (totalEarned / grandTotal) * 100 : 0;
 
             return {
@@ -100,7 +133,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         })
             .sort((a, b) => b.totalEarned - a.totalEarned)
             .map((item, index) => ({ ...item, rank: index + 1 }));
-    }, [transactions]);
+    }, [transactions, uniqueMonthsCount]); // Included uniqueMonthsCount in deps
 
     // Helper to get breakdown metrics (Tags) for a specific parent row
     const getBreakdownMetrics = (category: string) => {
@@ -111,9 +144,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         const groups: Record<string, { total: number; count: number }> = {};
         const currentMonthGroups: Record<string, number> = {};
 
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth();
+        const currentYear = effectiveDate.getUTCFullYear();
+        const currentMonth = effectiveDate.getUTCMonth();
 
         categoryTransactions.forEach(t => {
             const tag = (Array.isArray(t.tags) ? t.tags.join(', ') : t.tags) || t.note || 'No Tag';
@@ -141,8 +173,9 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         return Object.entries(groups).map(([tag, { total, count }]) => {
             const totalEarned = total;
             const currentMonthEarned = currentMonthGroups[tag] || 0;
-            const monthlyAvg = totalEarned / uniqueMonthsCount;
-            const yearForecast = monthlyAvg * remainingMonths;
+            const totalEarnedCompleted = totalEarned - currentMonthEarned;
+            const monthlyAvg = totalEarnedCompleted / uniqueMonthsCount;
+            const yearForecast = currentMonthEarned + (monthlyAvg * remainingMonths);
             const share = totalEarnedCategory > 0 ? (totalEarned / totalEarnedCategory) * 100 : 0; // Share within category
 
             return {
@@ -216,7 +249,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         let currentYearTotal = 0;
         let lastYearTotal = 0;
 
-        const currentYear = new Date().getFullYear();
+        const currentYear = effectiveDate.getUTCFullYear();
         const lastYear = currentYear - 1;
 
         // Group by month
@@ -226,7 +259,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             if (isNaN(date.getTime())) return;
 
             const year = date.getUTCFullYear();
-            const monthKey = `${year}-${date.getUTCMonth()}`;
+            const monthIdx = date.getUTCMonth();
+            const monthKey = `${year}-${monthIdx}`;
 
             monthsMap[monthKey] = (monthsMap[monthKey] || 0) + amount;
 
@@ -234,22 +268,30 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             if (year === lastYear) lastYearTotal += amount;
         });
 
-        const uniqueMonthsCount = Object.keys(monthsMap).length || 1;
         const totalAllTime = Object.values(monthsMap).reduce((a, b) => a + b, 0);
-        const avgMonthly = totalAllTime / uniqueMonthsCount;
+
+        // exclude current month from avg calc for consistency
+        const currentMonthKey = `${currentYear}-${effectiveDate.getUTCMonth()}`;
+
+        let totalCompleted = 0;
+        let countCompleted = 0;
+
+        Object.entries(monthsMap).forEach(([key, val]) => {
+            if (key !== currentMonthKey) {
+                totalCompleted += val;
+                countCompleted++;
+            }
+        });
+
+        const avgMonthly = countCompleted > 0 ? totalCompleted / countCompleted : totalAllTime / (Object.keys(monthsMap).length || 1);
 
         // Year Forecast
-        const currentMonthIndex = new Date().getMonth();
+        const currentMonthIndex = effectiveDate.getUTCMonth();
         const remainingMonths = 11 - currentMonthIndex;
         const yearForecast = currentYearTotal + (avgMonthly * remainingMonths);
 
-        // Last Month vs Avg Trend
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        // currentYear is already defined above
-
         // Calculate previous month (Last Completed Month)
-        let prevMonth = currentMonth - 1;
+        let prevMonth = currentMonthIndex - 1;
         let prevMonthYear = currentYear;
         if (prevMonth < 0) {
             prevMonth = 11;
@@ -257,7 +299,6 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         }
 
         const lastCompletedMonthKey = `${prevMonthYear}-${prevMonth}`;
-        const currentMonthKey = `${currentYear}-${currentMonth}`;
 
         const lastMonthTotal = monthsMap[lastCompletedMonthKey] || 0;
 
@@ -272,14 +313,21 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
         const trendRatio = avgOthers > 0 ? (lastMonthTotal - avgOthers) / avgOthers : 0;
 
+        const currentMonthTotal = monthsMap[currentMonthKey] || 0;
+
+        const forecastTrend = lastYearTotal > 0 ? (yearForecast - lastYearTotal) / lastYearTotal : 0;
+
         return {
             avgMonthly,
             yearForecast,
             lastYearTotal,
             trendRatio,
-            lastMonthTotal
+            lastMonthTotal,
+            currentMonthTotal,
+            countCompleted,
+            forecastTrend
         };
-    }, [transactions]);
+    }, [transactions, effectiveDate]);
 
 
     // State for expanded categories
@@ -314,18 +362,6 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         });
     };
 
-    // Calculate global unique months for INCOME to be consistent
-    const uniqueMonthsCount = useMemo(() => {
-        const months = new Set<string>();
-        const income = transactions.filter(t => t.type === 'income');
-        income.forEach(t => {
-            const date = new Date(t.date);
-            if (!isNaN(date.getTime())) {
-                months.add(`${date.getUTCFullYear()}-${date.getUTCMonth()}`);
-            }
-        });
-        return months.size || 1;
-    }, [transactions]);
 
 
     // Mobile Card Component for Income Insights
@@ -423,7 +459,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                         title="Avg. Monthly Income"
                         amount={summaryMetrics.avgMonthly}
                         icon={<ArrowUpCircle className="w-10 h-10 text-emerald-500" strokeWidth={1.5} />}
-                        description={`Based on ${Object.keys(transactions).length > 0 ? 'all data' : '0'} months`}
+                        description={`Based on ${summaryMetrics.countCompleted} completed months`}
                         isPrivacy={isPrivacyMode}
                     />
 
@@ -431,7 +467,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                         title="Year Forecast"
                         amount={summaryMetrics.yearForecast}
                         icon={<TrendingUp className="w-10 h-10 text-blue-500" strokeWidth={1.5} />}
-                        description={`Estimated total for ${new Date().getFullYear()}`}
+                        trend={isPrivacyMode ? '•••' : (summaryMetrics.lastYearTotal > 0 ? `${(summaryMetrics.forecastTrend > 0 ? '+' : '')}${(summaryMetrics.forecastTrend * 100).toFixed(1)}% vs Last Year` : undefined)}
+                        trendColor={summaryMetrics.forecastTrend >= 0 ? "text-emerald-600" : "text-red-500"}
                         isPrivacy={isPrivacyMode}
                     />
 

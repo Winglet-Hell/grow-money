@@ -6,6 +6,7 @@ interface MetricCardProps {
     amount: number;
     icon: React.ReactNode;
     trend?: string;
+    trendColor?: string;
     isPrivacy?: boolean;
     className?: string;
     description?: string;
@@ -16,6 +17,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
     amount,
     icon,
     trend,
+    trendColor = "text-emerald-600",
     isPrivacy,
     className,
     description
@@ -37,7 +39,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
                     {isPrivacy ? '••••••' : formattedAmount}
                 </h3>
                 {trend && (
-                    <p className="text-xs text-emerald-600 mt-2 font-medium flex items-center gap-1">
+                    <p className={cn("text-xs mt-2 font-medium flex items-center gap-1", trendColor)}>
                         {trend}
                     </p>
                 )}

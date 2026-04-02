@@ -48,14 +48,22 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
     const [viewMode, setViewMode] = useState<ViewMode>('category'); // Default to Detailed View
     const [searchQuery, setSearchQuery] = useState('');
 
+    // Determine the "Effective Current Date" based on the latest transaction
+    // This allows "This Month" to show the last month with data even if the calendar has moved on
+    const effectiveDate = useMemo(() => {
+        if (transactions.length === 0) return new Date();
+        const timestamps = transactions.map(t => new Date(t.date).getTime()).filter(t => !isNaN(t));
+        if (timestamps.length === 0) return new Date();
+        return new Date(Math.max(...timestamps));
+    }, [transactions]);
+
     // Calculate global unique completed months for consistent averaging
     const uniqueMonthsCount = useMemo(() => {
         const months = new Set<string>();
         const relevantTransactions = transactions.filter(t => t.type === 'expense');
 
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth();
+        const currentYear = effectiveDate.getUTCFullYear();
+        const currentMonth = effectiveDate.getUTCMonth();
 
         relevantTransactions.forEach(t => {
             const date = new Date(t.date);
@@ -70,7 +78,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             }
         });
         return months.size || 1;
-    }, [transactions]);
+    }, [transactions, effectiveDate]);
 
     const { limits, setLimit, removeLimit, getLimit } = useCategoryLimits();
     const [limitModalData, setLimitModalData] = useState<{ category: string, currentLimit?: number } | null>(null);
@@ -81,9 +89,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         // Filter for expenses ONLY
         const expenseTransactions = transactions.filter(t => t.type === 'expense');
 
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth();
+        const currentYear = effectiveDate.getUTCFullYear();
+        const currentMonth = effectiveDate.getUTCMonth();
 
         expenseTransactions.forEach(t => {
             // Determine key based on View Mode
@@ -209,7 +216,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         let currentYearTotal = 0;
         let lastYearTotal = 0;
 
-        const currentYear = new Date().getFullYear();
+        const currentYear = effectiveDate.getUTCFullYear();
         const lastYear = currentYear - 1;
 
         // Group by month
@@ -219,7 +226,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             if (isNaN(date.getTime())) return;
 
             const year = date.getUTCFullYear();
-            const monthKey = `${year}-${date.getUTCMonth()}`;
+            const monthIdx = date.getUTCMonth();
+            const monthKey = `${year}-${monthIdx}`;
 
             monthsMap[monthKey] = (monthsMap[monthKey] || 0) + amount;
 
@@ -227,12 +235,14 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             if (year === lastYear) lastYearTotal += amount;
         });
 
-        const uniqueMonthsCount = Object.keys(monthsMap).length || 1;
+        const uniqueMonthsCountAll = Object.keys(monthsMap).length || 1;
         const totalAllTime = Object.values(monthsMap).reduce((a, b) => a + b, 0);
 
         // Calculate Avg Monthly (Completed Months Only)
         // exclude current month from avg calc
-        const currentMonthKey = `${currentYear}-${new Date().getMonth()}`;
+        const currentYearEffective = effectiveDate.getUTCFullYear();
+        const currentMonthEffective = effectiveDate.getUTCMonth();
+        const currentMonthKey = `${currentYearEffective}-${currentMonthEffective}`;
 
         let totalCompleted = 0;
         let countCompleted = 0;
@@ -244,24 +254,17 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             }
         });
 
-        const avgMonthly = countCompleted > 0 ? totalCompleted / countCompleted : totalAllTime / uniqueMonthsCount;
+        const currentMonthTotal = monthsMap[currentMonthKey] || 0;
+        const avgMonthly = countCompleted > 0 ? totalCompleted / countCompleted : totalAllTime / uniqueMonthsCountAll;
 
         // Year Forecast
         // Logic: Already spent this year + (Avg Monthly * Remaining Months in Year)
-        // Or if we have data for specific months of this year, we use them.
-        const currentMonthIndex = new Date().getMonth(); // 0 = Jan
-        const remainingMonths = 11 - currentMonthIndex;
-        // Forecast = Current Year Total + (Avg Monthly * Remaining Months)
+        const remainingMonths = 11 - currentMonthEffective;
         const yearForecast = currentYearTotal + (avgMonthly * remainingMonths);
 
-        // Last Month vs Avg Trend
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        // currentYear is already defined above
-
         // Calculate previous month (Last Completed Month)
-        let prevMonth = currentMonth - 1;
-        let prevMonthYear = currentYear;
+        let prevMonth = currentMonthEffective - 1;
+        let prevMonthYear = currentYearEffective;
         if (prevMonth < 0) {
             prevMonth = 11;
             prevMonthYear -= 1;
@@ -283,14 +286,19 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
         const trendRatio = avgOthers > 0 ? (lastMonthTotal - avgOthers) / avgOthers : 0;
 
+        const forecastTrend = lastYearTotal > 0 ? (yearForecast - lastYearTotal) / lastYearTotal : 0;
+
         return {
             avgMonthly,
             yearForecast,
             lastYearTotal,
             trendRatio,
-            lastMonthTotal
+            lastMonthTotal,
+            currentMonthTotal,
+            countCompleted,
+            forecastTrend
         };
-    }, [transactions]);
+    }, [transactions, effectiveDate]);
 
 
 
@@ -456,9 +464,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
     // --- Infographics Calculations ---
     const infographics = useMemo(() => {
-        const now = new Date();
-        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-        const daysPassed = now.getDate();
+        const daysInMonth = new Date(effectiveDate.getUTCFullYear(), effectiveDate.getUTCMonth() + 1, 0).getDate();
+        const daysPassed = effectiveDate.getUTCDate();
         const daysRemaining = daysInMonth - daysPassed + 1;
 
         // 1. Budget Health
@@ -480,6 +487,10 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         const sortedBySpend = [...categoryData].sort((a, b) => b.currentMonthSpent - a.currentMonthSpent);
         const topCategory = sortedBySpend[0];
 
+        // 4. Comparison to Average
+        const avgMonthly = summaryMetrics?.avgMonthly || 0;
+        const vsAvgTrend = avgMonthly > 0 ? (totalSpentCurrentMonth - avgMonthly) / avgMonthly : 0;
+
         return {
             totalSpentCurrentMonth,
             totalLimit,
@@ -487,9 +498,10 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             progressPercent,
             avgDailySpend,
             safeDailySpend,
-            topCategory
+            topCategory,
+            vsAvgTrend
         };
-    }, [categoryData]);
+    }, [categoryData, summaryMetrics?.avgMonthly]);
 
     // Mobile Card Component for Category Insights
     const CategoryMobileCard = ({ row }: { row: CategoryData }) => {
@@ -608,7 +620,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                         title="Avg. Monthly Spending"
                         amount={summaryMetrics.avgMonthly}
                         icon={<ArrowDownCircle className="w-10 h-10 text-red-500" strokeWidth={1.5} />}
-                        description={`Based on ${Object.keys(transactions).length > 0 ? 'all data' : '0'} months`}
+                        description={`Based on ${summaryMetrics.countCompleted} completed months`}
                         isPrivacy={isPrivacyMode}
                     />
 
@@ -616,7 +628,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                         title="Year Forecast"
                         amount={summaryMetrics.yearForecast}
                         icon={<TrendingUp className="w-10 h-10 text-blue-500" strokeWidth={1.5} />}
-                        description={`Estimated total for ${new Date().getFullYear()}`}
+                        trend={isPrivacyMode ? '•••' : (summaryMetrics.lastYearTotal > 0 ? `${(summaryMetrics.forecastTrend > 0 ? '+' : '')}${(summaryMetrics.forecastTrend * 100).toFixed(1)}% vs Last Year` : undefined)}
+                        trendColor={summaryMetrics.forecastTrend > 0 ? "text-red-500" : "text-emerald-600"}
                         isPrivacy={isPrivacyMode}
                     />
 
@@ -647,103 +660,142 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                             <span className="text-sm font-medium text-gray-500">Overall Budget</span>
                             <Wallet className="w-10 h-10 text-emerald-500" strokeWidth={1.5} />
                         </div>
-                        <div className="flex items-baseline gap-2">
-                            <span className="text-2xl font-bold text-gray-900">
-                                {isPrivacyMode ? '•••' : (infographics.totalLimit > 0 ? Math.round(infographics.progressPercent) + '%' : '—')}
-                            </span>
-                            <span className="text-sm text-gray-500">used</span>
-                        </div>
-                        <div className="mt-1 text-sm text-gray-600">
-                            {formatCurrency(infographics.totalSpentCurrentMonth)} <span className="text-gray-400">/ {formatCurrency(infographics.totalLimit)}</span>
+                        <div className="flex flex-col">
+                            <div className="flex items-baseline gap-2">
+                                <span className={cn(
+                                    "text-3xl font-bold tracking-tight",
+                                    infographics.progressPercent > 100 ? "text-red-600" : "text-gray-900"
+                                )}>
+                                    {isPrivacyMode ? '•••' : (infographics.totalLimit > 0 ? Math.round(infographics.progressPercent) + '%' : '—')}
+                                </span>
+                                <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">used</span>
+                            </div>
+                            
+                            {summaryMetrics && summaryMetrics.avgMonthly > 0 && (
+                                <div className={cn(
+                                    "flex items-center gap-1.5 text-xs font-bold mt-1",
+                                    infographics.vsAvgTrend > 0 ? "text-red-500" : "text-emerald-600"
+                                )}>
+                                    <TrendingUp className={cn("w-3 h-3", infographics.vsAvgTrend <= 0 && "rotate-180")} />
+                                    <span>
+                                        {Math.abs(Math.round(infographics.vsAvgTrend * 100))}% {infographics.vsAvgTrend > 0 ? 'above' : 'below'} average
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
-                    <div className="mt-4 w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                        <div
-                            className={cn(
-                                "h-full rounded-full transition-all duration-500",
-                                infographics.progressPercent > 100 ? "bg-red-500" : (infographics.progressPercent > 80 ? "bg-yellow-500" : "bg-emerald-500")
-                            )}
-                            style={{ width: `${Math.min(infographics.progressPercent, 100)}%` }}
-                        />
+
+                    <div className="mt-4 space-y-2">
+                        <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden shadow-inner">
+                            <div
+                                className={cn(
+                                    "h-full rounded-full transition-all duration-700 ease-out",
+                                    infographics.progressPercent > 100 ? "bg-red-500 animate-pulse" : (infographics.progressPercent > 80 ? "bg-yellow-500" : "bg-emerald-500")
+                                )}
+                                style={{ width: `${Math.min(infographics.progressPercent, 100)}%` }}
+                            />
+                        </div>
+                        <div className="flex justify-between items-center text-[11px] font-medium uppercase tracking-wider">
+                            <span className="text-gray-900">{isPrivacyMode ? '••••••' : formatCurrency(infographics.totalSpentCurrentMonth)}</span>
+                            <span className="text-gray-400">Target: {isPrivacyMode ? '••••••' : formatCurrency(infographics.totalLimit)}</span>
+                        </div>
                     </div>
                 </div>
 
                 {/* 2. Daily Pace */}
-                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[170px]">
                     <div>
-                        <div className="flex items-center justify-between mb-2 gap-4">
+                        <div className="flex items-center justify-between mb-2">
                             <span className="text-sm font-medium text-gray-500">Daily Pace</span>
                             <Calendar className="w-10 h-10 text-blue-500" strokeWidth={1.5} />
                         </div>
-                        <div className="flex items-baseline gap-2">
-                            <span className={cn(
-                                "text-2xl font-bold",
-                                (infographics.totalLimit > 0 && infographics.avgDailySpend > infographics.safeDailySpend) ? "text-red-500" : "text-gray-900"
-                            )}>
-                                {formatCurrency(infographics.avgDailySpend)}
-                            </span>
-                            <span className="text-sm text-gray-500">/ day</span>
-                        </div>
-                        <div className="mt-1 text-sm text-gray-600">
-                            {infographics.totalLimit > 0 ? (
-                                <>
-                                    Safe limit: <span className="font-medium text-emerald-600">{formatCurrency(infographics.safeDailySpend)}</span>
-                                </>
-                            ) : (
-                                <span className="text-gray-400">Set limits to see pace</span>
+                        <div className="flex flex-col">
+                            <div className="flex items-baseline gap-2">
+                                <span className={cn(
+                                    "text-3xl font-bold tracking-tight",
+                                    (infographics.totalLimit > 0 && infographics.avgDailySpend > infographics.safeDailySpend) ? "text-red-500" : "text-gray-900"
+                                )}>
+                                    {isPrivacyMode ? '•••' : formatCurrency(infographics.avgDailySpend)}
+                                </span>
+                                <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">/ day</span>
+                            </div>
+                            
+                            {infographics.totalLimit > 0 && (
+                                <div className={cn(
+                                    "flex items-center gap-1.5 text-xs font-bold mt-1",
+                                    infographics.avgDailySpend > infographics.safeDailySpend ? "text-red-500" : "text-emerald-600"
+                                )}>
+                                    {infographics.avgDailySpend > infographics.safeDailySpend ? (
+                                        <>
+                                            <TrendingUp className="w-3 h-3 text-red-500" />
+                                            <span>Above budget pace</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <TrendingUp className="w-3 h-3 rotate-180 text-emerald-600" />
+                                            <span>Good pace</span>
+                                        </>
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>
-                    <div className="mt-4 flex items-center gap-2 text-xs font-medium">
-                        {infographics.totalLimit > 0 ? (
-                            infographics.avgDailySpend > infographics.safeDailySpend ? (
-                                <span className="text-red-500 flex items-center gap-1">
-                                    <TrendingUp className="w-3 h-3" /> Over budget pace
-                                </span>
-                            ) : (
-                                <span className="text-emerald-500 flex items-center gap-1">
-                                    <TrendingUp className="w-3 h-3 rotate-180" /> Good pace
-                                </span>
-                            )
-                        ) : <span className="text-gray-300">—</span>}
+                    
+                    <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center text-[11px] font-medium uppercase tracking-wider">
+                        <span className="text-gray-400">Safe Limit:</span>
+                        <span className={cn(
+                            "font-bold",
+                            infographics.totalLimit > 0 ? "text-emerald-600" : "text-gray-300"
+                        )}>
+                            {infographics.totalLimit > 0 ? formatCurrency(infographics.safeDailySpend) : "—"}
+                        </span>
                     </div>
                 </div>
 
                 {/* 3. Top Spender */}
-                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[170px]">
                     <div>
-                        <div className="flex items-center justify-between mb-2 gap-4">
+                        <div className="flex items-center justify-between mb-2">
                             <span className="text-sm font-medium text-gray-500">Top Spender</span>
                             <AlertCircle className="w-10 h-10 text-orange-500" strokeWidth={1.5} />
                         </div>
+                        
                         {infographics.topCategory ? (
-                            <>
-                                <div className="flex items-center gap-2 mb-1">
+                            <div className="flex flex-col">
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-3xl font-bold tracking-tight text-gray-900">
+                                        {isPrivacyMode ? '•••' : formatCurrency(infographics.topCategory.currentMonthSpent)}
+                                    </span>
+                                    <span className="text-sm font-medium text-gray-400 uppercase tracking-wide">total</span>
+                                </div>
+                                <div className="mt-1">
                                     {(() => {
-                                        const Icon = getCategoryIcon(infographics.topCategory.category);
                                         const color = stringToColor(infographics.topCategory.category);
+                                        const Icon = getCategoryIcon(infographics.topCategory.category);
                                         return (
-                                            <div className={cn("p-1.5 rounded-lg", color.bg, color.text)}>
-                                                <Icon className="w-4 h-4" />
-                                            </div>
+                                            <span className={cn(
+                                                "flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold w-fit uppercase tracking-wider border",
+                                                color.bg, color.text, "border-current/10"
+                                            )}>
+                                                <Icon className="w-3 h-3" />
+                                                {infographics.topCategory.category}
+                                            </span>
                                         );
                                     })()}
-                                    <div className="text-lg font-bold text-gray-900 truncate" title={infographics.topCategory.category}>
-                                        {infographics.topCategory.category}
-                                    </div>
                                 </div>
-                                <div className="mt-1 text-2xl font-bold text-gray-900">
-                                    {formatCurrency(infographics.topCategory.currentMonthSpent)}
-                                </div>
-                                <div className="mt-1 text-sm text-gray-500">
-                                    {infographics.totalSpentCurrentMonth > 0
-                                        ? ((infographics.topCategory.currentMonthSpent / infographics.totalSpentCurrentMonth) * 100).toFixed(1) + '% of total'
-                                        : '0%'}
-                                </div>
-                            </>
+                            </div>
                         ) : (
-                            <div className="text-gray-400 italic">No spending yet</div>
+                            <div className="text-gray-400 text-sm italic">No data yet</div>
                         )}
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center text-[11px] font-medium uppercase tracking-wider">
+                        <span className="text-gray-400">Share:</span>
+                        <span className="text-gray-900 font-bold">
+                            {infographics.totalSpentCurrentMonth > 0
+                                ? ((infographics.topCategory.currentMonthSpent / infographics.totalSpentCurrentMonth) * 100).toFixed(1) + '%'
+                                : '0%'}
+                        </span>
                     </div>
                 </div>
             </div>
