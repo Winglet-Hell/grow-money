@@ -271,10 +271,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 if (year === lastYear) lastYearTotal += amount;
             }
         });
-
-        const uniqueMonthsCountAll = Object.keys(monthsMap).length || 1;
-        const totalAllTime = Object.values(monthsMap).reduce((a, b) => a + b, 0);
-
+        
         // Calculate Avg Monthly (Completed Months Only)
         // exclude current month from avg calc
         const currentYearEffective = currentYear;

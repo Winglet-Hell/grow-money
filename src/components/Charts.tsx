@@ -181,7 +181,6 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
                                         stroke="#f97316" 
                                         strokeDasharray="4 4" 
                                         strokeWidth={2}
-                                        isFront={false}
                                         label={({ viewBox }: any) => (
                                             <text x={viewBox.x + 5} y={viewBox.y - 8} fill="#f97316" fontSize={12} fontWeight={600}>
                                                 Target
