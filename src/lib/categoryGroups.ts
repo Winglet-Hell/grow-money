@@ -33,7 +33,11 @@ export const GLOBAL_CATEGORY_MAP: Record<string, string> = {
 
     // Obligations
     'Taxes': 'Obligations',
-    'Health': 'Health', // Could be its own or Obligations/Services
+
+    // Health & Insurance
+    'Health': 'Health',
+    'Insurance': 'Health',
+    'Страховка': 'Health',
 
     // Other
     'Other': 'Other'
@@ -62,7 +66,7 @@ export const getGlobalCategory = (category: string): string => {
     if (lowerInput.includes('hotel') || lowerInput.includes('airbnb') || lowerInput.includes('flight') || lowerInput.includes('airline')) return 'Travel';
     if (lowerInput.includes('subscription') || lowerInput.includes('netflix') || lowerInput.includes('spotify')) return 'Entertainment';
     if (lowerInput.includes('shop') || lowerInput.includes('store') || lowerInput.includes('amazon')) return 'Shopping';
-    if (lowerInput.includes('doctor') || lowerInput.includes('pharmacy') || lowerInput.includes('clinic')) return 'Health';
+    if (lowerInput.includes('doctor') || lowerInput.includes('pharmacy') || lowerInput.includes('clinic') || lowerInput.includes('insur') || lowerInput.includes('страхов') || lowerInput.includes('assurance')) return 'Health';
 
     return 'Other';
 };

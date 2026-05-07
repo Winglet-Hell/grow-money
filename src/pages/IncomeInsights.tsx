@@ -8,7 +8,7 @@ import {
     TableHeader,
     TableRow,
 } from "../components/ui/table"
-import { ArrowUpDown, TrendingUp, Calendar, Search, X, ArrowUpCircle, ChevronDown } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, Calendar, Search, X, ArrowUpCircle, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { cn, stringToColor, getFormattedDateRange } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
@@ -39,6 +39,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
     const [sortField, setSortField] = useState<SortField>('totalEarned');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
     const [searchQuery, setSearchQuery] = useState('');
+    const [hideEmptyCategories, setHideEmptyCategories] = useState(true);
     const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null); // Format: "YYYY-M"
 
     const effectiveDate = useMemo(() => {
@@ -100,6 +101,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
     const categoryData = useMemo(() => {
         const groups: Record<string, { total: number; count: number }> = {};
+        const completedGroups: Record<string, number> = {};
+        const currentYearGroups: Record<string, number> = {};
         const currentMonthGroups: Record<string, number> = {};
 
         const currentYear = effectiveDate.getUTCFullYear();
@@ -109,6 +112,15 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         const incomeTransactions = transactions.filter(t => t.type === 'income');
 
         incomeTransactions.forEach(t => {
+            const date = new Date(t.date);
+            if (isNaN(date.getTime())) return;
+
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth();
+
+            // Ignore future data relative to effectiveDate
+            if (year > currentYear || (year === currentYear && month > currentMonth)) return;
+
             if (!groups[t.category]) {
                 groups[t.category] = { total: 0, count: 0 };
             }
@@ -117,14 +129,16 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             groups[t.category].total += amount;
             groups[t.category].count += 1;
 
-            const date = new Date(t.date);
-            if (!isNaN(date.getTime())) {
-                const year = date.getUTCFullYear();
-                const month = date.getUTCMonth();
+            if (year < currentYear || (year === currentYear && month < currentMonth)) {
+                completedGroups[t.category] = (completedGroups[t.category] || 0) + amount;
+            }
 
-                if (year === currentYear && month === currentMonth) {
-                    currentMonthGroups[t.category] = (currentMonthGroups[t.category] || 0) + amount;
-                }
+            if (year === currentYear && month <= currentMonth) {
+                currentYearGroups[t.category] = (currentYearGroups[t.category] || 0) + amount;
+            }
+
+            if (year === currentYear && month === currentMonth) {
+                currentMonthGroups[t.category] = (currentMonthGroups[t.category] || 0) + amount;
             }
         });
 
@@ -135,13 +149,10 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         return Object.entries(groups).map(([category, { total, count }]) => {
             const totalEarned = total;
             const currentMonthEarned = currentMonthGroups[category] || 0;
-            // Income avg math: total, but we really want completed month avg if possible?
-            // Actually income is often lump sum. But for consistency with Expenses:
-            // totalEarned includes current month. Let's separate it?
-            // To match Expense logic: 
-            const totalEarnedCompleted = totalEarned - currentMonthEarned;
+            const currentYearEarned = currentYearGroups[category] || 0;
+            const totalEarnedCompleted = completedGroups[category] || 0;
             const monthlyAvg = totalEarnedCompleted / uniqueMonthsCount;
-            const yearForecast = currentMonthEarned + (monthlyAvg * remainingMonths);
+            const yearForecast = currentYearEarned + (monthlyAvg * remainingMonths);
             const share = grandTotal > 0 ? (totalEarned / grandTotal) * 100 : 0;
 
             return {
@@ -167,12 +178,22 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         );
 
         const groups: Record<string, { total: number; count: number }> = {};
+        const completedGroups: Record<string, number> = {};
+        const currentYearGroups: Record<string, number> = {};
         const currentMonthGroups: Record<string, number> = {};
 
         const currentYear = effectiveDate.getUTCFullYear();
         const currentMonth = effectiveDate.getUTCMonth();
 
         categoryTransactions.forEach(t => {
+            const date = new Date(t.date);
+            if (isNaN(date.getTime())) return;
+
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth();
+
+            if (year > currentYear || (year === currentYear && month > currentMonth)) return;
+
             const tag = (Array.isArray(t.tags) ? t.tags.join(', ') : t.tags) || t.note || 'No Tag';
             if (!groups[tag]) {
                 groups[tag] = { total: 0, count: 0 };
@@ -181,13 +202,16 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             groups[tag].total += amount;
             groups[tag].count += 1;
 
-            const date = new Date(t.date);
-            if (!isNaN(date.getTime())) {
-                const year = date.getUTCFullYear();
-                const month = date.getUTCMonth();
-                if (year === currentYear && month === currentMonth) {
-                    currentMonthGroups[tag] = (currentMonthGroups[tag] || 0) + amount;
-                }
+            if (year < currentYear || (year === currentYear && month < currentMonth)) {
+                completedGroups[tag] = (completedGroups[tag] || 0) + amount;
+            }
+
+            if (year === currentYear && month <= currentMonth) {
+                currentYearGroups[tag] = (currentYearGroups[tag] || 0) + amount;
+            }
+
+            if (year === currentYear && month === currentMonth) {
+                currentMonthGroups[tag] = (currentMonthGroups[tag] || 0) + amount;
             }
         });
 
@@ -198,9 +222,10 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         return Object.entries(groups).map(([tag, { total, count }]) => {
             const totalEarned = total;
             const currentMonthEarned = currentMonthGroups[tag] || 0;
-            const totalEarnedCompleted = totalEarned - currentMonthEarned;
+            const currentYearEarned = currentYearGroups[tag] || 0;
+            const totalEarnedCompleted = completedGroups[tag] || 0;
             const monthlyAvg = totalEarnedCompleted / uniqueMonthsCount;
-            const yearForecast = currentMonthEarned + (monthlyAvg * remainingMonths);
+            const yearForecast = currentYearEarned + (monthlyAvg * remainingMonths);
             const share = totalEarnedCategory > 0 ? (totalEarned / totalEarnedCategory) * 100 : 0; // Share within category
 
             return {
@@ -229,6 +254,10 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             return 0;
         });
 
+        if (hideEmptyCategories) {
+            data = data.filter(item => item.currentMonthEarned > 0);
+        }
+
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
             data = data.filter(item => {
@@ -241,7 +270,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             });
         }
         return data;
-    }, [categoryData, sortField, sortOrder, searchQuery]);
+    }, [categoryData, sortField, sortOrder, searchQuery, hideEmptyCategories]);
 
     const handleSort = (field: SortField | 'currentMonthEarned') => {
         if (sortField === field) {
@@ -275,6 +304,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         let lastYearTotal = 0;
 
         const currentYear = effectiveDate.getUTCFullYear();
+        const currentMonth = effectiveDate.getUTCMonth();
         const lastYear = currentYear - 1;
 
         // Group by month
@@ -287,10 +317,12 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             const monthIdx = date.getUTCMonth();
             const monthKey = `${year}-${monthIdx}`;
 
-            monthsMap[monthKey] = (monthsMap[monthKey] || 0) + amount;
+            if (year < currentYear || (year === currentYear && monthIdx <= currentMonth)) {
+                monthsMap[monthKey] = (monthsMap[monthKey] || 0) + amount;
 
-            if (year === currentYear) currentYearTotal += amount;
-            if (year === lastYear) lastYearTotal += amount;
+                if (year === currentYear) currentYearTotal += amount;
+                if (year === lastYear) lastYearTotal += amount;
+            }
         });
 
         const totalAllTime = Object.values(monthsMap).reduce((a, b) => a + b, 0);
@@ -539,26 +571,42 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                         <p className="text-sm text-gray-500">Analyze your income sources by category</p>
                     </div>
 
-                    {/* Search Input */}
-                    <div className="relative w-full sm:w-auto">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Search className="h-4 w-4 text-gray-400" />
+                    {/* Controls */}
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <button
+                            onClick={() => setHideEmptyCategories(!hideEmptyCategories)}
+                            className={cn(
+                                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border",
+                                !hideEmptyCategories 
+                                    ? "bg-white border-gray-200 text-gray-700 hover:bg-gray-50" 
+                                    : "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                            )}
+                            title={hideEmptyCategories ? "Show all categories" : "Hide categories with no income"}
+                        >
+                            {hideEmptyCategories ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                            <span className="hidden sm:inline">{hideEmptyCategories ? 'Show Empty' : 'Hide Empty'}</span>
+                        </button>
+
+                        <div className="relative flex-1 sm:w-64">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Search className="h-4 w-4 text-gray-400" />
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Search categories..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-10 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-full transition-all"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            )}
                         </div>
-                        <input
-                            type="text"
-                            placeholder="Search categories or tags..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-full sm:w-64 transition-all"
-                        />
-                        {searchQuery && (
-                            <button
-                                onClick={() => setSearchQuery('')}
-                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                            >
-                                <X className="h-3 w-3" />
-                            </button>
-                        )}
                     </div>
                 </div>
 

@@ -8,7 +8,7 @@ import {
     TableHeader,
     TableRow,
 } from "../components/ui/table"
-import { ArrowUpDown, TrendingUp, Wallet, AlertCircle, Calendar, Search, X, ArrowDownCircle, ChevronDown } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, Wallet, AlertCircle, Calendar, Search, X, ArrowDownCircle, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { cn, stringToColor, getFormattedDateRange } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
@@ -48,6 +48,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
     const [viewMode, setViewMode] = useState<ViewMode>('category'); // Default to Detailed View
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null); // Format: "YYYY-M"
+    const [hideEmptyCategories, setHideEmptyCategories] = useState(true);
 
     const effectiveDate = useMemo(() => {
         if (selectedMonthKey) {
@@ -132,6 +133,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         // We need to re-aggregate for averages to exclude current month data
         const completedGroups: Record<string, number> = {};
         const currentMonthGroups: Record<string, number> = {};
+        const currentYearGroups: Record<string, number> = {};
 
         // Track which detailed categories belong to which group key (for limit aggregation)
         const groupConstituents: Record<string, Set<string>> = {};
@@ -148,7 +150,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             }
             groupConstituents[key].add(t.category);
 
-            // Check if transaction is in a completed month
+            // Check if transaction is in a completed month (strictly before current month of effective date)
             if (year < currentYear || (year === currentYear && month < currentMonth)) {
                 if (!completedGroups[key]) completedGroups[key] = 0;
                 completedGroups[key] += Math.abs(t.amount);
@@ -157,6 +159,11 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             if (year === currentYear && month === currentMonth) {
                 if (!currentMonthGroups[key]) currentMonthGroups[key] = 0;
                 currentMonthGroups[key] += Math.abs(t.amount);
+            }
+            // Check if transaction is in the CURRENT year up to the effective month
+            if (year === currentYear && month <= currentMonth) {
+                if (!currentYearGroups[key]) currentYearGroups[key] = 0;
+                currentYearGroups[key] += Math.abs(t.amount);
             }
         });
 
@@ -171,8 +178,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             // But if we have 0 completed months, uniqueMonthsCount is 1.
             const totalSpentCompleted = completedGroups[category] || 0;
             const currentMonthSpent = currentMonthGroups[category] || 0;
+            const currentYearSpent = currentYearGroups[category] || 0;
             const monthlyAvg = totalSpentCompleted / uniqueMonthsCount;
-            const yearForecast = monthlyAvg * remainingMonths;
+            const yearForecast = currentYearSpent + (monthlyAvg * remainingMonths);
             const share = grandTotal > 0 ? (totalSpent / grandTotal) * 100 : 0;
 
             // Calculate Limit
@@ -242,6 +250,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         let lastYearTotal = 0;
 
         const currentYear = effectiveDate.getUTCFullYear();
+        const currentMonth = effectiveDate.getUTCMonth();
         const lastYear = currentYear - 1;
 
         // Group by month
@@ -254,10 +263,13 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             const monthIdx = date.getUTCMonth();
             const monthKey = `${year}-${monthIdx}`;
 
-            monthsMap[monthKey] = (monthsMap[monthKey] || 0) + amount;
-
-            if (year === currentYear) currentYearTotal += amount;
-            if (year === lastYear) lastYearTotal += amount;
+            // Only consider data up to the effective date for year totals to prevent future data from skewing historical views
+            if (year < currentYear || (year === currentYear && monthIdx <= currentMonth)) {
+                monthsMap[monthKey] = (monthsMap[monthKey] || 0) + amount;
+                
+                if (year === currentYear) currentYearTotal += amount;
+                if (year === lastYear) lastYearTotal += amount;
+            }
         });
 
         const uniqueMonthsCountAll = Object.keys(monthsMap).length || 1;
@@ -265,22 +277,27 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
         // Calculate Avg Monthly (Completed Months Only)
         // exclude current month from avg calc
-        const currentYearEffective = effectiveDate.getUTCFullYear();
-        const currentMonthEffective = effectiveDate.getUTCMonth();
+        const currentYearEffective = currentYear;
+        const currentMonthEffective = currentMonth;
         const currentMonthKey = `${currentYearEffective}-${currentMonthEffective}`;
 
         let totalCompleted = 0;
         let countCompleted = 0;
 
         Object.entries(monthsMap).forEach(([key, val]) => {
-            if (key !== currentMonthKey) {
+            const [yStr, mStr] = key.split('-');
+            const y = parseInt(yStr, 10);
+            const m = parseInt(mStr, 10);
+            
+            // Only count months strictly BEFORE the effective date
+            if (y < currentYearEffective || (y === currentYearEffective && m < currentMonthEffective)) {
                 totalCompleted += val;
                 countCompleted++;
             }
         });
 
         const currentMonthTotal = monthsMap[currentMonthKey] || 0;
-        const avgMonthly = countCompleted > 0 ? totalCompleted / countCompleted : totalAllTime / uniqueMonthsCountAll;
+        const avgMonthly = countCompleted > 0 ? totalCompleted / countCompleted : 0;
 
         // Year Forecast
         // Logic: Already spent this year + (Avg Monthly * Remaining Months in Year)
@@ -300,9 +317,14 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
         const lastMonthTotal = monthsMap[lastCompletedMonthKey] || 0;
 
-        // Avg of all OTHER months (excluding Last Completed Month AND Current Incomplete Month)
         const otherMonthsTotals = Object.entries(monthsMap)
-            .filter(([k]) => k !== lastCompletedMonthKey && k !== currentMonthKey)
+            .filter(([k]) => {
+                const [yStr, mStr] = k.split('-');
+                const y = parseInt(yStr, 10);
+                const m = parseInt(mStr, 10);
+                const isBeforeEffective = y < currentYearEffective || (y === currentYearEffective && m < currentMonthEffective);
+                return isBeforeEffective && k !== lastCompletedMonthKey;
+            })
             .map(([, v]) => v);
 
         const avgOthers = otherMonthsTotals.length > 0
@@ -385,6 +407,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         const groups: Record<string, { total: number; count: number }> = {};
         const currentMonthGroups: Record<string, number> = {};
         const completedGroups: Record<string, number> = {};
+        const currentYearGroups: Record<string, number> = {};
 
         const currentYear = effectiveDate.getUTCFullYear();
         const currentMonthIdx = effectiveDate.getUTCMonth();
@@ -417,6 +440,12 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                 if (!currentMonthGroups[key]) currentMonthGroups[key] = 0;
                 currentMonthGroups[key] += Math.abs(t.amount);
             }
+            
+            // Aggregate Current Year
+            if (year === currentYear && month <= currentMonthIdx) {
+                if (!currentYearGroups[key]) currentYearGroups[key] = 0;
+                currentYearGroups[key] += Math.abs(t.amount);
+            }
         });
 
         // Current month logic for forecast (same as main)
@@ -428,8 +457,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             const totalSpent = total;
             const totalSpentCompleted = completedGroups[key] || 0;
             const currentMonthSpent = currentMonthGroups[key] || 0;
+            const currentYearSpent = currentYearGroups[key] || 0;
             const monthlyAvg = totalSpentCompleted / uniqueMonthsCount;
-            const yearForecast = monthlyAvg * remainingMonths;
+            const yearForecast = currentYearSpent + (monthlyAvg * remainingMonths);
             const share = totalParentSpent > 0 ? (totalSpent / totalParentSpent) * 100 : 0;
 
             return {
@@ -456,6 +486,10 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             return 0;
         });
 
+        if (hideEmptyCategories) {
+            data = data.filter(item => item.currentMonthSpent > 0);
+        }
+
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
             data = data.filter(item => {
@@ -469,7 +503,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         }
 
         return data;
-    }, [categoryData, sortField, sortOrder, searchQuery]); // transactions/viewMode are deps of getBreakdownMetrics implicitly if it's not wrapped in useCallback, so better to wrap it or include deps.
+    }, [categoryData, sortField, sortOrder, searchQuery, hideEmptyCategories]); // transactions/viewMode are deps of getBreakdownMetrics implicitly if it's not wrapped in useCallback, so better to wrap it or include deps.
     // Ideally getBreakdownMetrics should be wrapped in useCallback.
     // But since this is a functional component re-render, getBreakdownMetrics is recreated every render.
     // So useMemo will run every render if we don't be careful.
@@ -488,8 +522,29 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
     // --- Infographics Calculations ---
     const infographics = useMemo(() => {
         const daysInMonth = new Date(effectiveDate.getUTCFullYear(), effectiveDate.getUTCMonth() + 1, 0).getDate();
-        const daysPassed = effectiveDate.getUTCDate();
-        const daysRemaining = daysInMonth - daysPassed + 1;
+        
+        let daysPassed = effectiveDate.getUTCDate();
+        const now = new Date();
+        
+        if (selectedMonthKey) {
+            const [y, m] = selectedMonthKey.split('-').map(Number);
+            if (y === now.getUTCFullYear() && m === now.getUTCMonth()) {
+                daysPassed = now.getUTCDate(); // Current month, use today's date
+            } else if (y > now.getUTCFullYear() || (y === now.getUTCFullYear() && m > now.getUTCMonth())) {
+                daysPassed = 1; // Future month
+            } else {
+                daysPassed = daysInMonth; // Past month fully passed
+            }
+        } else {
+            // Auto (Latest)
+            if (effectiveDate.getUTCFullYear() < now.getUTCFullYear() || (effectiveDate.getUTCFullYear() === now.getUTCFullYear() && effectiveDate.getUTCMonth() < now.getUTCMonth())) {
+                daysPassed = daysInMonth;
+            } else {
+                daysPassed = now.getUTCDate(); // Current month
+            }
+        }
+
+        const daysRemaining = Math.max(daysInMonth - daysPassed + 1, 1);
 
         // 1. Budget Health
         // Summing `currentMonthSpent` from `categoryData` gives total spent in current month matching the table.
@@ -847,54 +902,71 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                         <p className="text-sm text-gray-500">Analyze your spending by {viewMode === 'global' ? 'category group' : 'category'}</p>
                     </div>
 
-                    {/* Search Input */}
-                    <div className="relative w-full sm:w-auto">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Search className="h-4 w-4 text-gray-400" />
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="Search categories or tags..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-full sm:w-64 transition-all"
-                        />
-                        {searchQuery && (
-                            <button
-                                onClick={() => setSearchQuery('')}
-                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                            >
-                                <X className="h-3 w-3" />
-                            </button>
-                        )}
-                    </div>
+                    <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                        {/* Hide Empty Toggle */}
+                        <button
+                            onClick={() => setHideEmptyCategories(!hideEmptyCategories)}
+                            className={cn(
+                                "flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-all border flex-1 sm:flex-none",
+                                !hideEmptyCategories 
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
+                                    : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-900"
+                            )}
+                            title="Toggle categories with 0 spending this month"
+                        >
+                            {hideEmptyCategories ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                            <span className="hidden sm:inline">{hideEmptyCategories ? 'Show Empty' : 'Hide Empty'}</span>
+                        </button>
 
-                    {/* View Toggle */}
-                    <div className="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
-                        <button
-                            onClick={() => {
-                                setViewMode('category');
-                                setExpandedCategories(new Set()); // Clear expansion
-                            }}
-                            className={cn(
-                                "flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-all",
-                                viewMode === 'category' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                        {/* Search Input */}
+                        <div className="relative flex-1 sm:flex-none min-w-[150px] sm:w-48 order-last sm:order-none">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Search className="h-4 w-4 text-gray-400" />
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Search..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-10 pr-8 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-full transition-all"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
                             )}
-                        >
-                            Detailed
-                        </button>
-                        <button
-                            onClick={() => {
-                                setViewMode('global');
-                                setExpandedCategories(new Set()); // Clear expansion
-                            }}
-                            className={cn(
-                                "flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-all",
-                                viewMode === 'global' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
-                            )}
-                        >
-                            Global
-                        </button>
+                        </div>
+
+                        {/* View Toggle */}
+                        <div className="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
+                            <button
+                                onClick={() => {
+                                    setViewMode('category');
+                                    setExpandedCategories(new Set()); // Clear expansion
+                                }}
+                                className={cn(
+                                    "flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                                    viewMode === 'category' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                                )}
+                            >
+                                Detailed
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setViewMode('global');
+                                    setExpandedCategories(new Set()); // Clear expansion
+                                }}
+                                className={cn(
+                                    "flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                                    viewMode === 'global' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                                )}
+                            >
+                                Global
+                            </button>
+                        </div>
                     </div>
                 </div>
 

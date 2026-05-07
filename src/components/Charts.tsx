@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
 import {
-    BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList
+    BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList, ReferenceLine
 } from 'recharts';
 import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { useCategoryLimits } from '../hooks/useCategoryLimits';
 import { stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { CustomTooltip } from './CustomTooltip';
@@ -51,6 +52,12 @@ const CustomXAxisTick = (props: any) => {
 
 export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
     const { isPrivacyMode } = usePrivacy();
+    const { limits } = useCategoryLimits();
+
+    const totalTarget = useMemo(() => {
+        return Object.values(limits).reduce((acc, limit) => acc + limit, 0);
+    }, [limits]);
+
     const expensesByCategory = useMemo(() => {
         const categories: Record<string, number> = {};
 
@@ -168,6 +175,20 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
                                 />
                                 <YAxis hide />
                                 <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
+                                {totalTarget > 0 && (
+                                    <ReferenceLine 
+                                        y={totalTarget} 
+                                        stroke="#f97316" 
+                                        strokeDasharray="4 4" 
+                                        strokeWidth={2}
+                                        isFront={false}
+                                        label={({ viewBox }: any) => (
+                                            <text x={viewBox.x + 5} y={viewBox.y - 8} fill="#f97316" fontSize={12} fontWeight={600}>
+                                                Target
+                                            </text>
+                                        )}
+                                    />
+                                )}
                                 <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={48} isAnimationActive={false}>
                                     <LabelList
                                         dataKey="value"

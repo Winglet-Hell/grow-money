@@ -34,6 +34,7 @@ type Period = '3M' | '6M' | '1Y' | 'ALL';
 export function TrendsPage({ transactions }: TrendsPageProps) {
     const { isPrivacyMode } = usePrivacy();
     const [period, setPeriod] = useState<Period>('ALL');
+    const [savingsViewMode, setSavingsViewMode] = useState<'percent' | 'absolute'>('percent');
 
     // 1. Data Processing
     const chartData = useMemo(() => {
@@ -274,29 +275,52 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                 {/* Chart 3: Savings Rate - Full Width */}
                 <div className="lg:col-span-2">
                     <ChartCard
-                        title="Savings Rate (%)"
+                        title={savingsViewMode === 'percent' ? "Savings Rate (%)" : "Savings (Absolute)"}
                         headerRight={
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-4">
+                                <div className="flex bg-gray-100 p-1 rounded-lg">
+                                    <button
+                                        onClick={() => setSavingsViewMode('percent')}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${savingsViewMode === 'percent' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                                    >
+                                        %
+                                    </button>
+                                    <button
+                                        onClick={() => setSavingsViewMode('absolute')}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${savingsViewMode === 'absolute' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                                    >
+                                        ₽
+                                    </button>
+                                </div>
                                 {(() => {
                                     const rate = kpis.avgSavingsRate || 0;
                                     let color = 'bg-gray-100 text-gray-600';
                                     let text = 'Not enough data';
 
-                                    if (rate >= 50) {
+                                    if (chartData.length === 0 || (kpis.avgIncome === 0 && kpis.avgSpend === 0)) {
+                                        color = 'bg-gray-100 text-gray-600';
+                                        text = 'Not enough data';
+                                    } else if (rate >= 75) {
+                                        color = 'bg-yellow-100 text-yellow-700';
+                                        text = 'Financial Jedi (75%+)';
+                                    } else if (rate >= 50) {
                                         color = 'bg-purple-100 text-purple-700';
-                                        text = 'Elite Saver (50%+)';
+                                        text = 'Master Saver (50-75%)';
+                                    } else if (rate >= 30) {
+                                        color = 'bg-indigo-100 text-indigo-700';
+                                        text = 'Elite Saver (30-50%)';
                                     } else if (rate >= 20) {
                                         color = 'bg-emerald-100 text-emerald-700';
-                                        text = 'Strong Saver (20%+)';
+                                        text = 'Strong Saver (20-30%)';
                                     } else if (rate >= 10) {
                                         color = 'bg-blue-100 text-blue-700';
-                                        text = 'Good Start (10%+)';
-                                    } else if (rate > 0) {
+                                        text = 'Good Start (10-20%)';
+                                    } else if (rate >= 0) {
                                         color = 'bg-orange-100 text-orange-700';
                                         text = 'Needs Work (0-10%)';
                                     } else {
                                         color = 'bg-red-100 text-red-700';
-                                        text = 'Critical (Negative)';
+                                        text = 'Critical (< 0%)';
                                     }
 
                                     return (
@@ -310,12 +334,20 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                                 <p className="font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-100">Savings Benchmarks</p>
                                                 <div className="space-y-2">
                                                     <div className="flex justify-between items-center">
-                                                        <span className="text-purple-700 font-medium">Elite Saver</span>
-                                                        <span className="text-gray-500">50%+</span>
+                                                        <span className="text-yellow-700 font-medium">Financial Jedi</span>
+                                                        <span className="text-gray-500">75%+</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-purple-700 font-medium">Master Saver</span>
+                                                        <span className="text-gray-500">50-75%</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-indigo-700 font-medium">Elite Saver</span>
+                                                        <span className="text-gray-500">30-50%</span>
                                                     </div>
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-emerald-700 font-medium">Strong Saver</span>
-                                                        <span className="text-gray-500">20-50%</span>
+                                                        <span className="text-gray-500">20-30%</span>
                                                     </div>
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-blue-700 font-medium">Good Start</span>
@@ -357,21 +389,29 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                     axisLine={false}
                                     tickLine={false}
                                     tick={{ fill: '#6B7280', fontSize: 12 }}
-                                    unit="%"
+                                    unit={savingsViewMode === 'percent' ? "%" : ""}
+                                    tickFormatter={savingsViewMode === 'absolute' ? (value) => isPrivacyMode ? '•••' : `₽${(value / 1000).toFixed(0)}k` : undefined}
                                 />
-                                <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} valuePrefix="" valueSuffix="%" />} />
-                                <ReferenceLine y={20} stroke="#10b981" strokeDasharray="3 3" label={{ value: 'Target 20%', fill: '#10b981', fontSize: 12 }} />
+                                <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} valuePrefix={savingsViewMode === 'absolute' ? "₽" : ""} valueSuffix={savingsViewMode === 'percent' ? "%" : ""} />} />
+                                {savingsViewMode === 'percent' && (
+                                    <ReferenceLine y={20} stroke="#10b981" strokeDasharray="3 3" label={{ value: 'Target 20%', fill: '#10b981', fontSize: 12 }} />
+                                )}
                                 <Area
                                     type="monotone"
-                                    dataKey="savingsRate"
-                                    name="Savings Rate"
+                                    dataKey={savingsViewMode === 'percent' ? "savingsRate" : "netFlow"}
+                                    name={savingsViewMode === 'percent' ? "Savings Rate" : "Saved"}
                                     stroke="#8b5cf6"
                                     strokeWidth={2}
                                     fillOpacity={1}
                                     fill="url(#colorSavings)"
                                     isAnimationActive={false}
                                 >
-                                    <LabelList dataKey="savingsRate" position="top" formatter={(val: any) => Math.round(Number(val)) + '%'} style={{ fontSize: '10px', fill: '#6B7280' }} />
+                                    <LabelList 
+                                        dataKey={savingsViewMode === 'percent' ? "savingsRate" : "netFlow"} 
+                                        position="top" 
+                                        formatter={savingsViewMode === 'percent' ? (val: any) => Math.round(Number(val)) + '%' : formatShortValue} 
+                                        style={{ fontSize: '10px', fill: '#6B7280' }} 
+                                    />
                                 </Area>
                             </AreaChart>
                         </ResponsiveContainer>
