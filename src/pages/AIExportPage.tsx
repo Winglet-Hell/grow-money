@@ -31,9 +31,9 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                 acc[monthKey] = { income: 0, expenses: 0, savings: 0, transactionCount: 0 };
             }
             if (t.type === 'income') {
-                acc[monthKey].income += t.amount;
+                acc[monthKey].income += Math.abs(t.amount);
             } else if (t.type === 'expense') {
-                acc[monthKey].expenses += t.amount;
+                acc[monthKey].expenses += Math.abs(t.amount);
             }
             acc[monthKey].transactionCount += 1;
             return acc;
