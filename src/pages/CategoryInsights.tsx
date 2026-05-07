@@ -814,9 +814,6 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                             <span className="text-gray-900">{isPrivacyMode ? '••••••' : formatCurrency(infographics.totalSpentBudgeted)}</span>
                             <span className="text-gray-400">Target: {isPrivacyMode ? '••••••' : formatCurrency(infographics.totalLimit)}</span>
                         </div>
-                        <p className="text-[9px] text-gray-400 mt-1 uppercase tracking-tight">
-                            * Includes only categories with set limits
-                        </p>
                     </div>
                 </div>
 
