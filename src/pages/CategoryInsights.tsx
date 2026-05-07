@@ -911,8 +911,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                     <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center text-[11px] font-medium uppercase tracking-wider">
                         <span className="text-gray-400">Share:</span>
                         <span className="text-gray-900 font-bold">
-                            {infographics.totalSpentCurrentMonth > 0
-                                ? ((infographics.topCategory.currentMonthSpent / infographics.totalSpentCurrentMonth) * 100).toFixed(1) + '%'
+                            {infographics.totalSpentAll > 0
+                                ? ((infographics.topCategory.currentMonthSpent / infographics.totalSpentAll) * 100).toFixed(1) + '%'
                                 : '0%'}
                         </span>
                     </div>
