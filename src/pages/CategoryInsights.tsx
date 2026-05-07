@@ -574,6 +574,17 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
         // 4. Comparison to Average
         const avgMonthly = summaryMetrics?.avgMonthly || 0;
+        const isPastMonth = selectedMonthKey ? (
+            (() => {
+                const [y, m] = selectedMonthKey.split('-').map(Number);
+                const now = new Date();
+                return (y < now.getUTCFullYear() || (y === now.getUTCFullYear() && m < now.getUTCMonth()));
+            })()
+        ) : (
+            effectiveDate.getUTCFullYear() < now.getUTCFullYear() || 
+            (effectiveDate.getUTCFullYear() === now.getUTCFullYear() && effectiveDate.getUTCMonth() < now.getUTCMonth())
+        );
+
         const vsAvgTrend = avgMonthly > 0 ? (totalSpentAll - avgMonthly) / avgMonthly : 0;
 
         return {
@@ -585,9 +596,10 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             avgDailySpend,
             safeDailySpend,
             topCategory,
-            vsAvgTrend
+            vsAvgTrend,
+            isPastMonth
         };
-    }, [categoryData, summaryMetrics?.avgMonthly]);
+    }, [categoryData, summaryMetrics?.avgMonthly, selectedMonthKey, effectiveDate]);
 
     // Mobile Card Component for Category Insights
     const CategoryMobileCard = ({ row }: { row: CategoryData }) => {
@@ -848,12 +860,16 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                     </div>
                     
                     <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center text-[11px] font-medium uppercase tracking-wider">
-                        <span className="text-gray-400">Safe Limit:</span>
+                        <span className="text-gray-400">{infographics.isPastMonth ? "Budget Left:" : "Safe Limit:"}</span>
                         <span className={cn(
                             "font-bold",
-                            infographics.totalLimit > 0 ? "text-emerald-600" : "text-gray-300"
+                            infographics.totalLimit > 0 ? (infographics.overallRemaining >= 0 ? "text-emerald-600" : "text-red-500") : "text-gray-300"
                         )}>
-                            {infographics.totalLimit > 0 ? formatCurrency(infographics.safeDailySpend) : "—"}
+                            {infographics.totalLimit > 0 ? (
+                                infographics.isPastMonth 
+                                    ? formatCurrency(infographics.overallRemaining) 
+                                    : formatCurrency(infographics.safeDailySpend)
+                            ) : "—"}
                         </span>
                     </div>
                 </div>
