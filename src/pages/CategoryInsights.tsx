@@ -184,25 +184,31 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             const share = grandTotal > 0 ? (totalSpent / grandTotal) * 100 : 0;
 
             // Calculate Limit
-            let limit: number | undefined = 0;
+            let limit: number | undefined = undefined;
             if (viewMode === 'global') {
-                // Sum limits of all constituents
-                const constituents = groupConstituents[category] || new Set();
-                let hasAnyLimit = false;
-                const sum = Array.from(constituents).reduce((acc, cat) => {
-                    const l = getLimit(cat);
-                    if (l !== undefined) {
-                        hasAnyLimit = true;
-                        return acc + l;
-                    }
-                    return acc;
-                }, 0);
-                limit = hasAnyLimit ? sum : undefined;
+                // First check if there's a limit set on the Global Group name itself
+                const globalLimit = getLimit(category);
+                if (globalLimit !== undefined) {
+                    limit = globalLimit;
+                } else {
+                    // Fallback: Sum limits of all detailed constituents
+                    const constituents = groupConstituents[category] || new Set();
+                    let hasAnyConstituentLimit = false;
+                    const sum = Array.from(constituents).reduce((acc, cat) => {
+                        const l = getLimit(cat);
+                        if (l !== undefined) {
+                            hasAnyConstituentLimit = true;
+                            return acc + l;
+                        }
+                        return acc;
+                    }, 0);
+                    limit = hasAnyConstituentLimit ? sum : undefined;
+                }
             } else {
                 limit = getLimit(category);
             }
 
-            const remaining = limit ? limit - currentMonthSpent : null;
+            const remaining = limit !== undefined ? limit - currentMonthSpent : null;
 
             return {
                 category,
@@ -544,17 +550,21 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         const daysRemaining = Math.max(daysInMonth - daysPassed + 1, 1);
 
         // 1. Budget Health
-        // Summing `currentMonthSpent` from `categoryData` gives total spent in current month matching the table.
-        // Summing `limit` from `categoryData` gives total limit matching the table.
+        // To make "Safe Limit" and "Budget Health" meaningful, we should only compare 
+        // spending in categories that actually have a limit set.
+        // Otherwise, a single large un-budgeted expense (like Rent) would make the 
+        // safe limit for "Coffee" or "Leisure" appear as 0.
+        
+        const budgetedCategories = categoryData.filter(item => item.limit !== undefined && item.limit > 0);
+        const totalSpentBudgeted = budgetedCategories.reduce((acc, item) => acc + item.currentMonthSpent, 0);
+        const totalSpentAll = categoryData.reduce((acc, item) => acc + item.currentMonthSpent, 0);
+        const totalLimit = budgetedCategories.reduce((acc, item) => acc + (item.limit || 0), 0);
 
-        const totalSpentCurrentMonth = categoryData.reduce((acc, item) => acc + item.currentMonthSpent, 0);
-        const totalLimit = categoryData.reduce((acc, item) => acc + (item.limit || 0), 0);
-
-        const overallRemaining = totalLimit - totalSpentCurrentMonth;
-        const progressPercent = totalLimit > 0 ? (totalSpentCurrentMonth / totalLimit) * 100 : 0;
+        const overallRemaining = totalLimit - totalSpentBudgeted;
+        const progressPercent = totalLimit > 0 ? (totalSpentBudgeted / totalLimit) * 100 : 0;
 
         // 2. Daily Pace
-        const avgDailySpend = totalSpentCurrentMonth / Math.max(daysPassed, 1);
+        const avgDailySpend = totalSpentAll / Math.max(daysPassed, 1);
         // Safe daily spend to stick to budget: Remaining / Remaining Days
         const safeDailySpend = totalLimit > 0 ? (Math.max(overallRemaining, 0) / Math.max(daysRemaining, 1)) : 0;
 
@@ -564,10 +574,11 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
         // 4. Comparison to Average
         const avgMonthly = summaryMetrics?.avgMonthly || 0;
-        const vsAvgTrend = avgMonthly > 0 ? (totalSpentCurrentMonth - avgMonthly) / avgMonthly : 0;
+        const vsAvgTrend = avgMonthly > 0 ? (totalSpentAll - avgMonthly) / avgMonthly : 0;
 
         return {
-            totalSpentCurrentMonth,
+            totalSpentAll,
+            totalSpentBudgeted,
             totalLimit,
             overallRemaining,
             progressPercent,
@@ -788,9 +799,12 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                             />
                         </div>
                         <div className="flex justify-between items-center text-[11px] font-medium uppercase tracking-wider">
-                            <span className="text-gray-900">{isPrivacyMode ? '••••••' : formatCurrency(infographics.totalSpentCurrentMonth)}</span>
+                            <span className="text-gray-900">{isPrivacyMode ? '••••••' : formatCurrency(infographics.totalSpentBudgeted)}</span>
                             <span className="text-gray-400">Target: {isPrivacyMode ? '••••••' : formatCurrency(infographics.totalLimit)}</span>
                         </div>
+                        <p className="text-[9px] text-gray-400 mt-1 uppercase tracking-tight">
+                            * Includes only categories with set limits
+                        </p>
                     </div>
                 </div>
 
