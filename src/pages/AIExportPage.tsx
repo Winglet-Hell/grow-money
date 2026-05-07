@@ -58,45 +58,6 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
             .sort(([, a], [, b]) => b - a) // Sort by magnitude (descending)
             .map(([category, amount]) => ({ category, amount }));
 
-        // 3. Subscriptions (Last 3 Months Only)
-        // Reverted to 90 days as requested.
-        const ninetyDaysAgo = new Date();
-        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-
-        const recentDetails = sortedDetails.filter(t => new Date(t.date) >= ninetyDaysAgo);
-
-        const subscriptionsMap = recentDetails
-            .filter(t => {
-                const cat = t.category.toLowerCase();
-                const acc = (t.account || '').toLowerCase();
-                // Use partial match instead of strict equality to catch "Online Subscriptions", "Apple Subscriptions", etc.
-                // Also explicitly check for Crypto/Bybit as requested by user.
-                const isSubscriptionCategory = cat.includes('subscription') || cat.includes('подписк');
-                const isCryptoSource = cat.includes('bybit') || cat.includes('usdt') || acc.includes('bybit') || acc.includes('usdt');
-
-                return isSubscriptionCategory || isCryptoSource;
-            })
-            .reduce((acc, t) => {
-                // User rule: Tag = Service Name
-                // Group by Name + Account to distinguish different payment sources (e.g. RUB vs USDT)
-                const serviceName = (Array.isArray(t.tags) ? t.tags.join(', ') : t.tags) || t.note || 'Unknown Subscription';
-                const accountName = t.account || 'Unknown Account';
-                const uniqueKey = `${serviceName} (${accountName})`;
-
-                if (!acc[uniqueKey]) {
-                    acc[uniqueKey] = {
-                        name: uniqueKey,
-                        amount: Math.abs(t.amount), // Use positive amount
-                        count: 0
-                    };
-                }
-                acc[uniqueKey].count += 1;
-                return acc;
-            }, {} as Record<string, { name: string; amount: number; count: number }>);
-
-        const subscriptions = Object.values(subscriptionsMap)
-            .sort((a, b) => b.amount - a.amount); // Sort by cost descending
-
         // 4. Income Sources (New)
         // Aggregating income by category to see revenue streams
         const incomeMap = sortedDetails
@@ -164,10 +125,6 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
             topMerchants: {
                 period: fullPeriodStr,
                 data: topMerchants
-            },
-            subscriptions: {
-                period: 'Last 90 Days',
-                data: subscriptions
             },
             recentTransactions: {
                 period: last500Transactions.length > 0 ? `${last500Transactions[last500Transactions.length - 1].date} to ${last500Transactions[0].date}` : 'N/A',
@@ -243,7 +200,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                     </div>
 
                     <p className="text-gray-500 text-sm mb-6 leading-relaxed">
-                        Generate a secure, privacy-focused JSON file containing your transaction history, spending habits, and detected subscriptions.
+                        Generate a secure, privacy-focused JSON file containing your transaction history and spending habits.
                     </p>
 
                     <button
@@ -396,27 +353,7 @@ Output: Structure your answer with clear headings and bullet points.`;
                         </div>
                     </div>
 
-                    {/* Detected Subscriptions Preview */}
-                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-baseline mb-4">
-                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Subscriptions <span className="text-gray-400 normal-case">({dataPayload.subscriptions.data.length})</span></h3>
-                            <span className="text-xs font-medium text-gray-400">
-                                {dataPayload.subscriptions.period}
-                            </span>
-                        </div>
-                        <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                            {dataPayload.subscriptions.data.length > 0 ? (
-                                dataPayload.subscriptions.data.map((sub, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 border border-transparent rounded-lg text-sm transition-colors hover:bg-gray-100">
-                                        <span className="font-medium text-gray-700 truncate max-w-[70%]">{sub.name}</span>
-                                        <span className="text-indigo-600 font-semibold">{isPrivacyMode ? '•••' : sub.amount.toLocaleString('ru-RU')}</span>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-gray-400 text-sm italic">No recurring payments detected yet.</p>
-                            )}
-                        </div>
-                    </div>
+
 
                     {/* Recent Transactions Peek */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow">
