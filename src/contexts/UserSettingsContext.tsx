@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import type { PaycheckConfig } from '../types';
 
 export interface UserPreferences {
     tableCompactMode?: boolean;
     tableShowNotes?: boolean;
     tableShowAccount?: boolean;
     tableShowCategory?: boolean;
+    paycheck?: PaycheckConfig;
 }
 
 export interface UserProfile {

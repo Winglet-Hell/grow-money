@@ -43,3 +43,20 @@ export type TransactionSnapshot = {
     note: string;
     originalCurrency?: string;
 };
+
+// Overtime record: hours worked in a given month, valued at an hourly rate.
+export type OvertimeEntry = {
+    id: string;
+    monthKey: string; // "YYYY-MM"
+    hours: number;
+    rate?: number; // optional per-entry rate override; falls back to PaycheckConfig.hourlyRate
+    note?: string;
+};
+
+// Salary control configuration (persisted in user settings / localStorage).
+export type PaycheckConfig = {
+    category?: string; // income category treated as the paycheck source (e.g. "Addrea paycheck")
+    plannedSalary?: number; // expected monthly net salary
+    hourlyRate?: number; // default overtime rate (per hour)
+    overtime?: OvertimeEntry[];
+};

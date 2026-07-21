@@ -14,6 +14,7 @@ import { TransactionTable } from './components/TransactionTable';
 import { BottomNav } from './components/BottomNav';
 import { CategoryInsights } from './pages/CategoryInsights';
 import { IncomeInsights } from './pages/IncomeInsights';
+import { PaycheckPage } from './pages/PaycheckPage';
 import { TrendsPage } from './pages/TrendsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { WishlistPage } from './pages/WishlistPage';
@@ -308,6 +309,7 @@ function AppContent() {
                 } />
                 <Route path="/category-insights" element={<CategoryInsights transactions={transactions} />} />
                 <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
+                <Route path="/paycheck" element={<PaycheckPage transactions={transactions} />} />
                 <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
                 <Route path="/wishlist" element={<WishlistPage transactions={transactions} />} />
                 <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} />} />
