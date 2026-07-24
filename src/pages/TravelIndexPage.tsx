@@ -5,7 +5,7 @@ import { resolveTripActiveTransactions } from '../lib/tripUtils';
 import { cn, stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import type { Transaction, Trip } from '../types';
-import { Search, Globe, X, Tag as TagIcon, LayoutGrid } from 'lucide-react';
+import { Search, Globe, X, Tag as TagIcon, LayoutGrid, Plane } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList, CartesianGrid } from 'recharts';
 import { TransactionListModal } from '../components/TransactionListModal';
 
@@ -26,12 +26,100 @@ const formatMoney = (amount: number, currency = 'RUB') => {
     }
 };
 
+// A trip is named "City #specific" (e.g. "Bangkok #friends"); the part before the
+// first '#' is the city. Trips without a '#' are treated as their own city.
+const getTripCity = (name: string) => {
+    const idx = name.indexOf('#');
+    const city = (idx >= 0 ? name.slice(0, idx) : name).trim();
+    return city || name.trim();
+};
+
+// Big-ticket lodging/airfare dominates a trip's totals; the Cost Index can
+// optionally drop it. Matches the (typo'd) "Hotels & flighsts" category too.
+const isHotelOrFlight = (category: string) => /hotel|flight|flighst/i.test(category || '');
+
+const getMedian = (arr: number[]) => {
+    if (arr.length === 0) return 0;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+// One leaderboard row — a single trip, or a merged city when grouped.
+type LeaderRow = {
+    tripId: string;
+    tripName: string;
+    startDate: string;
+    avgCheck: number;
+    medianCheck: number;
+    displayValue: number;
+    totalAmount: number;
+    txCount: number;
+    minCheck: number;
+    maxCheck: number;
+    transactions: Transaction[];
+    tripCount: number;
+};
+
+// Turn per-trip matched transactions into a sorted leaderboard. When groupBy is
+// 'city', trips sharing the same pre-hashtag city are merged and the check is
+// recomputed over the combined transactions (not an average of averages).
+const buildLeaderboard = (
+    perTrip: { trip: Trip; matchedTxs: Transaction[] }[],
+    groupBy: 'trip' | 'city',
+    calcMethod: 'avg' | 'median'
+): LeaderRow[] => {
+    const buildStats = (id: string, label: string, startDate: string, matchedTxs: Transaction[], tripCount: number): LeaderRow => {
+        const amounts = matchedTxs.map(tx => Math.abs(tx.amount));
+        const total = amounts.reduce((sum, a) => sum + a, 0);
+        const count = amounts.length;
+        const avg = count ? total / count : 0;
+        const median = getMedian(amounts);
+        return {
+            tripId: id,
+            tripName: label,
+            startDate,
+            avgCheck: avg,
+            medianCheck: median,
+            displayValue: calcMethod === 'avg' ? avg : median,
+            totalAmount: total,
+            txCount: count,
+            minCheck: count ? Math.min(...amounts) : 0,
+            maxCheck: count ? Math.max(...amounts) : 0,
+            transactions: matchedTxs,
+            tripCount,
+        };
+    };
+
+    if (groupBy === 'city') {
+        const cityMap: Record<string, { label: string; startDate: string; txs: Transaction[]; tripCount: number }> = {};
+        perTrip.forEach(({ trip, matchedTxs }) => {
+            const label = getTripCity(trip.name);
+            const key = label.toLowerCase();
+            if (!cityMap[key]) cityMap[key] = { label, startDate: trip.startDate, txs: [], tripCount: 0 };
+            cityMap[key].txs.push(...matchedTxs);
+            cityMap[key].tripCount++;
+            if (trip.startDate > cityMap[key].startDate) cityMap[key].startDate = trip.startDate;
+        });
+        return Object.values(cityMap)
+            .map(c => buildStats(c.label, c.label, c.startDate, c.txs, c.tripCount))
+            .sort((a, b) => b.displayValue - a.displayValue);
+    }
+
+    return perTrip
+        .map(({ trip, matchedTxs }) => buildStats(trip.id, trip.name, trip.startDate, matchedTxs, 1))
+        .sort((a, b) => b.displayValue - a.displayValue);
+};
+
 export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
     const [trips, setTrips] = useState<Trip[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [selectedItem, setSelectedItem] = useState<{ type: 'tag' | 'category', value: string } | null>(null);
     const [calcMethod, setCalcMethod] = useState<'avg' | 'median'>('avg');
+    const [groupBy, setGroupBy] = useState<'trip' | 'city'>('trip');
+    const [tab, setTab] = useState<'explore' | 'index'>('explore');
+    const [excludeHotels, setExcludeHotels] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalData, setModalData] = useState<{ transactions: Transaction[], title: string, subtitle: string }>({
         transactions: [],
@@ -135,22 +223,15 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
     }, [aggregatedData, searchQuery]);
 
 
-    const getMedian = (arr: number[]) => {
-        if (arr.length === 0) return 0;
-        const sorted = [...arr].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-    };
-
-    const indexResults = useMemo(() => {
+    const categoryResults = useMemo(() => {
         if (!selectedItem) return [];
 
         const isTag = selectedItem.type === 'tag';
         const targetValue = selectedItem.value.toLowerCase();
 
-        return trips.map(trip => {
+        // Match the selected tag/category within each trip.
+        const perTrip = trips.map(trip => {
             const activeTxs = resolveTripActiveTransactions(trip, transactions);
-
             const matchedTxs = activeTxs.filter(tx => {
                 if (isTag) {
                     if (!tx.tags) return false;
@@ -160,32 +241,27 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                     return tx.category.toLowerCase() === targetValue;
                 }
             });
+            return matchedTxs.length > 0 ? { trip, matchedTxs } : null;
+        }).filter(Boolean) as { trip: Trip; matchedTxs: Transaction[] }[];
 
-            if (matchedTxs.length === 0) return null;
+        return buildLeaderboard(perTrip, groupBy, calcMethod);
+    }, [selectedItem, trips, transactions, calcMethod, groupBy]);
 
-            const total = matchedTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-            const count = matchedTxs.length;
-            const amounts = matchedTxs.map(tx => Math.abs(tx.amount));
-            const avg = total / count;
-            const median = getMedian(amounts);
+    // Overall "cost index": compare trips/cities across ALL their spending
+    // (every active expense of the trip, regardless of category or tag).
+    const overallResults = useMemo(() => {
+        const perTrip = trips.map(trip => {
+            let matchedTxs = resolveTripActiveTransactions(trip, transactions);
+            if (excludeHotels) matchedTxs = matchedTxs.filter(tx => !isHotelOrFlight(tx.category));
+            return matchedTxs.length > 0 ? { trip, matchedTxs } : null;
+        }).filter(Boolean) as { trip: Trip; matchedTxs: Transaction[] }[];
 
-            return {
-                tripId: trip.id,
-                tripName: trip.name,
-                startDate: trip.startDate,
-                avgCheck: avg,
-                medianCheck: median,
-                displayValue: calcMethod === 'avg' ? avg : median,
-                totalAmount: total,
-                txCount: count,
-                minCheck: Math.min(...amounts),
-                maxCheck: Math.max(...amounts),
-                transactions: matchedTxs
-            };
-        })
-            .filter(Boolean)
-            .sort((a, b) => (b?.displayValue || 0) - (a?.displayValue || 0)) as any[];
-    }, [selectedItem, trips, transactions, calcMethod]);
+        return buildLeaderboard(perTrip, groupBy, calcMethod);
+    }, [trips, transactions, calcMethod, groupBy, excludeHotels]);
+
+    const isOverall = tab === 'index';
+    const indexResults = isOverall ? overallResults : categoryResults;
+    const activeLabel = isOverall ? 'All Spending' : (selectedItem?.value ?? '');
 
 
     const showTransactions = (data: any) => {
@@ -198,7 +274,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
 
         setModalData({
             transactions: payload.transactions,
-            title: `${selectedItem?.value.toUpperCase()} in ${payload.tripName}`,
+            title: `${activeLabel.toUpperCase()} in ${payload.tripName}`,
             subtitle: `${payload.txCount} transactions • ${calcMethod === 'avg' ? 'Average' : 'Median'} ${formatMoney(payload.displayValue)}`
         });
         setIsModalOpen(true);
@@ -216,7 +292,11 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
     const CustomYAxisTick = (props: any) => {
         const { x, y, payload } = props;
         const result = indexResults.find(r => r.tripName === payload.value);
-        const dateStr = result ? new Date(result.startDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '';
+        const dateStr = result
+            ? (groupBy === 'city' && result.tripCount > 1
+                ? `${result.tripCount} trips`
+                : new Date(result.startDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }))
+            : '';
 
         return (
             <g transform={`translate(${x},${y})`}>
@@ -261,6 +341,12 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                             <span className="text-gray-500">Transactions:</span>
                             <span className="font-medium text-gray-900">{data.txCount}</span>
                         </div>
+                        {data.tripCount > 1 && (
+                            <div className="flex justify-between text-sm">
+                                <span className="text-gray-500">Trips:</span>
+                                <span className="font-medium text-gray-900">{data.tripCount}</span>
+                            </div>
+                        )}
                         <div className="flex justify-between text-sm">
                             <span className="text-gray-500">Total Spent:</span>
                             <span className="font-medium text-gray-900">{formatMoney(data.totalAmount)}</span>
@@ -290,11 +376,43 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                         <Globe className="w-6 h-6 text-emerald-500" />
                         Travel Index
                     </h2>
-                    <p className="text-gray-500">Compare average check for categories and tags across all your trips.</p>
+                    <p className="text-gray-500">
+                        {isOverall
+                            ? 'Compare overall cost across your trips and cities — an expensiveness index.'
+                            : 'Compare average check for categories and tags across all your trips.'}
+                    </p>
                 </div>
             </div>
 
-            {!selectedItem ? (
+            {/* Top-level tabs */}
+            <div className="flex items-center gap-1 border-b border-gray-100">
+                <button
+                    type="button"
+                    onClick={() => setTab('explore')}
+                    className={cn(
+                        "px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors",
+                        !isOverall
+                            ? "border-emerald-500 text-emerald-600"
+                            : "border-transparent text-gray-400 hover:text-gray-600"
+                    )}
+                >
+                    Categories &amp; Tags
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setTab('index')}
+                    className={cn(
+                        "px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors",
+                        isOverall
+                            ? "border-emerald-500 text-emerald-600"
+                            : "border-transparent text-gray-400 hover:text-gray-600"
+                    )}
+                >
+                    Cost Index
+                </button>
+            </div>
+
+            {tab === 'explore' && !selectedItem ? (
                 // --- DISCOVER VIEW ---
                 <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 min-h-[50vh]">
                     <div className="relative h-12 flex items-center mb-10">
@@ -409,24 +527,70 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                     {/* Header Controls */}
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
                         <div className="flex items-center gap-3">
-                            <button
-                                onClick={() => setSelectedItem(null)}
-                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="Back to discover"
-                            >
-                                <X className="w-5 h-5 text-gray-500" />
-                            </button>
+                            {!isOverall && (
+                                <button
+                                    onClick={() => setSelectedItem(null)}
+                                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                    title="Back to discover"
+                                >
+                                    <X className="w-5 h-5 text-gray-500" />
+                                </button>
+                            )}
                             <div className={cn(
                                 "px-3 py-1 rounded-md font-semibold text-lg uppercase tracking-wide border transition-all shadow-sm",
-                                selectedItem.type === 'tag' 
-                                    ? "bg-transparent border-slate-200 text-slate-600" 
+                                !isOverall && selectedItem?.type === 'tag'
+                                    ? "bg-transparent border-slate-200 text-slate-600"
                                     : "bg-emerald-100 border-emerald-200 text-emerald-800"
                             )}>
-                                {selectedItem.value}
+                                {activeLabel}
                             </div>
-                            <span className="text-gray-400 text-sm">across {indexResults.length} trips</span>
+                            <span className="text-gray-400 text-sm">across {indexResults.length} {groupBy === 'city' ? 'cities' : 'trips'}</span>
                         </div>
 
+                        <div className="flex items-center gap-3 flex-wrap justify-end">
+                        {isOverall && (
+                            <button
+                                type="button"
+                                aria-pressed={excludeHotels}
+                                onClick={() => setExcludeHotels(v => !v)}
+                                title="Exclude the Hotels & flights category from the stats"
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-1.5 rounded-xl text-sm font-bold border transition-all shadow-sm",
+                                    excludeHotels
+                                        ? "bg-emerald-600 text-white border-emerald-600"
+                                        : "bg-white text-gray-500 border-gray-200 hover:text-gray-700"
+                                )}
+                            >
+                                <Plane className="w-4 h-4" />
+                                {excludeHotels ? 'Hotels & flights hidden' : 'Exclude hotels & flights'}
+                            </button>
+                        )}
+                        <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200">
+                            <button
+                                type="button"
+                                onClick={() => setGroupBy('trip')}
+                                className={cn(
+                                    "px-4 py-1.5 rounded-lg text-sm font-bold transition-all",
+                                    groupBy === 'trip'
+                                        ? "bg-white text-emerald-600 shadow-sm"
+                                        : "text-gray-400 hover:text-gray-600"
+                                )}
+                            >
+                                Trips
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setGroupBy('city')}
+                                className={cn(
+                                    "px-4 py-1.5 rounded-lg text-sm font-bold transition-all",
+                                    groupBy === 'city'
+                                        ? "bg-white text-emerald-600 shadow-sm"
+                                        : "text-gray-400 hover:text-gray-600"
+                                )}
+                            >
+                                Cities
+                            </button>
+                        </div>
                         <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200">
                             <button
                                 onClick={() => setCalcMethod('avg')}
@@ -451,11 +615,12 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                 Median
                             </button>
                         </div>
+                        </div>
                     </div>
 
                     {indexResults.length === 0 ? (
                         <div className="bg-white rounded-2xl p-12 text-center text-gray-500 border border-gray-100">
-                            No data found for this {selectedItem.type} in any trips.
+                            {isOverall ? 'No trips with spending found yet.' : `No data found for this ${selectedItem?.type} in any trips.`}
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -542,7 +707,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                             onClick={() => {
                                                 setModalData({
                                                     transactions: result.transactions,
-                                                    title: `${selectedItem?.value.toUpperCase()} in ${result.tripName}`,
+                                                    title: `${activeLabel.toUpperCase()} in ${result.tripName}`,
                                                     subtitle: `${result.txCount} transactions • ${calcMethod === 'avg' ? 'Average' : 'Median'} ${formatMoney(result.displayValue)}`
                                                 });
                                                 setIsModalOpen(true);
@@ -561,7 +726,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                                 </div>
                                             </div>
                                             <div className="flex justify-between text-xs text-gray-500">
-                                                <span>{result.txCount} txs • {formatMoney(result.totalAmount)} total</span>
+                                                <span>{result.txCount} txs • {formatMoney(result.totalAmount)} total{result.tripCount > 1 ? ` • ${result.tripCount} trips` : ''}</span>
                                             </div>
                                         </div>
                                     ))}

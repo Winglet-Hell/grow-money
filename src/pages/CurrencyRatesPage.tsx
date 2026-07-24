@@ -18,9 +18,12 @@ import {
     Repeat,
     Layers,
     Info,
+    TrendingUp,
+    TrendingDown,
 } from 'lucide-react';
 import { formatDate, getFormattedDateRange } from '../lib/utils';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { useLiveRates } from '../hooks/useLiveRates';
 
 interface CurrencyRatesPageProps {
     transactions: Transaction[];
@@ -59,10 +62,22 @@ interface PairStat {
     observations: Observation[];
 }
 
-type SortField = 'pair' | 'avgRate' | 'count' | 'lastDate' | 'spread';
+type SortField = 'pair' | 'avgRate' | 'count' | 'lastDate' | 'spread' | 'nowVsAvg';
 type SortOrder = 'asc' | 'desc';
 
 const mean = (arr: number[]) => arr.reduce((s, x) => s + x, 0) / (arr.length || 1);
+
+// How much more (or less) favourable the rate is RIGHT NOW versus your own historical
+// average — i.e. is this a better moment to exchange than you usually get? > 0 → the
+// current (baseline) rate beats your average; < 0 → it's worse. Direction depends on the
+// quote: when the base is what you receive, a lower rate is cheaper (better); when the
+// base is what you spend, a higher rate gets you more (better).
+function nowVsAvgPct(pair: PairStat, baseline: number): number {
+    if (!pair.avgRate || !isFinite(baseline)) return 0;
+    const lowerIsBetter = pair.base === pair.to;
+    const rawPct = (baseline - pair.avgRate) / pair.avgRate; // rate change: now vs your average
+    return lowerIsBetter ? -rawPct : rawPct;
+}
 
 // Adaptive rate formatting — rates range from ~1 (USD/USDT) to ~100000 (BTC/USDT).
 function formatRate(r: number): string {
@@ -217,6 +232,18 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
         };
     }, [transactions]);
 
+    // Live "current" rates (same source the app uses to value wallets). A pair's market
+    // rate is quote-per-base = (RUB per base) / (RUB per quote); null when uncovered.
+    const { rates, date: ratesDate, isLoading: ratesLoading } = useLiveRates();
+    const hasRates = Object.keys(rates).length > 0;
+    const marketRate = (pair: PairStat): number | null => {
+        const b = rates[pair.base];
+        const q = rates[pair.quote];
+        return b && q ? b / q : null;
+    };
+    // Baseline for the comparison: today's market rate, or the last transfer if unavailable.
+    const baselineOf = (pair: PairStat): number => marketRate(pair) ?? pair.lastRate;
+
     const filteredSorted = useMemo(() => {
         let data = [...pairs];
 
@@ -243,13 +270,15 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                     const sb = b.avgRate > 0 ? (b.maxRate - b.minRate) / b.avgRate : 0;
                     return (sa - sb) * dir;
                 }
+                case 'nowVsAvg':
+                    return (nowVsAvgPct(a, baselineOf(a)) - nowVsAvgPct(b, baselineOf(b))) * dir;
                 case 'count':
                 default:
                     return (a.count - b.count) * dir;
             }
         });
         return data;
-    }, [pairs, searchQuery, sortField, sortOrder]);
+    }, [pairs, searchQuery, sortField, sortOrder, rates]);
 
     const handleSort = (field: SortField) => {
         if (sortField === field) {
@@ -270,6 +299,44 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
 
     const maskVol = (v: number, currency: string) =>
         isPrivacyMode ? '••••' : `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`;
+
+    // How your historical average compares to the latest (most recent) rate — i.e. how
+    // much more/less favourably you usually exchanged versus "now". Favourability depends
+    // on the quote direction: when the base is what you receive, a lower rate is cheaper
+    // (better); when the base is what you spend, a higher rate gets you more (better).
+    // Market rate + how the historical average compares to it. Falls back to the last
+    // transfer (marked with *) when the pair isn't covered by the live feed.
+    const renderMarketInfo = (pair: PairStat, align: 'start' | 'end' = 'end') => {
+        if (isPrivacyMode) return <span className="text-gray-300 text-xs">•••</span>;
+        if (ratesLoading && !hasRates) return <span className="text-gray-300 text-xs">…</span>;
+
+        const market = marketRate(pair);
+        const baseline = market ?? pair.lastRate;
+        if (!baseline || !isFinite(pair.avgRate)) return <span className="text-gray-300 text-xs">—</span>;
+
+        const pct = nowVsAvgPct(pair, baseline);
+        const negligible = !isFinite(pct) || Math.abs(pct) < 0.001;
+        const better = pct > 0;
+        const color = negligible ? 'text-gray-400' : better ? 'text-emerald-600' : 'text-rose-500';
+        const items = align === 'end' ? 'items-end' : 'items-start';
+        const title = market != null
+            ? `The current rate is ${Math.abs(pct * 100).toFixed(1)}% ${negligible ? 'about the same as' : better ? 'better for you than' : 'worse for you than'} your average${ratesDate ? ` (as of ${ratesDate})` : ''}`
+            : `Live market rate unavailable — showing your last transfer vs your average (${formatDate(pair.lastDate)})`;
+
+        return (
+            <div className={`flex flex-col ${items}`}>
+                <div className="font-medium text-gray-700">
+                    {formatRate(baseline)}
+                    {market == null && <span className="text-gray-300" title="Live market rate unavailable — showing your last transfer">*</span>}
+                </div>
+                <div className={`text-[11px] font-medium flex items-center gap-0.5 ${color}`} title={title}>
+                    {negligible
+                        ? '≈ your avg'
+                        : <>{better ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}{Math.abs(pct * 100).toFixed(1)}%</>}
+                </div>
+            </div>
+        );
+    };
 
     const SortIcon = ({ field }: { field: SortField }) =>
         sortField === field ? <ArrowUpDown className="w-3 h-3" /> : null;
@@ -461,6 +528,10 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                                         <span className="text-gray-400 block">Latest</span>
                                         <span className="font-medium text-gray-700">{formatRate(pair.lastRate)}</span>
                                     </div>
+                                    <div>
+                                        <span className="text-gray-400 block">Now vs your avg</span>
+                                        {renderMarketInfo(pair, 'start')}
+                                    </div>
                                 </div>
                                 {isOpen && (
                                     <div className="mt-4 pt-4 border-t border-gray-50 animate-in fade-in slide-in-from-top-1">
@@ -492,6 +563,9 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                                 </TableHead>
                                 <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('lastDate')}>
                                     <div className="flex items-center justify-end gap-1">Latest <SortIcon field="lastDate" /></div>
+                                </TableHead>
+                                <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('nowVsAvg')}>
+                                    <div className="flex items-center justify-end gap-1">Now vs your avg <SortIcon field="nowVsAvg" /></div>
                                 </TableHead>
                                 <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('count')}>
                                     <div className="flex items-center justify-end gap-1">Exchanges <SortIcon field="count" /></div>
@@ -527,11 +601,14 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                                                 <div className="font-medium text-gray-700">{formatRate(pair.lastRate)}</div>
                                                 <div className="text-[11px] text-gray-400">{formatDate(pair.lastDate)}</div>
                                             </TableCell>
+                                            <TableCell className="text-right">
+                                                {renderMarketInfo(pair, 'end')}
+                                            </TableCell>
                                             <TableCell className="text-right text-gray-500 font-medium">{pair.count}</TableCell>
                                         </TableRow>
                                         {isOpen && (
                                             <TableRow className="bg-gray-50/40 hover:bg-gray-50/40">
-                                                <TableCell colSpan={6} className="p-0">
+                                                <TableCell colSpan={7} className="p-0">
                                                     <div className="px-6 py-4 border-l-4 border-emerald-100 ml-4 my-2 bg-white/60 rounded-r-lg">
                                                         {renderDetail(pair)}
                                                     </div>
@@ -549,9 +626,14 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                 </div>
             </div>
 
-            <p className="text-xs text-gray-400 flex items-center gap-1.5 px-1">
-                <Info className="w-3.5 h-3.5" />
-                Rates are the simple average of each transfer's realised rate. Same-currency transfers are excluded.
+            <p className="text-xs text-gray-400 flex items-start gap-1.5 px-1">
+                <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span>
+                    Rates are the simple average of each transfer's realised rate; same-currency transfers are excluded.
+                    “Now vs your avg” shows how much more or less favourable today's rate is than your historical average
+                    {ratesDate ? ` (reference rate from currency-api, as of ${ratesDate})` : ' (reference rate from currency-api)'}; pairs marked
+                    <span className="text-gray-300"> *</span> fall back to your last transfer. This is a personal benchmark, not a market forecast.
+                </span>
             </p>
         </div>
     );

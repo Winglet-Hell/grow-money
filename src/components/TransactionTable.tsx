@@ -58,7 +58,9 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
     };
 
     const filteredAndSortedTransactions = useMemo(() => {
-        let result = [...transactions];
+        // Recent Transactions shows only real income/expense flows — account-to-account
+        // transfers are excluded (they'd otherwise skew the per-day income/expense subtotals).
+        let result = transactions.filter(t => t.type !== 'transfer');
 
         // 1. Filter
         if (searchTerm) {
@@ -107,19 +109,23 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
 
         paginatedTransactions.forEach(t => {
             const dateKey = formatDate(t.date);
-            const currency = 'RUB'; // t.amount is always in RUB
+            if (!stats[dateKey]) stats[dateKey] = {};
 
-            if (!stats[dateKey]) {
-                stats[dateKey] = {};
-            }
-            if (!stats[dateKey][currency]) {
-                stats[dateKey][currency] = { income: 0, expense: 0 };
-            }
+            const addTo = (currency: string, value: number) => {
+                if (!stats[dateKey][currency]) {
+                    stats[dateKey][currency] = { income: 0, expense: 0 };
+                }
+                if (value > 0) stats[dateKey][currency].income += value;
+                else stats[dateKey][currency].expense += value;
+            };
 
-            if (t.amount > 0) {
-                stats[dateKey][currency].income += t.amount;
-            } else {
-                stats[dateKey][currency].expense += t.amount;
+            // Primary total is always RUB (t.amount is pre-converted).
+            addTo('RUB', t.amount);
+
+            // Also break out the original foreign currency actually spent that day,
+            // so e.g. a Thailand day shows both the ₽ total and the ฿ total.
+            if (t.originalAmount && t.originalCurrency && t.originalCurrency !== 'RUB') {
+                addTo(t.originalCurrency, t.originalAmount);
             }
         });
         return stats;
@@ -158,8 +164,8 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
     const formatCurrency = (amount: number, currency: string = 'RUB') => {
         if (isPrivacyMode) return '••••••';
 
-        // 1. Handle Crypto / Custom Currencies manually
-        if (['USDT', 'BTC', 'ETH'].includes(currency)) {
+        // 1. Handle Crypto / Custom Currencies manually (not valid ISO 4217 codes)
+        if (['USDT', 'USDC', 'BTC', 'ETH'].includes(currency)) {
             let decimals = 2;
             if (currency === 'BTC' || currency === 'ETH') decimals = 6;
 
@@ -172,13 +178,17 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
             return `${value} ${currency}`;
         }
 
-        // 2. Handle Standard Fiat Currencies via Intl
-        return new Intl.NumberFormat('ru-RU', {
-            style: 'currency',
-            currency: currency,
-            maximumFractionDigits: 0,
-            minimumFractionDigits: 0
-        }).format(amount);
+        // 2. Handle Standard Fiat Currencies via Intl, falling back for unknown codes
+        try {
+            return new Intl.NumberFormat('ru-RU', {
+                style: 'currency',
+                currency: currency,
+                maximumFractionDigits: 0,
+                minimumFractionDigits: 0
+            }).format(amount);
+        } catch (e) {
+            return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(amount)} ${currency}`;
+        }
     };
 
     const SortIcon = ({ columnKey }: { columnKey: SortKey }) => {
