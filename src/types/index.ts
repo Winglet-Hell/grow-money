@@ -11,6 +11,14 @@ export type Transaction = {
     index?: number; // Row index for sorting same-day transactions
     currency?: string; // Explicit currency for this transaction (overrides account default)
     type: 'expense' | 'income' | 'transfer';
+
+    // --- Transfer legs (populated only when type === 'transfer') ---
+    // Both sides of an account-to-account move, captured verbatim from the "Переводы" sheet.
+    // For same-currency (internal) transfers the "to" side is usually empty.
+    fromAmount?: number;   // amount debited from the source account, in fromCurrency
+    fromCurrency?: string; // currency of the source (outgoing) account
+    toAmount?: number;     // amount credited to the destination account, in toCurrency
+    toCurrency?: string;   // currency of the destination (incoming) account
 };
 
 export type Account = {

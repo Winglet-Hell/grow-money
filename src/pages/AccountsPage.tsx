@@ -226,18 +226,13 @@ export function AccountsPage({ transactions, userId }: AccountsPageProps) {
             {editingAccount && (
                 <EditAccountModal
                     isOpen={!!editingAccount}
-                    // Transform account status to simple object for modal
+                    // Balance is entered manually; prefill with the current stored value.
                     account={{
                         id: editingAccount.id,
                         name: editingAccount.name,
                         currency: editingAccount.currency,
-                        // For editing, we probably want to edit INITIAL balance,
-                        // but user might intuitively expect CURRENT balance edit if setting checkpoing.
-                        // Since we are setting a Checkpoint, we are essentially saying "On this DATE, the balance IS X".
-                        // So we should prefill with CURRENT balance to make it easy to just save checkpoints.
                         balance: editingAccount.current,
                         type: editingAccount.type,
-                        balance_date: editingAccount.balance_date
                     }}
                     onClose={() => setEditingAccount(null)}
                     onSave={handleEditSave}

@@ -37,35 +37,47 @@ export function inferAccountDetails(accountName: string, detectedCurrency?: stri
     return { type, currency };
 }
 
+// Auto-create DB rows for every account referenced by any operation — expense/income
+// source, and BOTH legs of transfers (outgoing account + incoming `category`). New
+// accounts start at balance 0 (balances are entered manually). Matching is done on a
+// normalized name so different casing (e.g. "USDT Bybit" vs "Usdt bybit") doesn't spawn
+// duplicates. Currencies are only used to seed a sensible default; existing accounts are
+// never overwritten (the user controls them manually).
 export async function syncAccountsWithSupabase(transactions: Transaction[], userId: string): Promise<void> {
     if (!transactions.length || !userId) return;
 
     try {
-        // 1. Group transactions by account to find details
-        const accountMap = new Map<string, { originalCurrency?: string }>();
+        const normalize = (s: string) => (s || '').toLowerCase().replace(/\s+/g, '');
+
+        // Collect every referenced account, deduped by normalized name.
+        const collected = new Map<string, { name: string; detectedCurrency?: string }>();
+        const record = (name: string | undefined, currency?: string) => {
+            if (!name) return;
+            const key = normalize(name);
+            if (!key || key === 'unknown' || key === 'uncategorized') return;
+            const existing = collected.get(key);
+            if (!existing) {
+                collected.set(key, { name, detectedCurrency: currency });
+            } else if (currency && !existing.detectedCurrency) {
+                existing.detectedCurrency = currency;
+            }
+        };
 
         transactions.forEach(t => {
-            if (!t.account) return;
-
-            if (!accountMap.has(t.account)) {
-                accountMap.set(t.account, {});
-            }
-
-            // Try to find a valid original currency
-            // We prioritize the first non-null originalCurrency we find
-            const currentInfo = accountMap.get(t.account)!;
-            if (t.originalCurrency && !currentInfo.originalCurrency) {
-                currentInfo.originalCurrency = t.originalCurrency;
+            // Expense/income/transfer source account
+            record(t.account, t.fromCurrency || t.originalCurrency || t.currency);
+            // Transfer destination account (the incoming side)
+            if (t.type === 'transfer') {
+                record(t.category, t.toCurrency || t.originalCurrency);
             }
         });
 
-        const uniqueAccountNames = Array.from(accountMap.keys());
-        if (uniqueAccountNames.length === 0) return;
+        if (collected.size === 0) return;
 
-        // 2. Fetch existing accounts for the user
+        // Which accounts already exist? (match by normalized name)
         const { data: existingAccounts, error: fetchError } = await supabase
             .from('accounts')
-            .select('id, name, currency')
+            .select('name')
             .eq('user_id', userId);
 
         if (fetchError) {
@@ -73,48 +85,22 @@ export async function syncAccountsWithSupabase(transactions: Transaction[], user
             return;
         }
 
-        const existingMap = new Map<string, { id: string; currency: string }>();
-        existingAccounts?.forEach(a => existingMap.set(a.name, { id: a.id, currency: a.currency }));
+        const existingNorm = new Set((existingAccounts || []).map(a => normalize(a.name)));
 
-        // 3. Identify new accounts AND accounts to update
         const newAccountsToCreate: Omit<Account, 'id' | 'created_at'>[] = [];
-        const accountsToUpdate: { id: string; currency: string }[] = [];
-
-        uniqueAccountNames.forEach(name => {
-            // Get detected currency from transactions
-            const detectedCurrency = accountMap.get(name)?.originalCurrency;
-            // Infer details to get the "ideal" currency
-            const { currency: inferredCurrency } = inferAccountDetails(name, detectedCurrency);
-
-            if (existingMap.has(name)) {
-                // Check if we need to update the existing account
-                const existing = existingMap.get(name)!;
-
-                // Update if:
-                // 1. We have a specific inferred currency
-                // 2. The inferred currency is NOT 'THB' (don't overwrite with default)
-                // 3. AND the inferred currency is different from existing
-                if (inferredCurrency &&
-                    inferredCurrency !== 'THB' &&
-                    existing.currency !== inferredCurrency) {
-
-                    console.log(`Updating account "${name}" currency from ${existing.currency} to ${inferredCurrency}`);
-                    accountsToUpdate.push({ id: existing.id, currency: inferredCurrency });
-                }
-
-            } else {
-                newAccountsToCreate.push({
-                    user_id: userId,
-                    name: name, // CRITICAL: Preserve exact name
-                    type: inferAccountDetails(name, detectedCurrency).type || 'cash',
-                    currency: inferredCurrency || 'THB',
-                    balance: 0, // Initial balance is 0, will be built up by transactions
-                    is_hidden: false
-                });
-            }
+        collected.forEach(({ name, detectedCurrency }, key) => {
+            if (existingNorm.has(key)) return;
+            const { type, currency } = inferAccountDetails(name, detectedCurrency);
+            newAccountsToCreate.push({
+                user_id: userId,
+                name, // preserve the display name we saw first (source name wins over sentence-cased dest)
+                type: type || 'cash',
+                currency: currency || 'THB',
+                balance: 0, // manual — user sets the real balance later
+                is_hidden: false,
+            });
         });
 
-        // 4. Insert new accounts
         if (newAccountsToCreate.length > 0) {
             const { error: insertError } = await supabase
                 .from('accounts')
@@ -123,24 +109,9 @@ export async function syncAccountsWithSupabase(transactions: Transaction[], user
             if (insertError) {
                 console.error('Error creating new accounts:', insertError);
             } else {
-                console.log(`Successfully created ${newAccountsToCreate.length} new accounts.`);
+                console.log(`Auto-created ${newAccountsToCreate.length} account(s) from transactions.`);
             }
         }
-
-        // 5. Update existing accounts
-        if (accountsToUpdate.length > 0) {
-            // Process updates in parallel or batch
-            const updatePromises = accountsToUpdate.map(acc =>
-                supabase
-                    .from('accounts')
-                    .update({ currency: acc.currency })
-                    .eq('id', acc.id)
-            );
-
-            await Promise.all(updatePromises);
-            console.log(`Successfully updated currency for ${accountsToUpdate.length} accounts.`);
-        }
-
     } catch (err) {
         console.error('Unexpected error during account sync:', err);
     }

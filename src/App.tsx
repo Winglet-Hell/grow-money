@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LayoutDashboard, PieChart, TrendingUp, Wallet, LineChart, ShieldCheck, Import, Heart } from 'lucide-react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { PrivacyProvider } from './contexts/PrivacyContext';
@@ -22,6 +22,7 @@ import { AIExportPage } from './pages/AIExportPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TripAnalyticsPage } from './pages/TripAnalyticsPage';
 import { TravelIndexPage } from './pages/TravelIndexPage';
+import { CurrencyRatesPage } from './pages/CurrencyRatesPage';
 import { Navigation } from './components/Navigation';
 import { supabase } from './lib/supabase';
 import { Auth } from './components/Auth';
@@ -90,15 +91,19 @@ function AppContent() {
   const [session, setSession] = useState<any>(null); // Add session state
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
   const [showAuth, setShowAuth] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const dataLoadedRef = useRef(false);
 
 
   // Navigation items handled in Navigation component
 
+  // 1. Resolve the auth session (and subscribe to changes) before deciding what to render.
   useEffect(() => {
     // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUserEmail(session?.user?.email);
+      setAuthReady(true);
     });
 
     const {
@@ -106,16 +111,31 @@ function AppContent() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUserEmail(session?.user?.email);
+      setAuthReady(true);
+      // On sign-out, allow local data to load again on the next sign-in.
+      if (!session) dataLoadedRef.current = false;
     });
 
-    // Load Data
-    const loadData = async () => {
-      // Only auto-load data from DB if we have a session
-      if (!session) {
-        setIsLoading(false);
-        return;
-      }
+    return () => subscription.unsubscribe();
+  }, []);
 
+  // 2. Load locally-stored transactions once the session is actually known.
+  //    (Previously this ran once on mount reading a stale `session` closure that was
+  //     still null, so it never loaded data after the session resolved — the app showed
+  //     the landing page on every reload even when signed in with data on device.)
+  useEffect(() => {
+    if (!authReady) return;
+
+    // Only auto-load data from DB if we have a session.
+    if (!session) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (dataLoadedRef.current) return; // don't reload on token refresh
+    dataLoadedRef.current = true;
+
+    const loadData = async () => {
       try {
         const count = await db.transactions.count();
         if (count > 0) {
@@ -135,9 +155,7 @@ function AppContent() {
     };
 
     loadData();
-
-    return () => subscription.unsubscribe();
-  }, []);
+  }, [session, authReady]);
 
   const handleDataLoaded = async (data: Transaction[]) => {
     // UI PREFERENCE: Sort Newest First (Desc)
@@ -316,6 +334,7 @@ function AppContent() {
                 <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
                 <Route path="/trip-analytics" element={<TripAnalyticsPage transactions={transactions} />} />
                 <Route path="/travel-index" element={<TravelIndexPage transactions={transactions} />} />
+                <Route path="/currency-rates" element={<CurrencyRatesPage transactions={transactions} />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </div>

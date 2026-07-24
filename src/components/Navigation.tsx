@@ -18,7 +18,8 @@ import {
     Calendar,
     Wrench,
     Globe,
-    Banknote
+    Banknote,
+    ArrowRightLeft
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -44,6 +45,7 @@ const NAV_CATEGORIES = [
             { path: '/trends', label: 'Trends', icon: LineChart, description: 'Historical data' },
             { path: '/trip-analytics', label: 'Trip Analytics', icon: Map, description: 'Travel spending' },
             { path: '/travel-index', label: 'Travel Index', icon: Globe, description: 'Cost comparison' },
+            { path: '/currency-rates', label: 'Currency Rates', icon: ArrowRightLeft, description: 'Avg. transfer FX rates' },
         ]
     },
     {

@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Wallet, Bitcoin, Landmark, Banknote, CreditCard, Calendar, ChevronDown } from 'lucide-react';
-import type { Transaction, Account } from '../types';
+import { X, Wallet, Bitcoin, Landmark, Banknote, CreditCard, ChevronDown } from 'lucide-react';
+import type { Account } from '../types';
 import { updateAccount } from '../lib/accountUtils';
 import { db } from '../lib/db';
 
 interface EditAccountModalProps {
     isOpen: boolean;
     onClose: () => void;
-    account: { id: string; name: string; currency: string; balance: number; type: string; balance_date?: string; balance_checkpoint_tx_id?: string };
+    account: { id: string; name: string; currency: string; balance: number; type: string };
     onSave: () => void;
 }
 
@@ -31,10 +31,7 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
     const [currency, setCurrency] = useState('THB');
     const [balance, setBalance] = useState('');
     const [type, setType] = useState<Account['type']>('cash');
-    const [balanceDate, setBalanceDate] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [balanceCheckpointTxId, setBalanceCheckpointTxId] = useState<string | undefined>(undefined);
-    const [potentialCheckpointTxs, setPotentialCheckpointTxs] = useState<Transaction[]>([]);
 
     useEffect(() => {
         if (isOpen && account) {
@@ -43,24 +40,6 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
             setCurrency(account.currency);
             setBalance(account.balance.toString());
             setType(account.type as Account['type']);
-
-            // Correctly convert stored UTC/ISO date to LOCAL YYYY-MM-DD for the input
-            // ignoring the 'T' split which naively takes UTC day
-            let initialDate = new Date().toISOString().split('T')[0];
-            if (account.balance_date) {
-                const d = new Date(account.balance_date);
-                const year = d.getFullYear();
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
-                initialDate = `${year}-${month}-${day}`;
-            }
-            setBalanceDate(initialDate);
-
-            setBalanceCheckpointTxId(account.balance_checkpoint_tx_id);
-            if (account.balance_date) {
-                // Fetch context
-                fetchRecentTransactions(account.name);
-            }
         } else {
             document.body.style.overflow = 'unset';
         }
@@ -68,54 +47,6 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
             document.body.style.overflow = 'unset';
         };
     }, [isOpen, account]);
-
-    // Fetch recent transactions for this account (regardless of date input, to ensure user sees something)
-    useEffect(() => {
-        if (account?.name) {
-            fetchRecentTransactions(account.name);
-        }
-    }, [account]);
-
-    const fetchRecentTransactions = async (accountName: string) => {
-        if (!accountName) return;
-
-        try {
-            // Fetch ALL transactions for this account to find the most recent ones
-            // We can't easily rely on limit() with sort in Dexie without a compound index, 
-            // but filtering in memory for a single account is usually fast enough for personal finance apps.
-            // RELAXED QUERY: Fetch all and filter in memory to handle case/whitespace mismatch
-            // This ensures consistency with useAccounts.ts
-            const normalize = (str: string) => (str || '').trim().toLowerCase();
-            const target = normalize(accountName);
-
-            const rawAll = await db.transactions.toArray();
-
-            const allTxs = rawAll.filter(t => {
-                const isOutgoing = normalize(t.account) === target;
-                const isIncoming = t.type === 'transfer' && normalize(t.category) === target;
-                return isOutgoing || isIncoming;
-            });
-
-            console.log(`[EditAccountModal] Found ${allTxs.length} transactions for ${accountName} (Target: "${target}")`);
-            if (allTxs.length === 0) {
-                console.log('[EditAccountModal] DEBUG: First 5 raw transactions:', rawAll.slice(0, 5));
-            }
-
-            // Sort by Date Descending, then Index Descending (to show newest first)
-            // Safety check for index
-            allTxs.sort((a, b) => {
-                if (a.date > b.date) return -1;
-                // Same date: use index (fall back to 0 if missing)
-                // We want NEWEST FIRST (Index 0).
-                return (a.index || 0) - (b.index || 0);
-            });
-
-            // Take top 50 to give context
-            setPotentialCheckpointTxs(allTxs.slice(0, 50));
-        } catch (e) {
-            console.error('Error fetching transactions for checkpoint:', e);
-        }
-    };
 
     if (!isOpen) return null;
 
@@ -126,21 +57,17 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
         const val = parseFloat(balance.replace(/,/g, '.'));
         const finalBalance = isNaN(val) ? 0 : val;
 
+        // Balance is manual — just persist what the user typed.
         await updateAccount(account.id, {
             name,
             currency,
             balance: finalBalance,
             type,
-            // Force Noon UTC to avoid timezone shifts (e.g. 00:00 Local -> Previous Day UTC)
-            balance_date: balanceDate ? `${balanceDate}T12:00:00.000Z` : undefined,
-            balance_checkpoint_tx_id: balanceCheckpointTxId
         });
 
-        // 2. Critical: Propagate Name Change to Transactions in Dexie
-        // If the account name changed, we must update all local transactions to point to the new name
-        // otherwise they will be "lost" to the view.
+        // Keep local transactions pointing at the account if it was renamed, so analytics
+        // (which reference accounts by name) stay consistent.
         if (name !== account.name) {
-            console.log(`[EditAccountModal] Renaming transactions from "${account.name}" to "${name}"`);
             await db.transactions
                 .where('account')
                 .equals(account.name)
@@ -232,7 +159,7 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Balance
+                                Current Balance
                             </label>
                             <input
                                 type="number"
@@ -243,60 +170,10 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
                         </div>
                     </div>
 
-                    {/* Checkpoint Date */}
-                    <div className="pt-2 border-t border-gray-100">
-                        <label className="block text-sm font-medium text-gray-900 mb-1 flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-emerald-600" />
-                            Balance Checkpoint Date
-                        </label>
-                        <p className="text-xs text-gray-500 mb-2">
-                            Transactions before this date will be ignored.
-                        </p>
-                        <input
-                            type="date"
-                            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm py-2.5 px-3 border mb-3"
-                            value={balanceDate}
-                            onChange={(e) => {
-                                setBalanceDate(e.target.value);
-                                setBalanceCheckpointTxId(undefined); // Clear checkpoint when date changes
-                            }}
-                        />
-
-                        {balanceDate && (
-                            <div className="mt-3 space-y-2">
-                                <label className="block text-xs font-medium text-gray-500">
-                                    Select "Last Included Transaction" (List shows last 50 transactions)
-                                </label>
-                                <div className="max-h-40 overflow-y-auto border rounded-lg divide-y bg-gray-50">
-                                    {potentialCheckpointTxs.map(tx => (
-                                        <div
-                                            key={tx.id}
-                                            onClick={() => {
-                                                if (tx.id === balanceCheckpointTxId) {
-                                                    setBalanceCheckpointTxId(undefined);
-                                                } else {
-                                                    setBalanceCheckpointTxId(tx.id);
-                                                    setBalanceDate(tx.date); // Auto-sync date
-                                                }
-                                            }}
-                                            className={`p-2 text-xs cursor-pointer hover:bg-emerald-50 transition-colors flex justify-between gap-2 ${tx.id === balanceCheckpointTxId ? 'bg-emerald-100 border-l-4 border-emerald-500' : ''}`}
-                                        >
-                                            <span className="text-gray-400 w-20 shrink-0">{tx.date}</span>
-                                            <span className="truncate flex-1 font-medium text-gray-700">{tx.category} <span className="text-gray-400 font-normal">{tx.note ? `(${tx.note})` : ''}</span></span>
-                                            <span className={tx.type === 'income' ? 'text-green-600' : 'text-red-600'}>
-                                                {tx.amount > 0 ? '+' : ''}{tx.amount}
-                                            </span>
-                                        </div>
-                                    ))}
-                                    {potentialCheckpointTxs.length === 0 && (
-                                        <div className="p-2 text-[10px] text-gray-400 text-center italic">
-                                            No transactions found for this date.
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                    <p className="text-xs text-gray-500">
+                        Enter the actual balance of this wallet. It's set manually — imported
+                        transactions won't change it.
+                    </p>
                 </div>
 
                 <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl flex justify-end gap-3">

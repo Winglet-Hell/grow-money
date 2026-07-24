@@ -85,6 +85,43 @@ function generateHash(str: string): string {
     return Math.abs(hash).toString(36);
 }
 
+// Read a cell by header name, tolerating leading/trailing whitespace in the sheet header.
+function readCell(row: any, headers: string[], name: string): any {
+    let value = row[name];
+    if (value === undefined) {
+        const key = headers.find(k => k.trim() === name);
+        if (key) value = row[key];
+    }
+    return value;
+}
+
+// Parse a possibly-formatted numeric string ("1 000,50", "142000.00") into a number.
+function toNumber(value: any): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value === 'number') return isNaN(value) ? undefined : value;
+    const n = parseFloat(String(value).replace(/[^\d.,-]/g, '').replace(',', '.'));
+    return isNaN(n) ? undefined : n;
+}
+
+function normalizeCurrency(value: any): string | undefined {
+    if (value === undefined || value === null) return undefined;
+    const s = String(value).trim().toUpperCase();
+    return s === '' ? undefined : s;
+}
+
+// Explicitly capture both legs of a transfer from the "Переводы" sheet.
+// This is additive: it does NOT alter the generic amount/originalCurrency mapping
+// that account-balance logic relies on. It only fills the dedicated transfer fields
+// so that cross-currency exchange rates can be computed downstream.
+function extractTransferLegs(row: any, headers: string[]): Pick<Transaction, 'fromAmount' | 'fromCurrency' | 'toAmount' | 'toCurrency'> {
+    return {
+        fromAmount: toNumber(readCell(row, headers, 'Сумма в исходящей валюте счета')),
+        fromCurrency: normalizeCurrency(readCell(row, headers, 'Валюта исходящего счета')),
+        toAmount: toNumber(readCell(row, headers, 'Сумма во входящей валюте счета')),
+        toCurrency: normalizeCurrency(readCell(row, headers, 'Валюта входящего счета')),
+    };
+}
+
 function mapRow(row: any, type: Transaction['type'], index: number): Transaction | null {
     const mapped: any = {}; // Use any to allow flexible mapping temporarily
 
@@ -188,6 +225,12 @@ function mapRow(row: any, type: Transaction['type'], index: number): Transaction
         type,
         index, // Save the index/row number
     };
+
+    // For transfers, additionally capture both legs verbatim so cross-currency
+    // exchange rates can be derived (the generic mapping above loses the outgoing currency).
+    if (type === 'transfer') {
+        Object.assign(t, extractTransferLegs(row, headers));
+    }
 
     return t;
 }
