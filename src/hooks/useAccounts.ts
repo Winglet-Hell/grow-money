@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account } from '../types';
 import { supabase } from '../lib/supabase';
 import { inferAccountDetails } from '../lib/accountUtils';
+import { registerRateCodes, loadCurrencyCatalogue } from '../lib/currencies';
 
 export interface AccountConfig {
     id: string;
@@ -16,6 +17,7 @@ export interface AccountConfig {
 export interface AccountStatus extends AccountConfig {
     current: number;
     rubEquivalent: number;
+    hasRate: boolean; // false when no RUB rate is known, so the balance cannot be valued
 }
 
 const DEFAULT_RATES: Record<string, number> = {
@@ -76,9 +78,14 @@ export function useAccounts(transactions: Transaction[]) {
                         }
                     });
 
+                    // Stablecoins are occasionally absent — fall back to USD parity.
                     if (newRates['USD']) {
-                        newRates['USDT'] = newRates['USD'];
+                        if (!newRates['USDT']) newRates['USDT'] = newRates['USD'];
+                        if (!newRates['USDC']) newRates['USDC'] = newRates['USD'];
                     }
+
+                    // Let the shared catalogue know which codes can actually be valued.
+                    registerRateCodes(Object.keys(newRates));
 
                     setRates(newRates);
                     setIsLiveRates(true);
@@ -92,6 +99,8 @@ export function useAccounts(transactions: Transaction[]) {
         };
 
         fetchRates();
+        // Codes + display names for the currency pickers.
+        loadCurrencyCatalogue();
     }, []);
 
     // Wallet balances are entered MANUALLY and stored in the DB — that is the single
@@ -112,6 +121,7 @@ export function useAccounts(transactions: Transaction[]) {
                 initial: acc.balance,
                 current: acc.balance,
                 rubEquivalent: 0,
+                hasRate: true, // recomputed below, once the rate table is consulted
                 balance_date: acc.balance_date,
             });
         });
@@ -133,6 +143,7 @@ export function useAccounts(transactions: Transaction[]) {
                     initial: 0,
                     current: 0,
                     rubEquivalent: 0,
+                    hasRate: true, // recomputed below, once the rate table is consulted
                 });
             };
             transactions.forEach(t => {
@@ -143,8 +154,13 @@ export function useAccounts(transactions: Transaction[]) {
 
         const balances = Array.from(byKey.values());
         balances.forEach(b => {
-            const rate = rates[b.currency] || DEFAULT_RATES[b.currency] || 1;
-            b.rubEquivalent = b.current * rate;
+            const rate = b.currency === 'RUB'
+                ? 1
+                : rates[b.currency] ?? DEFAULT_RATES[b.currency];
+            // An unknown currency used to be valued 1:1 against the ruble, which quietly
+            // fed a wrong number into net worth. Leave it unvalued and say so instead.
+            b.hasRate = typeof rate === 'number' && rate > 0;
+            b.rubEquivalent = b.hasRate ? b.current * rate! : 0;
         });
         // Largest first (by RUB value, the only cross-currency comparable); ties by name.
         balances.sort((a, b) => (b.rubEquivalent - a.rubEquivalent) || a.name.localeCompare(b.name));

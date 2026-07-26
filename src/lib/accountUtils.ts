@@ -1,38 +1,24 @@
 import { supabase } from './supabase';
 import type { Account, Transaction } from '../types';
+import { normalizeCurrencyCode, inferCurrencyFromName, isCryptoCode } from './currencies';
 
 export function inferAccountDetails(accountName: string, detectedCurrency?: string): Partial<Account> {
     const lowerName = accountName.toLowerCase();
 
+    // The currency recorded on the transaction wins; otherwise look for a code in the
+    // account's own name ("Cash KRW" → KRW, "GoPay IDR" → IDR).
+    const currency = normalizeCurrencyCode(detectedCurrency || '')
+        || inferCurrencyFromName(accountName)
+        || 'THB';
+
     let type: Account['type'] = 'cash'; // Default
-    let currency = 'THB'; // Default
-
-    // Use detected currency if available and valid
-    if (detectedCurrency && detectedCurrency.length === 3) {
-        currency = detectedCurrency.toUpperCase();
-
-        // Infer type based on currency if generic
-        if (['USDT', 'BTC', 'ETH'].includes(currency)) {
-            type = 'crypto';
-        } else if (['RUB', 'USD', 'EUR', 'GBP'].includes(currency)) {
-            // If name suggests bank, keep it, otherwise generic fiat might be cash or bank
-            if (lowerName.includes('bank') || lowerName.includes('card') || lowerName.includes('main')) {
-                type = 'bank';
-            }
-        }
-    } else {
-        // Name-based inference only if no currency detected
-        if (lowerName.includes('usd')) { currency = 'USD'; }
-        else if (lowerName.includes('eur')) { currency = 'EUR'; }
-        else if (lowerName.includes('hkd')) { currency = 'HKD'; }
-        else if (lowerName.includes('myr')) { currency = 'MYR'; }
-        else if (lowerName.includes('rub') || lowerName.includes('main')) { currency = 'RUB'; type = 'bank'; }
-        else if (lowerName.includes('btc')) { currency = 'BTC'; type = 'crypto'; }
-        else if (lowerName.includes('usdt')) { currency = 'USDT'; type = 'crypto'; }
+    if (isCryptoCode(currency)) {
+        type = 'crypto';
+    } else if (lowerName.includes('bank') || lowerName.includes('card') || lowerName.includes('main')) {
+        type = 'bank';
+    } else if (lowerName.includes('wallet')) {
+        type = 'wallet';
     }
-
-    // Explicit name override for type if not already set effectively
-    if (lowerName.includes('btc') || lowerName.includes('usdt')) { type = 'crypto'; }
 
     return { type, currency };
 }

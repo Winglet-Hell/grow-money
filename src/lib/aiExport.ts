@@ -7,6 +7,7 @@
 import type { Transaction, Trip, PaycheckConfig } from '../types';
 import { getGlobalCategory } from './categoryGroups';
 import { resolveTripActiveTransactions } from './tripUtils';
+import { getCurrencyMeta } from './currencies';
 
 // ---------------------------------------------------------------------------
 // small numeric helpers
@@ -17,6 +18,12 @@ const round = (n: number, d = 2): number => {
     const f = 10 ** d;
     return Math.round(n * f) / f;
 };
+
+// Two decimals is right for money but destroys crypto: 0.0089 ETH becomes 0.01, and
+// anything under half a cent becomes 0 — which reads as "this wallet is empty" to
+// whatever model consumes the export. Tokens and metals keep 8 decimals instead.
+const roundNative = (n: number, currency: string): number =>
+    round(n, getCurrencyMeta(currency).kind === 'fiat' ? 2 : 8);
 
 const sum = (xs: number[]): number => xs.reduce((s, x) => s + x, 0);
 const mean = (xs: number[]): number => (xs.length ? sum(xs) / xs.length : 0);
@@ -360,7 +367,7 @@ export function buildAIExportPayload(input: AIExportInput) {
         .map(([currency, a]) => ({
             currency,
             amountInBase: round(a.base),
-            amountNative: round(a.native),
+            amountNative: roundNative(a.native, currency),
             count: a.count,
             sharePct: share(a.base, totalExpense),
         }))
@@ -760,7 +767,7 @@ export function buildAIExportPayload(input: AIExportInput) {
             name: a.name,
             type: a.type,
             currency: a.currency,
-            balance: round(a.balance),
+            balance: roundNative(a.balance, a.currency),
             balanceInBase: round(a.rubEquivalent),
             balanceEnteredOn: a.balanceDate ?? null,
             spendTotal: activity?.amount ?? 0,
@@ -807,7 +814,9 @@ export function buildAIExportPayload(input: AIExportInput) {
     const duplicateSuspects = [...dupKeys.values()].filter(n => n > 1).length;
 
     const emptyMonths = monthly.filter(m => m.expenseCount === 0 && m.incomeCount === 0).map(m => m.month);
-    const accountsWithoutBalance = accountRows.filter(a => a.balance === 0).map(a => a.name);
+    // Read from the source balance, not the rounded row: a wallet holding 0.004 BTC has a
+    // balance, and must not be reported as one the user forgot to fill in.
+    const accountsWithoutBalance = accounts.filter(a => a.balance === 0).map(a => a.name);
 
     const dataQuality = {
         payeeTagCoveragePct: expenses.length ? share(taggedExpenses, expenses.length) : 0,

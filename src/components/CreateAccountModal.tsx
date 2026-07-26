@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Wallet, Bitcoin, Landmark, Banknote, CreditCard, ChevronDown } from 'lucide-react';
+import { X, Wallet, Bitcoin, Landmark, Banknote, CreditCard } from 'lucide-react';
 import type { Account } from '../types';
+import { CurrencySelect } from './CurrencySelect';
 
 interface CreateAccountModalProps {
     isOpen: boolean;
@@ -9,7 +10,6 @@ interface CreateAccountModalProps {
     onSave: (name: string, currency: string, balance: number, type: Account['type']) => Promise<void>;
 }
 
-const SUPPORTED_CURRENCIES = ['THB', 'USD', 'EUR', 'RUB', 'HKD', 'MYR', 'GEL', 'AED', 'USDT', 'BTC', 'ETH', 'GBP'];
 const ACCOUNT_TYPES: { id: Account['type']; label: string; icon: React.ReactNode }[] = [
     { id: 'cash', label: 'Cash', icon: <Banknote className="w-4 h-4" /> },
     { id: 'bank', label: 'Bank Account', icon: <Landmark className="w-4 h-4" /> },
@@ -123,20 +123,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                                 Currency
                             </label>
-                            <div className="relative flex items-center group">
-                                <select
-                                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 sm:text-sm py-2.5 pl-3 pr-10 border appearance-none cursor-pointer bg-white transition-all hover:border-emerald-300 outline-none focus:outline-none"
-                                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                                    value={currency}
-                                    onChange={(e) => setCurrency(e.target.value)}
-                                >
-                                    {SUPPORTED_CURRENCIES.map(c => (
-                                        <option key={c} value={c}>{c}</option>
-                                    ))}
-                                    <option value="CUSTOM">Other...</option>
-                                </select>
-                                <ChevronDown className="absolute right-3 w-4 h-4 text-gray-400 group-hover:text-emerald-500 pointer-events-none transition-colors" />
-                            </div>
+                            <CurrencySelect value={currency} onChange={setCurrency} />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">

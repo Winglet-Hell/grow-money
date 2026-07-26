@@ -6,6 +6,7 @@ import { usePrivacy } from '../contexts/PrivacyContext';
 import { CreateAccountModal } from '../components/CreateAccountModal';
 import { EditAccountModal } from '../components/EditAccountModal';
 import { createManualAccount } from '../lib/accountUtils';
+import { formatCurrencyAmount, formatRubRate, isCryptoCode } from '../lib/currencies';
 
 interface AccountsPageProps {
     transactions: Transaction[];
@@ -20,28 +21,19 @@ export function AccountsPage({ transactions, userId }: AccountsPageProps) {
     const [showHidden, setShowHidden] = useState(false);
 
     const groups = useMemo(() => {
-        // Filter out zero-balance accounts unless 'showHidden' is true
-        const activeAccounts = accountsStatus.filter(a => showHidden || Math.abs(a.current) > 0.01);
+        // "Empty" means a zero balance — nothing else. Thresholding on 0.01 used to hide
+        // small crypto holdings that were worth thousands of rubles.
+        const activeAccounts = accountsStatus.filter(a => showHidden || a.current !== 0);
+        const isCrypto = (a: AccountStatus) => a.type === 'crypto' || isCryptoCode(a.currency);
 
         return {
-            fiat: activeAccounts.filter(a => ['bank', 'cash', 'wallet', 'card'].includes(a.type) && a.currency !== 'USDT'),
-            crypto: activeAccounts.filter(a => a.type === 'crypto' || a.currency === 'USDT'),
-            fiatOnly: activeAccounts.filter(a => !(['crypto'].includes(a.type) || a.currency === 'USDT'))
+            crypto: activeAccounts.filter(isCrypto),
+            fiatOnly: activeAccounts.filter(a => !isCrypto(a)),
         };
     }, [accountsStatus, showHidden]);
 
-    const formatCurrency = (amount: number, currency: string) => {
-        if (isPrivacyMode) return '••••••';
-        try {
-            return new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: currency,
-                maximumFractionDigits: currency === 'BTC' ? 8 : 0,
-            }).format(amount);
-        } catch (e) {
-            return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: currency === 'BTC' ? 8 : 2 }).format(amount)} ${currency}`;
-        }
-    };
+    const formatCurrency = (amount: number, currency: string) =>
+        isPrivacyMode ? '••••••' : formatCurrencyAmount(amount, currency);
 
     const getIcon = (type: string) => {
         const props = { className: "w-10 h-10", strokeWidth: 1.5 };
@@ -68,7 +60,7 @@ export function AccountsPage({ transactions, userId }: AccountsPageProps) {
     };
 
     const AccountCard = ({ account }: { account: AccountStatus }) => {
-        const rate = rates[account.currency] || 1;
+        const rate = rates[account.currency];
 
         // Only allow editing if it is a DB account (has a UUID-like ID, not a name-based ID)
         // Simple check: DB IDs are usually 36 chars (UUID). Inferred IDs are usually short names.
@@ -77,35 +69,41 @@ export function AccountsPage({ transactions, userId }: AccountsPageProps) {
         const canEdit = !!userId;
 
         return (
-            <div className={`p-6 rounded-2xl border transition-all duration-300 group relative flex items-start justify-between ${Math.abs(account.current) < 0.01
+            <div className={`p-6 rounded-2xl border transition-all duration-300 group relative flex items-start justify-between ${account.current === 0
                 ? 'bg-gray-50 border-gray-100 opacity-60 hover:opacity-100'
                 : 'bg-white border-gray-100 shadow-sm hover:shadow-md'
                 }`}>
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="flex-1">
-                            <h3 className={`font-semibold truncate ${Math.abs(account.current) < 0.01 ? 'text-gray-500' : 'text-gray-900'
-                                }`}>{account.name}</h3>
+                        {/* min-w-0 is what lets the title actually truncate: without it the
+                            flex item refuses to shrink below its content and overflows. */}
+                        <div className="flex-1 min-w-0">
+                            <h3
+                                title={account.name}
+                                className={`font-semibold truncate ${account.current === 0 ? 'text-gray-500' : 'text-gray-900'
+                                    }`}>{account.name}</h3>
                             {account.currency !== 'RUB' && (
-                                <div className="text-xs text-gray-400 font-medium mt-0.5">
-                                    Rate: {rate.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                <div className={`text-xs font-medium mt-0.5 ${account.hasRate ? 'text-gray-400' : 'text-amber-600'}`}>
+                                    {account.hasRate
+                                        ? `Rate: ${formatRubRate(rate, account.currency)}`
+                                        : 'No rate for this currency'}
                                 </div>
                             )}
                         </div>
                     </div>
                     <div className="space-y-1">
-                        <div className={`text-2xl font-bold ${account.current < 0 ? 'text-red-500' : Math.abs(account.current) < 0.01 ? 'text-gray-400' : 'text-gray-900'
+                        <div className={`text-2xl font-bold ${account.current < 0 ? 'text-red-500' : account.current === 0 ? 'text-gray-400' : 'text-gray-900'
                             }`}>
                             {formatCurrency(account.current, account.currency)}
                         </div>
                         <div className="text-sm text-gray-500 font-medium">
-                            ≈ {formatCurrency(account.rubEquivalent, 'RUB')}
+                            {account.hasRate ? `≈ ${formatCurrency(account.rubEquivalent, 'RUB')}` : 'Not counted in net worth'}
                         </div>
                     </div>
                 </div>
 
                 <div className="flex-shrink-0 ml-4 flex flex-col items-end justify-between self-stretch">
-                    <div className={Math.abs(account.current) < 0.01 ? 'text-gray-300' : 'text-emerald-500'}>
+                    <div className={account.current === 0 ? 'text-gray-300' : 'text-emerald-500'}>
                         {getIcon(account.type)}
                     </div>
                     {canEdit && (

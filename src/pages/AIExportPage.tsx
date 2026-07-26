@@ -18,6 +18,7 @@ import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useAccounts } from '../hooks/useAccounts';
 import { buildAIExportPayload, toPrettyJson } from '../lib/aiExport';
+import { formatCurrencyAmount } from '../lib/currencies';
 import { db } from '../lib/db';
 import { supabase } from '../lib/supabase';
 
@@ -102,6 +103,11 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
 
     const money = (n: number | null | undefined, sign = '') =>
         isPrivacyMode || n === null || n === undefined ? '•••' : sign + Math.round(n).toLocaleString('ru-RU');
+
+    // Balances shown in their own currency, where rounding to whole units would turn a
+    // real crypto holding into "0".
+    const nativeMoney = (n: number | null | undefined, currency: string) =>
+        isPrivacyMode || n === null || n === undefined ? '•••' : formatCurrencyAmount(n, currency);
 
     const handleDownload = () => {
         setIsDownloading(true);
@@ -486,7 +492,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                                         </span>
                                     </div>
                                     <div className="text-right shrink-0">
-                                        <div className="font-semibold text-gray-900">{money(a.balance)}</div>
+                                        <div className="font-semibold text-gray-900">{nativeMoney(a.balance, a.currency)}</div>
                                         <div className="text-xs text-gray-400">{money(a.balanceInBase)} {meta.baseCurrency}</div>
                                     </div>
                                 </div>
