@@ -974,8 +974,20 @@ export function buildAIExportPayload(input: AIExportInput) {
             spendingCurrencies: spendByCurrency.map(c => c.currency),
             incomeStreams: incomeBySource.map(s => s.source),
             accountsInUse: spendByAccount.map(a => a.account),
-            plannedMonthlySalary: paycheck?.plannedSalary ?? null,
-            overtimeHourlyRate: paycheck?.hourlyRate ?? null,
+            jobs: (paycheck?.jobs ?? []).map(j => ({
+                name: j.name,
+                incomeCategory: j.category || null,
+                plannedNetMonthlySalary: j.plannedSalary ?? null,
+                overtimeHourlyRate: j.hourlyRate || null,
+                salesCommissionPct: j.commissionPct || null,
+                commissionBase: j.commissionPct ? (j.salesLabel || 'sales') : null,
+                monthsOfSelfReportedSales: (j.sales ?? []).length,
+            })),
+            plannedMonthlySalary: paycheck?.jobs?.length
+                ? round(paycheck.jobs.reduce((s, j) => s + (j.plannedSalary ?? 0), 0))
+                : paycheck?.plannedSalary ?? null,
+            plannedSalaryNote:
+                'Sum of the fixed net salary of every tracked job. Sales commission and overtime sit on top of it and vary month to month.',
         },
 
         dataQuality,

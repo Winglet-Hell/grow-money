@@ -61,10 +61,37 @@ export type OvertimeEntry = {
     note?: string;
 };
 
-// Salary control configuration (persisted in user settings / localStorage).
-export type PaycheckConfig = {
-    category?: string; // income category treated as the paycheck source (e.g. "Addrea paycheck")
+// Self-reported sales for a month, used by jobs paid a share of turnover.
+// One entry per month; a recorded 0 means "no sales", a missing entry means
+// "not filled in yet" (such a month can't be reconciled).
+export type SalesEntry = {
+    monthKey: string; // "YYYY-MM"
+    amount: number;
+};
+
+// One employer tracked on the Paycheck page. Pay is salary + optional overtime
+// + optional commission on sales; the parts a job doesn't use stay at 0.
+export type PaycheckJob = {
+    id: string;
+    name: string; // tab label, e.g. "Addrea" / "Oretex"
+    category?: string; // income category treated as this job's paycheck source
     plannedSalary?: number; // expected monthly net salary
-    hourlyRate?: number; // default overtime rate (per hour)
+    hourlyRate?: number; // default overtime rate (per hour); 0 = job has no overtime
     overtime?: OvertimeEntry[];
+    commissionPct?: number; // % of the month's sales paid on top; 0 = no commission
+    salesLabel?: string; // what the commission is based on, e.g. "Ozon sales"
+    sales?: SalesEntry[];
+};
+
+// Salary control configuration (persisted in user settings / localStorage).
+// The top-level category/plannedSalary/hourlyRate/overtime fields are the old
+// single-job shape — they are migrated into jobs[0] on load and kept only so
+// existing saved settings aren't lost.
+export type PaycheckConfig = {
+    jobs?: PaycheckJob[];
+    activeJobId?: string;
+    category?: string; // legacy: income category treated as the paycheck source (e.g. "Addrea paycheck")
+    plannedSalary?: number; // legacy: expected monthly net salary
+    hourlyRate?: number; // legacy: default overtime rate (per hour)
+    overtime?: OvertimeEntry[]; // legacy
 };
