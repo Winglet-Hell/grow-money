@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { CalendarClock, Upload } from 'lucide-react';
+import { CalendarClock, Upload, FileSpreadsheet } from 'lucide-react';
 import type { Transaction } from '../types';
+import type { ImportMeta } from '../lib/importing';
 import { SummaryCards } from '../components/SummaryCards';
 import { Charts } from '../components/Charts';
 import { TransactionTable } from '../components/TransactionTable';
@@ -13,6 +14,8 @@ import {
 
 interface DashboardPageProps {
     transactions: Transaction[];
+    importMeta: ImportMeta | null;
+    onImport: () => void;
 }
 
 type Preset = 'this' | 'last' | 'all';
@@ -44,7 +47,21 @@ const storePreset = (preset: Preset) => {
 const localDateKey = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-export function DashboardPage({ transactions }: DashboardPageProps) {
+// "today 14:32", "yesterday 09:10", "12 Sep 14:32", "12 Sep 2025"
+function formatImportTime(iso: string, now: Date): string {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(d);
+    const dayKey = localDateKey(d);
+    if (dayKey === localDateKey(now)) return `today ${time}`;
+    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+    if (dayKey === localDateKey(yesterday)) return `yesterday ${time}`;
+    const sameYear = d.getFullYear() === now.getFullYear();
+    const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) }).format(d);
+    return sameYear ? `${day} ${time}` : day;
+}
+
+export function DashboardPage({ transactions, importMeta, onImport }: DashboardPageProps) {
     const today = new Date();
     const thisKey = monthKeyFromDate(today);
     const lastKey = shiftMonthKey(thisKey, -1);
@@ -146,32 +163,63 @@ export function DashboardPage({ transactions }: DashboardPageProps) {
                 </div>
             </div>
 
+            {/* Freshness line: when the data on this device was last replaced, and the way to do it again. */}
+            <div className="-mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
+                <span className="flex items-center gap-1.5">
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    {importMeta
+                        ? <>Imported {formatImportTime(importMeta.at, today)} · {importMeta.count.toLocaleString('en-US')} rows{importMeta.fileName ? <span className="hidden sm:inline"> · {importMeta.fileName}</span> : null}</>
+                        : 'Import time unknown'}
+                </span>
+                <button
+                    onClick={onImport}
+                    className="inline-flex items-center gap-1 font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
+                >
+                    <Upload className="w-3.5 h-3.5" />
+                    Import new statement
+                </button>
+            </div>
+
             {periodIsEmpty && (
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl bg-amber-50 border border-amber-100 text-sm text-amber-800">
                     <Upload className="w-5 h-5 shrink-0 text-amber-500" />
                     <div className="flex-1">
                         <span className="font-semibold">Nothing imported for {periodLabel} yet.</span>{' '}
-                        Upload the latest statement to see it here
+                        Import the latest statement to see it here
                         {lastDataDate && <> — the data currently ends on {formatDate(lastDataDate)}</>}.
                     </div>
-                    {period.key !== lastKey && (
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
                         <button
-                            onClick={() => choosePreset('last')}
-                            className="self-start sm:self-auto px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-amber-800 font-medium hover:bg-amber-100 transition-colors whitespace-nowrap"
+                            onClick={onImport}
+                            className="px-3 py-1.5 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 transition-colors whitespace-nowrap shadow-sm"
                         >
-                            Show last month
+                            Import statement
                         </button>
-                    )}
+                        {period.key !== lastKey && (
+                            <button
+                                onClick={() => choosePreset('last')}
+                                className="px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-amber-800 font-medium hover:bg-amber-100 transition-colors whitespace-nowrap"
+                            >
+                                Show last month
+                            </button>
+                        )}
+                    </div>
                 </div>
             )}
 
             {showStaleHint && lastDataDate && (
-                <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 text-xs text-gray-500">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 text-xs text-gray-500">
                     <CalendarClock className="w-4 h-4 shrink-0 text-gray-400" />
-                    <span>
+                    <span className="flex-1">
                         Latest transaction is from <span className="font-semibold text-gray-700">{formatDate(lastDataDate)}</span> —
-                        the daily pace and projection assume nothing was spent since. Import the newer statement for an up-to-date picture.
+                        the daily pace and projection assume nothing was spent since.
                     </span>
+                    <button
+                        onClick={onImport}
+                        className="self-start sm:self-auto px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 font-medium hover:bg-gray-100 transition-colors whitespace-nowrap"
+                    >
+                        Import newer statement
+                    </button>
                 </div>
             )}
 

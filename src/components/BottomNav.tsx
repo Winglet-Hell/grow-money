@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart, LineChart, Map, Banknote, ArrowRightLeft, Globe, Settings, Eye, EyeOff } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart, LineChart, Map, Banknote, ArrowRightLeft, Globe, Settings, Eye, EyeOff, Upload } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import menuIllustration from '../assets/menu-illustration.png';
 
 // This component will be used in App.tsx
-export function BottomNav({ onReset }: { onReset: () => void }) {
+export function BottomNav({ onReset, onImport }: { onReset: () => void; onImport: () => void }) {
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
@@ -150,7 +150,19 @@ export function BottomNav({ onReset }: { onReset: () => void }) {
                             ))}
                         </div>
 
-                        <div className="pt-4 mt-2">
+                        <div className="pt-4 mt-2 space-y-2">
+                            <button
+                                onClick={() => {
+                                    setIsMenuOpen(false);
+                                    onImport();
+                                }}
+                                className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-emerald-50 text-emerald-700 font-medium hover:bg-emerald-100 transition-colors"
+                            >
+                                <div className="p-2 bg-white rounded-lg">
+                                    <Upload className="w-5 h-5" />
+                                </div>
+                                Import statement
+                            </button>
                             <button
                                 onClick={() => {
                                     setIsMenuOpen(false);

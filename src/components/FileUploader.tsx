@@ -6,7 +6,7 @@ import { generateTestData } from '../lib/testData';
 import type { Transaction } from '../types';
 
 interface FileUploaderProps {
-    onDataLoaded: (data: Transaction[]) => void;
+    onDataLoaded: (data: Transaction[], fileName?: string) => void;
     isAuthenticated?: boolean;
     onSignIn?: () => void;
 }
@@ -32,7 +32,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, isAuth
         setError(null);
         try {
             const data = await parseFile(file);
-            onDataLoaded(data);
+            onDataLoaded(data, file.name);
         } catch (err) {
             console.error(err);
             setError(err instanceof Error ? err.message : 'Failed to parse file');
@@ -66,10 +66,10 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, isAuth
         try {
             console.log("Generating local test data...");
             const transactionData = generateTestData();
-            onDataLoaded(transactionData);
+            onDataLoaded(transactionData, 'Test data');
         } catch (err) {
             console.error("Error loading test data:", err);
-            onDataLoaded(generateTestData());
+            onDataLoaded(generateTestData(), 'Test data');
         } finally {
             setTimeout(() => {
                 setLoading(false);

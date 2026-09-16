@@ -8,6 +8,9 @@ import { cn } from './lib/utils';
 import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
 import { syncAccountsWithSupabase } from './lib/accountUtils';
+import { parseFile } from './lib/parser';
+import { readImportMeta, writeImportMeta, clearImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
+import { ImportStatementDialog, type ImportState } from './components/ImportStatementDialog';
 import { BottomNav } from './components/BottomNav';
 import { DashboardPage } from './pages/DashboardPage';
 import { CategoryInsights } from './pages/CategoryInsights';
@@ -92,6 +95,9 @@ function AppContent() {
   const [showAuth, setShowAuth] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [importMeta, setImportMeta] = useState<ImportMeta | null>(() => readImportMeta());
+  const [importState, setImportState] = useState<ImportState>({ status: 'idle' });
+  const importInputRef = useRef<HTMLInputElement>(null);
   const dataLoadedRef = useRef(false);
 
 
@@ -157,7 +163,10 @@ function AppContent() {
     loadData();
   }, [session, authReady]);
 
-  const handleDataLoaded = async (data: Transaction[]) => {
+  // Replaces whatever is on the device with a freshly parsed statement. Used by the
+  // landing-page uploader and by "Import statement" while data is already loaded.
+  // Resolves with the wallets the account sync created (empty when signed out).
+  const applyImport = async (data: Transaction[], fileName?: string): Promise<string[]> => {
     // UI PREFERENCE: Sort Newest First (Desc)
     data.sort((a, b) => {
       if (a.date !== b.date) return b.date.localeCompare(a.date);
@@ -168,13 +177,60 @@ function AppContent() {
     await db.transactions.clear();
     await db.transactions.bulkAdd(data);
 
+    const meta: ImportMeta = {
+      at: new Date().toISOString(),
+      count: data.length,
+      fileName,
+      latestDate: data.reduce<string | null>((max, t) => (!max || t.date > max ? t.date : max), null),
+    };
+    writeImportMeta(meta);
+    setImportMeta(meta);
+
     // Sync newly discovered accounts to Supabase
     if (session?.user?.id) {
-      // Import dynamically or ensure imported at top. 
-      // Since it's a small app, top-level import is fine.
-      // But wait, I need to look at imports first.
-      syncAccountsWithSupabase(data, session.user.id);
+      return syncAccountsWithSupabase(data, session.user.id);
     }
+    return [];
+  };
+
+  const handleDataLoaded = async (data: Transaction[], fileName?: string) => {
+    await applyImport(data, fileName);
+  };
+
+  // "Import statement" opens the OS file picker straight away (must happen inside the
+  // click handler); the dialog only appears once a file has been chosen.
+  const requestImport = () => importInputRef.current?.click();
+
+  const finishImport = async (data: Transaction[], fileName: string) => {
+    const summary = summarizeImport(transactions, data);
+    setImportState({ status: 'applying', fileName });
+    try {
+      const newAccounts = await applyImport(data, fileName);
+      setImportState({ status: 'done', fileName, summary, newAccounts });
+    } catch (err) {
+      console.error('Import failed:', err);
+      setImportState({ status: 'error', fileName, message: err instanceof Error ? err.message : 'Could not save the data' });
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    setImportState({ status: 'parsing', fileName: file.name });
+    let data: Transaction[];
+    try {
+      data = await parseFile(file);
+    } catch (err) {
+      console.error('Failed to parse statement:', err);
+      setImportState({ status: 'error', fileName: file.name, message: err instanceof Error ? err.message : 'Failed to parse file' });
+      return;
+    }
+    // Nothing is replaced until the file parsed cleanly. A file much smaller than the
+    // current data is probably the wrong export — ask before dropping history.
+    const summary = summarizeImport(transactions, data);
+    if (summary.looksTruncated) {
+      setImportState({ status: 'confirm', fileName: file.name, summary, data });
+      return;
+    }
+    await finishImport(data, file.name);
   };
 
   // Wiping local data means re-uploading the statement to get it back, so every
@@ -185,6 +241,8 @@ function AppContent() {
     setIsResetDialogOpen(false);
     setTransactions([]);
     await db.transactions.clear();
+    clearImportMeta();
+    setImportMeta(null);
   };
 
   const handleLogout = async () => {
@@ -227,6 +285,7 @@ function AppContent() {
       {/* Navigation */}
       <Navigation
         onReset={requestReset}
+        onImport={transactions.length > 0 ? requestImport : undefined}
         isAuthenticated={!!session}
         onSignIn={() => setShowAuth(true)}
         onLogout={handleLogout}
@@ -309,7 +368,7 @@ function AppContent() {
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
               <Routes>
                 {/* ... existing routes ... */}
-                <Route path="/" element={<DashboardPage transactions={transactions} />} />
+                <Route path="/" element={<DashboardPage transactions={transactions} importMeta={importMeta} onImport={requestImport} />} />
                 <Route path="/category-insights" element={<CategoryInsights transactions={transactions} />} />
                 <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
                 <Route path="/paycheck" element={<PaycheckPage transactions={transactions} />} />
@@ -326,7 +385,29 @@ function AppContent() {
           )
         }
       </main >
-      {transactions.length > 0 && <BottomNav onReset={requestReset} />}
+      {transactions.length > 0 && <BottomNav onReset={requestReset} onImport={requestImport} />}
+
+      {/* Shared picker for every "Import statement" entry point. Resetting value lets the
+          same file be chosen twice in a row (e.g. after fixing an export). */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,.xlsx,.xls"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) handleImportFile(file);
+        }}
+      />
+      <ImportStatementDialog
+        state={importState}
+        onClose={() => setImportState({ status: 'idle' })}
+        onRetry={() => { setImportState({ status: 'idle' }); requestImport(); }}
+        onConfirmReplace={() => {
+          if (importState.status === 'confirm') finishImport(importState.data, importState.fileName);
+        }}
+      />
 
       <ConfirmDialog
         isOpen={isResetDialogOpen}

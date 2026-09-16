@@ -29,8 +29,10 @@ export function inferAccountDetails(accountName: string, detectedCurrency?: stri
 // normalized name so different casing (e.g. "USDT Bybit" vs "Usdt bybit") doesn't spawn
 // duplicates. Currencies are only used to seed a sensible default; existing accounts are
 // never overwritten (the user controls them manually).
-export async function syncAccountsWithSupabase(transactions: Transaction[], userId: string): Promise<void> {
-    if (!transactions.length || !userId) return;
+// Resolves with the display names of the wallets it created, so the import summary can
+// point the user at them.
+export async function syncAccountsWithSupabase(transactions: Transaction[], userId: string): Promise<string[]> {
+    if (!transactions.length || !userId) return [];
 
     try {
         const normalize = (s: string) => (s || '').toLowerCase().replace(/\s+/g, '');
@@ -58,7 +60,7 @@ export async function syncAccountsWithSupabase(transactions: Transaction[], user
             }
         });
 
-        if (collected.size === 0) return;
+        if (collected.size === 0) return [];
 
         // Which accounts already exist? (match by normalized name)
         const { data: existingAccounts, error: fetchError } = await supabase
@@ -68,7 +70,7 @@ export async function syncAccountsWithSupabase(transactions: Transaction[], user
 
         if (fetchError) {
             console.error('Error fetching existing accounts:', fetchError);
-            return;
+            return [];
         }
 
         const existingNorm = new Set((existingAccounts || []).map(a => normalize(a.name)));
@@ -87,19 +89,20 @@ export async function syncAccountsWithSupabase(transactions: Transaction[], user
             });
         });
 
-        if (newAccountsToCreate.length > 0) {
-            const { error: insertError } = await supabase
-                .from('accounts')
-                .insert(newAccountsToCreate);
+        if (newAccountsToCreate.length === 0) return [];
 
-            if (insertError) {
-                console.error('Error creating new accounts:', insertError);
-            } else {
-                console.log(`Auto-created ${newAccountsToCreate.length} account(s) from transactions.`);
-            }
+        const { error: insertError } = await supabase
+            .from('accounts')
+            .insert(newAccountsToCreate);
+
+        if (insertError) {
+            console.error('Error creating new accounts:', insertError);
+            return [];
         }
+        return newAccountsToCreate.map(a => a.name);
     } catch (err) {
         console.error('Unexpected error during account sync:', err);
+        return [];
     }
 }
 

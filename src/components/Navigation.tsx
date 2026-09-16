@@ -19,7 +19,8 @@ import {
     Wrench,
     Globe,
     Banknote,
-    ArrowRightLeft
+    ArrowRightLeft,
+    Upload
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getAvatarIcon } from '../lib/avatarIcons';
@@ -67,6 +68,7 @@ const NAV_CATEGORIES = [
 
 interface NavigationProps {
     onReset?: () => void;
+    onImport?: () => void; // present only while data is loaded
     isAuthenticated?: boolean;
     onSignIn?: () => void;
     onLogout?: () => void;
@@ -74,7 +76,7 @@ interface NavigationProps {
     isLandingPage?: boolean;
 }
 
-export function Navigation({ onReset, isAuthenticated, onSignIn, onLogout, userEmail, isLandingPage = false }: NavigationProps) {
+export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLogout, userEmail, isLandingPage = false }: NavigationProps) {
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const location = useLocation();
@@ -271,6 +273,18 @@ export function Navigation({ onReset, isAuthenticated, onSignIn, onLogout, userE
                                         >
                                             Settings
                                         </Link>
+                                        {onImport && (
+                                            <button
+                                                onClick={() => {
+                                                    setIsUserMenuOpen(false);
+                                                    onImport();
+                                                }}
+                                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                            >
+                                                <Upload className="w-4 h-4 text-emerald-600" />
+                                                Import statement
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => {
                                                 setIsUserMenuOpen(false);
