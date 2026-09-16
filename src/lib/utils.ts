@@ -51,7 +51,7 @@ export function formatDate(dateStr: string | Date | undefined): string {
         const month = (d.getUTCMonth() + 1).toString().padStart(2, '0');
         const year = d.getUTCFullYear();
         return `${day}.${month}.${year}`;
-    } catch (e) {
+    } catch {
         return String(dateStr);
     }
 }
@@ -76,4 +76,20 @@ export function getFormattedDateRange(transactions: { date: string }[]): string 
     }
 
     return `${formatter.format(minDate)} - ${formatter.format(maxDate)}`;
+}
+
+/**
+ * Tags joined for display, or '' when the transaction has none.
+ * `tags` is an array (older local data may still hold a comma string), and an EMPTY
+ * array is truthy — so `t.tags || t.note` used to render nothing for tagless rows.
+ */
+export function formatTags(tags: string[] | string | undefined): string {
+    if (!tags) return '';
+    if (Array.isArray(tags)) return tags.filter(Boolean).join(', ');
+    return String(tags).trim();
+}
+
+/** What to call a transaction in a list: its tags, else the note, else the category. */
+export function getTransactionTitle(t: { tags?: string[]; note?: string; category: string }): string {
+    return formatTags(t.tags) || t.note || t.category;
 }

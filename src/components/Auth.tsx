@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Loader2, Mail, Lock, AlertCircle, CheckCircle2, User } from 'lucide-react';
-
-const AVATAR_ICONS = ['User', 'Smile', 'Zap', 'Star', 'Heart', 'Ghost', 'Crown', 'Sun', 'Moon', 'Music'];
+import { AVATAR_ICON_NAMES } from '../lib/avatarIcons';
 
 export function Auth({ onLogin }: { onLogin: () => void }) {
     const [loading, setLoading] = useState(false);
@@ -19,7 +18,7 @@ export function Auth({ onLogin }: { onLogin: () => void }) {
 
         try {
             if (mode === 'signup') {
-                const randomAvatar = AVATAR_ICONS[Math.floor(Math.random() * AVATAR_ICONS.length)];
+                const randomAvatar = AVATAR_ICON_NAMES[Math.floor(Math.random() * AVATAR_ICON_NAMES.length)];
 
                 const { error } = await supabase.auth.signUp({
                     email,

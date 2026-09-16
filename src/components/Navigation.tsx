@@ -21,8 +21,8 @@ import {
     Banknote,
     ArrowRightLeft
 } from 'lucide-react';
-import * as Icons from 'lucide-react';
 import { cn } from '../lib/utils';
+import { getAvatarIcon } from '../lib/avatarIcons';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { usePrivacy } from '../contexts/PrivacyContext';
 
@@ -108,7 +108,9 @@ export function Navigation({ onReset, isAuthenticated, onSignIn, onLogout, userE
 
                 {/* Logo */}
                 <div className="flex-none flex items-center z-20">
-                    <Link to="/" className="flex items-center gap-2 group cursor-pointer" onClick={onReset}>
+                    {/* The logo only navigates home. It used to also wipe the imported data, which
+                        made a stray click cost a full re-upload — "Clear Data" lives in the user menu. */}
+                    <Link to="/" className="flex items-center gap-2 group cursor-pointer">
                         <div className="bg-white/40 border border-white/60 p-2 rounded-xl backdrop-blur-md shadow-sm group-hover:bg-white/60 transition-colors">
                             <LayoutDashboard className="w-5 h-5 text-emerald-600" />
                         </div>
@@ -244,7 +246,7 @@ export function Navigation({ onReset, isAuthenticated, onSignIn, onLogout, userE
                                 <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 overflow-hidden ring-2 ring-transparent hover:ring-emerald-200 transition-all">
                                     {settings?.profile?.avatar_icon ? (
                                         (() => {
-                                            const IconComponent = (Icons as any)[settings.profile.avatar_icon] || Icons.User;
+                                            const IconComponent = getAvatarIcon(settings.profile.avatar_icon);
                                             return <IconComponent className="w-4 h-4" />;
                                         })()
                                     ) : (

@@ -5,11 +5,11 @@ interface MetricCardProps {
     title: string;
     amount: number;
     icon: React.ReactNode;
-    trend?: string;
+    trend?: React.ReactNode;
     trendColor?: string;
     isPrivacy?: boolean;
     className?: string;
-    description?: string;
+    description?: React.ReactNode;
 }
 
 export const MetricCard: React.FC<MetricCardProps> = ({

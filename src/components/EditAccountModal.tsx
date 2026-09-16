@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Wallet, Bitcoin, Landmark, Banknote, CreditCard } from 'lucide-react';
+import { X, Wallet, Bitcoin, Landmark, Banknote, CreditCard, Trash2 } from 'lucide-react';
 import type { Account } from '../types';
-import { updateAccount } from '../lib/accountUtils';
+import { updateAccount, deleteAccount, isStoredAccountId } from '../lib/accountUtils';
 import { db } from '../lib/db';
 import { CurrencySelect } from './CurrencySelect';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface EditAccountModalProps {
     isOpen: boolean;
@@ -32,6 +33,8 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
     const [balance, setBalance] = useState('');
     const [type, setType] = useState<Account['type']>('cash');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         if (isOpen && account) {
@@ -75,6 +78,20 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
         }
 
         setIsSubmitting(false);
+        onSave();
+        onClose();
+    };
+
+    // Only rows that exist in the DB can be deleted; a discovered account (seen in
+    // transactions but never saved) has nothing to remove yet.
+    const canDelete = isStoredAccountId(account.id);
+
+    const handleDelete = async () => {
+        setIsDeleting(true);
+        const { success } = await deleteAccount(account.id);
+        setIsDeleting(false);
+        if (!success) return;
+        setIsDeleteOpen(false);
         onSave();
         onClose();
     };
@@ -163,7 +180,19 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
                     </p>
                 </div>
 
-                <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl flex justify-end gap-3">
+                <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl flex items-center gap-3">
+                    {canDelete && (
+                        <button
+                            type="button"
+                            onClick={() => setIsDeleteOpen(true)}
+                            className="p-2 -ml-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete account"
+                            aria-label="Delete account"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    )}
+                    <div className="flex-1" />
                     <button
                         onClick={onClose}
                         className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -179,6 +208,17 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
                     </button>
                 </div>
             </div>
+
+            <ConfirmDialog
+                isOpen={isDeleteOpen}
+                title={`Delete "${account.name}"?`}
+                description="The wallet and its balance are removed from your account. Imported transactions are not affected — if they still mention this account it will show up again with a zero balance."
+                confirmLabel="Delete"
+                tone="danger"
+                isBusy={isDeleting}
+                onConfirm={handleDelete}
+                onCancel={() => setIsDeleteOpen(false)}
+            />
         </div>,
         document.body
     );

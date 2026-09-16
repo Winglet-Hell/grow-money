@@ -7,8 +7,9 @@ import { cn, stringToColor, formatDate } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList } from 'recharts';
-import { useUserSettings } from '../hooks/useUserSettings';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 import { createSnapshot, findTransactionWithSnapshot, resolveTripActiveTransactions } from '../lib/tripUtils';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 // Helper to format currency if not imported
 const formatMoney = (amount: number, currency = 'RUB') => {
@@ -34,6 +35,7 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
     const [trips, setTrips] = useState<Trip[]>([]);
     const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
     const [isCreating, setIsCreating] = useState(false);
+    const [tripToDelete, setTripToDelete] = useState<Trip | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
     const { settings, updatePreferences } = useUserSettings();
 
@@ -238,14 +240,12 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
         resetForm();
     };
 
-    const handleDeleteTrip = async (id: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (!confirm('Are you sure you want to delete this trip?')) return;
-
+    const handleDeleteTrip = async (id: string) => {
         if (userId) {
             const { error } = await supabase.from('trips').delete().eq('id', id);
             if (error) {
                 console.error('Error deleting trip:', error);
+                setTripToDelete(null);
                 return;
             }
         } else {
@@ -254,6 +254,7 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
 
         setTrips(prev => prev.filter(t => t.id !== id));
         if (selectedTrip?.id === id) setSelectedTrip(null);
+        setTripToDelete(null);
     };
 
     const handleUpdateTripName = async (newName: string) => {
@@ -1286,7 +1287,7 @@ ${JSON.stringify(data, null, 2)}`;
                                         {activeTransactions.length} transactions
                                     </div>
                                     <button
-                                        onClick={(e) => handleDeleteTrip(trip.id, e)}
+                                        onClick={(e) => { e.stopPropagation(); setTripToDelete(trip); }}
                                         className="text-gray-300 hover:text-red-500 transition-colors p-1"
                                         title="Delete Trip"
                                     >
@@ -1306,6 +1307,16 @@ ${JSON.stringify(data, null, 2)}`;
                     </div>
                 )}
             </div>
+
+            <ConfirmDialog
+                isOpen={!!tripToDelete}
+                title={tripToDelete ? `Delete "${tripToDelete.name}"?` : ''}
+                description="The trip and its included/excluded transaction lists are removed. The transactions themselves stay in your data."
+                confirmLabel="Delete trip"
+                tone="danger"
+                onConfirm={() => tripToDelete && handleDeleteTrip(tripToDelete.id)}
+                onCancel={() => setTripToDelete(null)}
+            />
         </div>
     );
 }

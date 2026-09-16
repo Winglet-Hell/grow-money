@@ -2,14 +2,16 @@ import React, { useState, useMemo } from 'react';
 import { TableVirtuoso, Virtuoso } from 'react-virtuoso';
 import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
-import { useUserSettings } from '../hooks/useUserSettings';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useAccounts } from '../hooks/useAccounts';
-import { cn, stringToColor, formatDate } from '../lib/utils';
+import { cn, stringToColor, formatDate, formatTags, getTransactionTitle } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown } from 'lucide-react';
 
 interface TransactionTableProps {
     transactions: Transaction[];
+    title?: string;
+    subtitle?: string;
 }
 
 type SortKey = 'date' | 'amount' | 'category';
@@ -24,7 +26,7 @@ type VirtualItem =
     | { type: 'header'; date: string; stats: Record<string, { income: number; expense: number }> }
     | { type: 'transaction'; data: Transaction; originalIndex: number };
 
-export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ transactions }) => {
+export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ transactions, title = 'Recent Transactions', subtitle }) => {
     const { isPrivacyMode } = usePrivacy();
     const { settings: { preferences } } = useUserSettings();
     const { accounts } = useAccounts(transactions);
@@ -186,7 +188,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
                 maximumFractionDigits: 0,
                 minimumFractionDigits: 0
             }).format(amount);
-        } catch (e) {
+        } catch {
             return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(amount)} ${currency}`;
         }
     };
@@ -214,10 +216,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
                             <Icon className="w-5 h-5" />
                         </div>
                         <div className="flex flex-col gap-1">
-                            <div className="font-medium text-gray-900">{t.tags || t.note || t.category}</div>
+                            <div className="font-medium text-gray-900">{getTransactionTitle(t)}</div>
                             <div className="flex items-center gap-2">
                                 <span className="text-xs bg-gray-100 px-2 py-1 rounded-full text-gray-600">
-                                    {t.tags ? (t.note || t.category) : (t.note ? t.category : 'No category')}
+                                    {formatTags(t.tags) ? (t.note || t.category) : (t.note ? t.category : 'No category')}
                                 </span>
                                 <span className="text-xs text-gray-400">• {t.account}</span>
                             </div>
@@ -246,7 +248,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <h3 className="text-lg font-semibold text-gray-800">Recent Transactions</h3>
+                <div className="flex items-baseline gap-3 min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
+                    {subtitle && <span className="text-xs font-medium text-gray-400 truncate">{subtitle}</span>}
+                </div>
 
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -262,7 +267,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
 
             {filteredAndSortedTransactions.length === 0 ? (
                 <div className="p-12 text-center text-gray-400 text-sm">
-                    No transactions found matching your search.
+                    {searchTerm ? 'No transactions found matching your search.' : 'No transactions in this period.'}
                 </div>
             ) : (
                 <>
@@ -360,7 +365,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
                                             })()}
                                         </td>
                                         <td className={`px-6 ${py} whitespace-nowrap text-sm font-medium text-gray-900`}>
-                                            {t.tags || t.note || t.category}
+                                            {getTransactionTitle(t)}
                                         </td>
                                         {showCategory && (
                                             <td className={`px-6 ${py} whitespace-nowrap`}>
@@ -402,7 +407,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
                                                             if (isPrivacyMode) return '••••••';
                                                             try {
                                                                 return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: t.originalCurrency }).format(t.originalAmount);
-                                                            } catch (e) {
+                                                            } catch {
                                                                 return `${t.originalAmount.toLocaleString('ru-RU')} ${t.originalCurrency}`;
                                                             }
                                                         })()}

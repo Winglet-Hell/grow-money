@@ -11,6 +11,11 @@
   body {
     @apply font-sans antialiased text-gray-900 bg-gray-50;
   }
+  /* Recharts moves focus to a clicked bar group; the browser then draws a thick focus
+     ring around it. Keep the ring for keyboard users, drop it for mouse clicks. */
+  .recharts-wrapper *:focus:not(:focus-visible) {
+    outline: none;
+  }
 }
 
 @layer utilities {

@@ -4,14 +4,12 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { PrivacyProvider } from './contexts/PrivacyContext';
 import { UserSettingsProvider } from './contexts/UserSettingsContext';
 
-import { getFormattedDateRange, cn } from './lib/utils';
+import { cn } from './lib/utils';
 import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
 import { syncAccountsWithSupabase } from './lib/accountUtils';
-import { SummaryCards } from './components/SummaryCards';
-import { Charts } from './components/Charts';
-import { TransactionTable } from './components/TransactionTable';
 import { BottomNav } from './components/BottomNav';
+import { DashboardPage } from './pages/DashboardPage';
 import { CategoryInsights } from './pages/CategoryInsights';
 import { IncomeInsights } from './pages/IncomeInsights';
 import { PaycheckPage } from './pages/PaycheckPage';
@@ -26,6 +24,7 @@ import { CurrencyRatesPage } from './pages/CurrencyRatesPage';
 import { Navigation } from './components/Navigation';
 import { supabase } from './lib/supabase';
 import { Auth } from './components/Auth';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import type { Transaction } from './types';
 
 
@@ -92,6 +91,7 @@ function AppContent() {
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
   const [showAuth, setShowAuth] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const dataLoadedRef = useRef(false);
 
 
@@ -177,7 +177,12 @@ function AppContent() {
     }
   };
 
+  // Wiping local data means re-uploading the statement to get it back, so every
+  // entry point (header menu, mobile menu) goes through a confirmation first.
+  const requestReset = () => setIsResetDialogOpen(true);
+
   const handleReset = async () => {
+    setIsResetDialogOpen(false);
     setTransactions([]);
     await db.transactions.clear();
   };
@@ -221,7 +226,7 @@ function AppContent() {
 
       {/* Navigation */}
       <Navigation
-        onReset={handleReset}
+        onReset={requestReset}
         isAuthenticated={!!session}
         onSignIn={() => setShowAuth(true)}
         onLogout={handleLogout}
@@ -304,27 +309,7 @@ function AppContent() {
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
               <Routes>
                 {/* ... existing routes ... */}
-                <Route path="/" element={
-                  <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
-                    {/* Dashboard Header */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                      <div>
-                        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
-                        <p className="text-gray-500">Overview of your current financial health</p>
-                      </div>
-                      {transactions.length > 0 && (
-                        <div className="px-3 py-1 bg-white/50 border border-emerald-100 rounded-lg text-xs md:text-sm font-medium text-emerald-700 flex items-center gap-2 shadow-sm">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                          {getFormattedDateRange(transactions)}
-                        </div>
-                      )}
-                    </div>
-
-                    <SummaryCards transactions={transactions} />
-                    <Charts transactions={transactions} />
-                    <TransactionTable transactions={transactions} />
-                  </div>
-                } />
+                <Route path="/" element={<DashboardPage transactions={transactions} />} />
                 <Route path="/category-insights" element={<CategoryInsights transactions={transactions} />} />
                 <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
                 <Route path="/paycheck" element={<PaycheckPage transactions={transactions} />} />
@@ -341,7 +326,17 @@ function AppContent() {
           )
         }
       </main >
-      {transactions.length > 0 && <BottomNav onReset={handleReset} />}
+      {transactions.length > 0 && <BottomNav onReset={requestReset} />}
+
+      <ConfirmDialog
+        isOpen={isResetDialogOpen}
+        title="Clear imported data?"
+        description="This removes the transactions stored on this device. Wallets, goals and settings stay in your account — you'll just need to upload the statement again."
+        confirmLabel="Clear data"
+        tone="danger"
+        onConfirm={handleReset}
+        onCancel={() => setIsResetDialogOpen(false)}
+      />
     </div >
   );
 }

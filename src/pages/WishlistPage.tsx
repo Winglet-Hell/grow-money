@@ -6,6 +6,7 @@ import { useFinancialMetrics } from '../hooks/useFinancialMetrics';
 import type { Transaction } from '../types';
 import { supabase } from '../lib/supabase';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 interface WishlistItem {
     id: string; // UUID from Supabase
@@ -27,6 +28,7 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
     const [items, setItems] = useState<WishlistItem[]>([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<WishlistItem | null>(null);
+    const [pendingDelete, setPendingDelete] = useState<WishlistItem | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
     // Fetch from Supabase
@@ -106,6 +108,8 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
             setItems(prev => prev.filter(i => i.id !== id));
         } catch (error) {
             console.error('Failed to delete item:', error);
+        } finally {
+            setPendingDelete(null);
         }
     };
 
@@ -201,7 +205,7 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
                         item={item}
                         netWorth={totalNetWorth}
                         savingPower={monthlySavingPower}
-                        onDelete={deleteItem}
+                        onDelete={() => setPendingDelete(item)}
                         onEdit={handleEdit}
                         isPrivacy={isPrivacyMode}
                     />
@@ -219,6 +223,16 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
                     </div>
                 )}
             </div>
+
+            <ConfirmDialog
+                isOpen={!!pendingDelete}
+                title={pendingDelete ? `Delete "${pendingDelete.name}"?` : ''}
+                description="This goal will be removed from your wishlist."
+                confirmLabel="Delete"
+                tone="danger"
+                onConfirm={() => pendingDelete && deleteItem(pendingDelete.id)}
+                onCancel={() => setPendingDelete(null)}
+            />
         </div>
     );
 }
@@ -244,7 +258,7 @@ const WISHLIST_ICONS = [
     { name: 'Star', icon: Star },
 ];
 
-function WishlistCard({ item, netWorth, savingPower, onDelete, onEdit, isPrivacy }: { item: WishlistItem, netWorth: number, savingPower: number, onDelete: (id: string) => void, onEdit: (item: WishlistItem) => void, isPrivacy: boolean }) {
+function WishlistCard({ item, netWorth, savingPower, onDelete, onEdit, isPrivacy }: { item: WishlistItem, netWorth: number, savingPower: number, onDelete: () => void, onEdit: (item: WishlistItem) => void, isPrivacy: boolean }) {
     const canBuyNow = netWorth >= item.costRUB;
     const gap = item.costRUB - netWorth;
     const monthsToGoalFromScratch = savingPower > 0 ? Math.ceil(item.costRUB / savingPower) : Infinity;
@@ -261,13 +275,6 @@ function WishlistCard({ item, netWorth, savingPower, onDelete, onEdit, isPrivacy
     }
 
     const progress = Math.min(100, Math.max(0, (netWorth / item.costRUB) * 100));
-
-    // Safety check for ID
-    const handleDelete = () => {
-        if (item.id !== undefined) {
-            onDelete(item.id);
-        }
-    };
 
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col hover:shadow-md transition-shadow group">
@@ -380,7 +387,7 @@ function WishlistCard({ item, netWorth, savingPower, onDelete, onEdit, isPrivacy
                             <Pencil className="w-4 h-4" />
                         </button>
                         <button
-                            onClick={handleDelete}
+                            onClick={onDelete}
                             className="text-gray-400 hover:text-red-500 transition-colors p-1"
                             title="Delete Goal"
                         >
@@ -393,7 +400,8 @@ function WishlistCard({ item, netWorth, savingPower, onDelete, onEdit, isPrivacy
     )
 }
 
-function WishlistForm({ onSubmit, onCancel, initialValues }: { onSubmit: (val: any) => void, onCancel: () => void, initialValues?: WishlistItem }) {
+function WishlistForm({ onSubmit, onCancel, initialValues }: { onSubmit: (val: Omit<WishlistItem, 'id'>) => void, onCancel: () => void, initialValues?: WishlistItem }) {
+    const isEditing = !!initialValues;
     const [name, setName] = useState(initialValues?.name || '');
     const [cost, setCost] = useState(initialValues?.costRUB?.toString() || '');
     const [priority, setPriority] = useState(initialValues?.priority || 'Medium');
@@ -491,7 +499,7 @@ function WishlistForm({ onSubmit, onCancel, initialValues }: { onSubmit: (val: a
                     type="submit"
                     className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-md hover:shadow-lg active:scale-[0.98]"
                 >
-                    Add Goal
+                    {isEditing ? 'Save Changes' : 'Add Goal'}
                 </button>
             </div>
         </form>

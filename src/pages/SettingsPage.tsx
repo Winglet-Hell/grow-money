@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { useUserSettings } from '../hooks/useUserSettings';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 import { Loader2, Lock, Layout, CheckCircle2, AlertCircle, User } from 'lucide-react';
-import * as Icons from 'lucide-react';
-
-const AVATAR_ICONS = ['User', 'Smile', 'Zap', 'Star', 'Heart', 'Ghost', 'Crown', 'Sun', 'Moon', 'Music'];
+import { AVATAR_ICON_NAMES, getAvatarIcon } from '../lib/avatarIcons';
 
 export function SettingsPage() {
     const [activeTab, setActiveTab] = useState<'profile' | 'account' | 'preferences'>('profile');
@@ -84,7 +82,7 @@ function ProfileSettings() {
     };
 
     const DynamicIcon = ({ name, className }: { name: string, className?: string }) => {
-        const IconComponent = (Icons as any)[name] || Icons.User;
+        const IconComponent = getAvatarIcon(name);
         return <IconComponent className={className} />;
     };
 
@@ -109,7 +107,7 @@ function ProfileSettings() {
                 <div className="space-y-3">
                     <label className="block text-sm font-medium text-gray-700">Avatar</label>
                     <div className="flex flex-wrap gap-3">
-                        {AVATAR_ICONS.map(iconName => (
+                        {AVATAR_ICON_NAMES.map(iconName => (
                             <button
                                 key={iconName}
                                 type="button"

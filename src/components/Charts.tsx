@@ -4,13 +4,16 @@ import {
 } from 'recharts';
 import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
-import { useCategoryLimits } from '../hooks/useCategoryLimits';
 import { stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { CustomTooltip } from './CustomTooltip';
+import { filterByPeriod, monthKeyOf, monthKeyFromDate, monthLabel, type DashboardPeriod } from '../lib/periods';
 
 interface ChartsProps {
     transactions: Transaction[];
+    period: DashboardPeriod;
+    budget?: number;                          // monthly target line (sum of category limits)
+    onSelectMonth?: (key: string) => void;    // click on a month bar scopes the dashboard to it
 }
 
 const formatCompact = (num: any) => {
@@ -50,18 +53,15 @@ const CustomXAxisTick = (props: any) => {
     );
 };
 
-export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
+export const Charts: React.FC<ChartsProps> = React.memo(({ transactions, period, budget = 0, onSelectMonth }) => {
     const { isPrivacyMode } = usePrivacy();
-    const { limits } = useCategoryLimits();
 
-    const totalTarget = useMemo(() => {
-        return Object.values(limits).reduce((acc, limit) => acc + limit, 0);
-    }, [limits]);
+    const periodTitle = period.kind === 'all' ? 'All time' : monthLabel(period.key);
 
     const expensesByCategory = useMemo(() => {
         const categories: Record<string, number> = {};
 
-        transactions
+        filterByPeriod(transactions, period)
             .filter(t => t.type === 'expense') // expenses only
             .forEach(t => {
                 const cat = t.category || 'Other';
@@ -72,7 +72,7 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
         return Object.entries(categories)
             .map(([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value);
-    }, [transactions]);
+    }, [transactions, period]);
 
     const monthlySpending = useMemo(() => {
         const months: Record<string, number> = {};
@@ -80,51 +80,39 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
         transactions
             .filter(t => t.type === 'expense')
             .forEach(t => {
-                const dateKey = t.date.slice(0, 7); // Assuming YYYY-MM-DD or DD.MM.YYYY
-                let key = '';
-
-                if (t.date.includes('-')) {
-                    key = dateKey; // YYYY-MM
-                } else if (t.date.includes('.')) {
-                    // DD.MM.YYYY -> YYYY-MM
-                    const parts = t.date.split('.');
-                    if (parts.length >= 3) {
-                        key = `${parts[2]}-${parts[1]}`;
-                    }
-                }
-
-                if (key) {
-                    months[key] = (months[key] || 0) + Math.abs(t.amount);
-                }
+                const key = monthKeyOf(t.date);
+                if (key) months[key] = (months[key] || 0) + Math.abs(t.amount);
             });
 
         return Object.entries(months)
             .sort((a, b) => b[0].localeCompare(a[0])) // Sort descending (Newest first)
-            .map(([key, value]) => {
-                const [year, month] = key.split('-');
-                const date = new Date(parseInt(year), parseInt(month) - 1);
-                return {
-                    name: date.toLocaleString('en-US', { month: 'short', year: '2-digit' }),
-                    value
-                };
-            });
+            .map(([key, value]) => ({
+                key,
+                name: monthLabel(key, 'short').replace(/ (\d{2})(\d{2})$/, ' $2'), // "Sep 26"
+                value
+            }));
     }, [transactions]);
 
-    // Pre-calculate max for severity colors and current month string
-    const { maxValue, currentMonthStr } = useMemo(() => ({
+    // Pre-calculate max for severity colors and the running month's key
+    const { maxValue, currentMonthKey } = useMemo(() => ({
         maxValue: Math.max(...monthlySpending.map(m => m.value), 0),
-        currentMonthStr: new Date().toLocaleString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' })
+        currentMonthKey: monthKeyFromDate(new Date())
     }), [monthlySpending]);
+
+    const selectedKey = period.kind === 'month' ? period.key : null;
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             {/* Category Bar Chart */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-96">
-                <h3 className="text-lg font-semibold text-gray-800 mb-6 flex-shrink-0">Expenses by Category</h3>
+                <div className="flex items-baseline justify-between gap-3 mb-6 flex-shrink-0">
+                    <h3 className="text-lg font-semibold text-gray-800">Expenses by Category</h3>
+                    <span className="text-xs font-medium text-gray-400 whitespace-nowrap">{periodTitle}</span>
+                </div>
                 <div className="flex-1 overflow-x-auto pb-2 min-h-0">
                     {expensesByCategory.length === 0 ? (
                         <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-                            No data available
+                            No expenses in this period
                         </div>
                     ) : (
                         <div style={{ minWidth: '100%', width: Math.max(expensesByCategory.length * 80, 300), height: '100%' }}>
@@ -140,7 +128,7 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
                                     />
                                     <YAxis hide />
                                     <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
-                                    <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={48} isAnimationActive={false}>
+                                    <Bar dataKey="value" name="Spent" radius={[8, 8, 0, 0]} barSize={48} isAnimationActive={false}>
                                         <LabelList
                                             dataKey="value"
                                             position="top"
@@ -160,7 +148,12 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
 
             {/* Monthly Bar Chart */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-96">
-                <h3 className="text-lg font-semibold text-gray-800 mb-6 flex-shrink-0">Monthly Spending Trend</h3>
+                <div className="flex items-baseline justify-between gap-3 mb-6 flex-shrink-0">
+                    <h3 className="text-lg font-semibold text-gray-800">Monthly Spending Trend</h3>
+                    {onSelectMonth && (
+                        <span className="text-xs font-medium text-gray-400 whitespace-nowrap hidden sm:inline">Click a month to focus</span>
+                    )}
+                </div>
                 <div className="flex-1 overflow-x-auto pb-2">
                     <div style={{ minWidth: '100%', width: Math.max(monthlySpending.length * 80, 300), height: '100%' }}>
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
@@ -175,11 +168,11 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
                                 />
                                 <YAxis hide />
                                 <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
-                                {totalTarget > 0 && (
-                                    <ReferenceLine 
-                                        y={totalTarget} 
-                                        stroke="#f97316" 
-                                        strokeDasharray="4 4" 
+                                {budget > 0 && (
+                                    <ReferenceLine
+                                        y={budget}
+                                        stroke="#f97316"
+                                        strokeDasharray="4 4"
                                         strokeWidth={2}
                                         label={({ viewBox }: any) => (
                                             <text x={viewBox.x + 5} y={viewBox.y - 8} fill="#f97316" fontSize={12} fontWeight={600}>
@@ -188,7 +181,18 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
                                         )}
                                     />
                                 )}
-                                <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={48} isAnimationActive={false}>
+                                <Bar
+                                    dataKey="value"
+                                    name="Spent"
+                                    radius={[8, 8, 0, 0]}
+                                    barSize={48}
+                                    isAnimationActive={false}
+                                    cursor={onSelectMonth ? 'pointer' : undefined}
+                                    onClick={(entry: any) => {
+                                        const key = entry?.key ?? entry?.payload?.key;
+                                        if (key && onSelectMonth) onSelectMonth(key);
+                                    }}
+                                >
                                     <LabelList
                                         dataKey="value"
                                         position="top"
@@ -196,12 +200,14 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ transactions }) => {
                                         style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 500 }}
                                     />
                                     {monthlySpending.map((entry, index) => {
-                                        const isCurrent = entry.name === currentMonthStr;
+                                        const isCurrent = entry.key === currentMonthKey;
                                         const color = isCurrent
                                             ? '#cbd5e1' // Gray for incomplete (current) month
                                             : getSeverityColor(entry.value, maxValue);
+                                        // Everything but the focused month fades back.
+                                        const dimmed = selectedKey !== null && entry.key !== selectedKey;
 
-                                        return <Cell key={`cell-${index}`} fill={color} />;
+                                        return <Cell key={`cell-${index}`} fill={color} fillOpacity={dimmed ? 0.3 : 1} />;
                                     })}
                                 </Bar>
                             </BarChart>

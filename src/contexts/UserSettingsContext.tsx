@@ -7,6 +7,7 @@ export interface UserPreferences {
     tableShowNotes?: boolean;
     tableShowAccount?: boolean;
     tableShowCategory?: boolean;
+    customSearchTags?: string[]; // quick-filter chips on the Trip Analytics page
     paycheck?: PaycheckConfig;
 }
 

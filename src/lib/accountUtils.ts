@@ -142,7 +142,7 @@ export async function updateAccount(
         if (!user) return { success: false, error: 'User not logged in' };
 
         // Check if accountId is a valid UUID
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
+        const isUuid = isStoredAccountId(accountId);
 
         if (!isUuid) {
             // It's a dynamic account being edited. We need to CREATE it in the DB.
@@ -183,6 +183,31 @@ export async function updateAccount(
             }
         }
 
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err };
+    }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** True when the id is a real DB row (discovered accounts use a name-derived id instead). */
+export const isStoredAccountId = (accountId: string) => UUID_RE.test(accountId);
+
+// Removes the account row. Local transactions are untouched — if any still reference the
+// account by name it will simply be rediscovered (balance 0) and re-created on the next import.
+export async function deleteAccount(accountId: string): Promise<{ success: boolean; error?: any }> {
+    if (!isStoredAccountId(accountId)) return { success: true };
+    try {
+        const { error } = await supabase
+            .from('accounts')
+            .delete()
+            .eq('id', accountId);
+
+        if (error) {
+            console.error('Error deleting account:', error);
+            return { success: false, error };
+        }
         return { success: true };
     } catch (err) {
         return { success: false, error: err };

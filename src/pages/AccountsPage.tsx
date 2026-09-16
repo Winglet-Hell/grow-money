@@ -106,14 +106,16 @@ export function AccountsPage({ transactions, userId }: AccountsPageProps) {
                     <div className={account.current === 0 ? 'text-gray-300' : 'text-emerald-500'}>
                         {getIcon(account.type)}
                     </div>
+                    {/* Hover-reveal only where hovering exists; phones get the pencil always visible. */}
                     {canEdit && (
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setEditingAccount(account);
                             }}
-                            className="p-2 text-gray-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-full opacity-0 group-hover:opacity-100 transition-all mt-auto"
+                            className="p-2 text-gray-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-full md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 transition-all mt-auto"
                             title="Edit Account"
+                            aria-label={`Edit ${account.name}`}
                         >
                             <Pencil className="w-4 h-4" />
                         </button>

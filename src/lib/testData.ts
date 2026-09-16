@@ -58,7 +58,7 @@ const generateUUID = () => {
         return crypto.randomUUID();
     }
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
     });
 };
@@ -70,7 +70,7 @@ export const generateTestData = (): Transaction[] => {
     const startDate = new Date(today);
     startDate.setMonth(today.getMonth() - 6); // Generate 6 months of data
 
-    let currentDate = new Date(startDate);
+    const currentDate = new Date(startDate);
 
     const generateDailyTransactions = (date: Date) => {
         const numTransactions = Math.floor(Math.random() * 4); // 0-3 transactions per day
@@ -126,7 +126,8 @@ export const generateTestData = (): Transaction[] => {
                 id: generateUUID(),
                 date: dateStr,
                 category,
-                amount,
+                // Same sign convention as the parser: expenses are negative.
+                amount: type === 'expense' ? -amount : amount,
                 account,
                 note,
                 type
@@ -157,7 +158,7 @@ export const generateTestData = (): Transaction[] => {
                 id: generateUUID(),
                 date: dateStr,
                 category: 'Rent',
-                amount: 2200,
+                amount: -2200,
                 account: 'Main Account',
                 note: 'Monthly Rent',
                 type: 'expense'
@@ -170,7 +171,7 @@ export const generateTestData = (): Transaction[] => {
                 id: generateUUID(),
                 date: formatDate(currentDate),
                 category: 'Utilities',
-                amount: getRandomAmount(100, 200),
+                amount: -getRandomAmount(100, 200),
                 account: 'Main Account',
                 note: 'Utilities Bill',
                 type: 'expense'

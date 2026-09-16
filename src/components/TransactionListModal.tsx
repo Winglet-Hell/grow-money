@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Calendar, Banknote } from 'lucide-react';
 import type { Transaction } from '../types';
-import { formatDate, stringToColor, cn } from '../lib/utils';
+import { formatDate, stringToColor, cn, formatTags } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 
 interface TransactionListModalProps {
@@ -112,7 +112,7 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-baseline gap-2 mb-0.5">
                                             <h4 className="text-[15px] font-bold text-gray-900 truncate tracking-tight">
-                                                {t.tags || t.note || 'No description'}
+                                                {formatTags(t.tags) || t.note || 'No description'}
                                             </h4>
                                             <div className="flex flex-col items-end flex-shrink-0">
                                                 <span className="text-[15px] font-black text-gray-900 whitespace-nowrap tracking-tight">
@@ -127,7 +127,7 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
                                                                     maximumFractionDigits: 2
                                                                 }).format(Math.abs(t.originalAmount));
                                                                 return t.originalCurrency === 'RUB' ? `${formattedOriginal} ₽` : `${formattedOriginal} ${t.originalCurrency}`;
-                                                            } catch (e) {
+                                                            } catch {
                                                                 return `${new Intl.NumberFormat('en-US', {
                                                                     maximumFractionDigits: 2
                                                                 }).format(Math.abs(t.originalAmount))} ${t.originalCurrency}`;
