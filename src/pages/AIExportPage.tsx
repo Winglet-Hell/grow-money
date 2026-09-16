@@ -17,8 +17,10 @@ import type { Transaction, Trip } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useAccounts } from '../hooks/useAccounts';
+import { useHistoricalRates } from '../hooks/useHistoricalRates';
 import { buildAIExportPayload, toPrettyJson } from '../lib/aiExport';
 import { formatCurrencyAmount } from '../lib/currencies';
+import { referenceCoverage } from '../lib/fxBenchmark';
 import { db } from '../lib/db';
 import { supabase } from '../lib/supabase';
 
@@ -74,6 +76,11 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
     const { accounts, totalNetWorth, rates, isLiveRates } = useAccounts(transactions);
     const trips = useTrips();
 
+    // Market rates for the day of every conversion, so the export can say what each
+    // exchange cost against the market (fx.marketBenchmark). Cached after the first load.
+    const coverage = useMemo(() => referenceCoverage(transactions), [transactions]);
+    const referenceRates = useHistoricalRates(coverage.dates, coverage.codes);
+
     const [isCopied, setIsCopied] = useState(false);
     const [isPromptCopied, setIsPromptCopied] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
@@ -92,10 +99,11 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                 })),
                 netWorth: totalNetWorth,
                 liveRates: { rates, date: null, isLive: isLiveRates },
+                referenceRates,
                 trips,
                 paycheck: settings.preferences.paycheck,
             }),
-        [transactions, accounts, totalNetWorth, rates, isLiveRates, trips, settings.preferences.paycheck]
+        [transactions, accounts, totalNetWorth, rates, isLiveRates, referenceRates, trips, settings.preferences.paycheck]
     );
 
     const json = useMemo(() => toPrettyJson(dataPayload), [dataPayload]);
@@ -135,38 +143,40 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
         }
     };
 
-    const instructionText = `Роль: Действуй как Wealth Manager и Data-аналитик, который отвечает за результат своих рекомендаций. Тон прямой и профессиональный, выводы — только из цифр. Никакой «воды», банальностей и мотивационных советов.
+    const instructionText = `Роль: ты — мой личный финансовый аналитик. Говори прямо, без смягчений, но простым языком: я не финансист. Никакой «воды», банальностей и мотивационных советов.
 
 Данные:
-В прикрепленном JSON — полная история моих финансовых операций и посчитанная по ней аналитика. Мой профиль (город, виза, работа, привычки, валюты) — в блоке profile.
-Прежде чем считать, прочитай meta.readMeFirst, meta.schema и поля note внутри блоков: там единицы измерения, знаки, формат таблиц и подводные камни конкретных полей. Они важнее твоих предположений о том, как обычно устроены такие файлы.
+В прикреплённом JSON — полная история моих операций и уже посчитанная по ней аналитика. Мой профиль (город, виза, работа, привычки, валюты) — в блоке profile. Базовая валюта — рубли (meta.baseCurrency).
+Сначала прочитай meta.readMeFirst и поля note внутри блоков: там единицы измерения, знаки и подводные камни конкретных полей. Они важнее твоих предположений о том, как обычно устроены такие файлы.
+Блоки ledger и transferLedger в конце — сырые строки (формат колонок в meta.schema). Они только для проверки: аналитику бери из готовых блоков, а не пересчитывай из сырых данных.
 
-Правила (нарушение любого делает ответ бесполезным):
-1. Каждое утверждение — с цифрой и указанием блока, откуда она взята (например: expenses.byCategory).
-2. Не пересчитывай то, что уже посчитано в файле. Если твоя цифра расходится с готовым агрегатом — покажи расхождение, а не прячь его.
-3. Ничего не выдумывай. Не хватает данных для вывода — так и напиши.
-4. Внешние знания (цены в Бангкоке, доходности инструментов, прогнозы курсов) помечай как «внешнее допущение» и держи отдельно от фактов из файла.
-5. Никаких общих советов. Каждая рекомендация = действие + эффект в рублях в месяц + срок + на чем основана.
-6. Не пересказывай мне мои данные. Я их видел. Мне нужны выводы.
+Правила:
+1. Каждая цифра — с указанием блока, откуда она взята (например: expenses.byCategory). Готовые агрегаты бери из файла как есть; производные величины (в год, доли, прогноз) считай на их основе и одной фразой показывай, как получил.
+2. Ничего не выдумывай. Не хватает данных для вывода — так и напиши.
+3. Внешние знания (цены, доходности инструментов, прогнозы курсов) помечай как «внешнее допущение» и не смешивай с фактами из файла.
+4. Каждая рекомендация = конкретное действие + эффект в рублях в месяц + на чём основана. Общих советов не надо.
+5. Не пересказывай мне мои данные — мне нужны выводы.
+6. Не считай одну и ту же трату дважды: категория (expenses.byCategory), магазин (payees.rows) и регулярный платёж (recurring.rows) — это разные срезы одних и тех же денег.
+7. Поездки (trips.rows) и переезд из Паттайи в Бангкок (profile.residence) объясняют всплески расходов — это не утечки.
 
 Структура ответа:
 
-1. ВЕРДИКТ. Максимум 7 строк: где я нахожусь, что главное сломано, во сколько это обходится мне в год.
+1. ВЕРДИКТ. До 7 строк: где я нахожусь, что главное не так, во сколько это обходится мне в год.
 
-2. УТЕЧКИ. Таблица топ-10, отсортированных по потерям в рублях в год. Колонки: что | ₽/мес и ₽/год | доля от расходов | доля от дохода | почему это утечка | что делать. Источники: expenses.byCategory, payees.rows, recurring.rows, expenses.largest. Отдельно назови подписки со статусом lapsed — это кандидаты на отмену, про которые я мог забыть.
+2. УТЕЧКИ. Таблица топ-10 по потерям в рублях в год: что | ₽/мес | ₽/год | % от расходов | почему это утечка | что делать. Источники: expenses.byCategory, payees.rows, recurring.rows, expenses.largest. Про подписки: status "lapsed" значит, что платёж уже прекратился — в текущие расходы его не включай. Кандидаты на отмену — только активные (status "active") в recurring.taggedAsSubscriptions.rows и recurring.rows.
 
-3. СБЕРЕЖЕНИЯ И УСТОЙЧИВОСТЬ. Динамика savingsRatePct (monthly.rows) и тренд 3 месяца против 6 против всего периода (monthly.averages). Концентрация дохода (income.concentrationTopSourcePct): что будет, если основной источник отвалится, и на сколько месяцев меня хватит при текущих расходах и балансах из accounts.rows. Валютная уязвимость — expenses.byCurrency, expenses.monthlyByCurrency.
+3. СБЕРЕЖЕНИЯ И УСТОЙЧИВОСТЬ. Норма сбережений (savingsRatePct — какая часть дохода остаётся): последние 3 месяца против 6 против всего периода (monthly.averages) и динамика по месяцам (monthly.rows). Зависимость от одного источника дохода (income.concentrationTopSourcePct): что будет, если он пропадёт, и на сколько месяцев хватит остатков на счетах (accounts.rows) при текущих расходах. Фактический доход по работам (income.bySource) против плановой зарплаты (profile.jobs). Валютные риски — expenses.byCurrency, expenses.monthlyByCurrency.
 
-4. КОНВЕРТАЦИИ. По fx.pairs и fx.conversions посчитай в рублях, сколько я потерял на разнице между своим средним и лучшим курсом по каждой паре. Где спред самый большой. Сравни мои курсы с fx.liveRates. Дай правила: что менять через что и какими суммами.
+4. КОНВЕРТАЦИИ. Сначала прочитай fx.marketBenchmark.note. Главная цифра — сколько рублей забрали обменники относительно рыночного курса дня: fx.marketBenchmark.totalLostToExchangersInBase и weightedVsMarketPct. По парам — fx.pairs[].lostToExchangerInBase, по площадкам — fx.byRoute (маршрут «счёт → счёт» = где я менял): где теряю больше всего, где выгоднее. Дай правила: что менять через что, какими суммами и сколько это сэкономит в год. Про тайминг (pairs[].spreadPct, conversions[].vsYourAvgPct) — отдельно и коротко: это сравнение меня с самим собой, а не с рынком.
 
-5. ПРОГНОЗ НА 3 МЕСЯЦА. Только по полным месяцам. Назови метод. Базовый и пессимистичный сценарий с диапазоном, а не одно число. Что дает наибольший разброс (expenses.categoryTrends) и что способно сломать прогноз.
+5. ПРОГНОЗ НА 3 МЕСЯЦА. Только по полным месяцам (isPartial = false). Назови метод простыми словами. Два сценария — базовый и пессимистичный — с диапазоном, а не одним числом. Что даёт наибольший разброс (expenses.categoryTrends) и что способно сломать прогноз.
 
-6. КАПИТАЛ. Что делать со свободными средствами при моей структуре счетов (accounts.rows, summary.netWorthInBase) и моей норме сбережений. Учитывай интерес к крипте, защите от инфляции и автоматизации. Явно отдели то, что следует из моих данных, от общих рекомендаций.
+6. КАПИТАЛ. Что делать со свободными деньгами при моей структуре счетов (accounts.rows, summary.netWorthInBase) и моей норме сбережений. Мне интересны крипта, защита от инфляции и автоматизация. Явно отдели то, что следует из моих данных, от общих рекомендаций.
 
-7. КАЧЕСТВО УЧЕТА. По блоку dataQuality: что мешает точной аналитике и что мне начать фиксировать, чтобы через 3 месяца ответы стали точнее. Отсортируй по влиянию на выводы.
+7. КАЧЕСТВО УЧЁТА. По блоку dataQuality: что мешает точной аналитике и что мне начать фиксировать, чтобы через 3 месяца ответы стали точнее. Отсортируй по влиянию на выводы.
 
-Формат вывода:
-Таблицы для сравнений, списки для действий, ключевые цифры жирным. Без вступлений и заключений. Раздел не подкреплен данными — одна строка почему и переходи дальше. Жду суровую правду и выполнимые рекомендации.`;
+Формат:
+Простой язык: короткие предложения, без жаргона; если без термина не обойтись — поясни его в скобках при первом упоминании. В каждом разделе первая строка — главный вывод одной фразой, дальше детали. Суммы округляй до тысяч рублей, проценты — до одного знака. Таблицы для сравнений, списки для действий, ключевые цифры жирным. Без вступлений и заключений. Если раздел не подкреплён данными — одна строка почему и переходи дальше.`;
 
     const handleCopyPrompt = async () => {
         try {
@@ -209,6 +219,16 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                 ))}
             </div>
 
+            {referenceRates.isLoading && (
+                <div className="flex items-start gap-3 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+                    <span className="w-5 h-5 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin shrink-0 mt-0.5" />
+                    <div className="text-sm text-indigo-900">
+                        <span className="font-semibold">Loading market rates for your conversion dates.</span>
+                        {' '}The fx.marketBenchmark block (what each exchange cost against the market) is incomplete until this finishes — wait a moment before exporting.
+                    </div>
+                </div>
+            )}
+
             {meta.completeness.lastMonthIsPartial && (
                 <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                     <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -234,8 +254,9 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                         <div className="flex items-center gap-1">
                             <button
                                 onClick={handleCopyJson}
-                                className="p-2 hover:bg-gray-50 rounded-lg transition-colors group"
-                                title="Copy JSON to clipboard"
+                                disabled={referenceRates.isLoading}
+                                className="p-2 hover:bg-gray-50 rounded-lg transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={referenceRates.isLoading ? 'Waiting for market rates…' : 'Copy JSON to clipboard'}
                             >
                                 {isCopied ? (
                                     <CheckCircle className="w-5 h-5 text-emerald-500 transition-all scale-110" />
@@ -249,12 +270,13 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
 
                     <p className="text-gray-500 text-sm mb-6 leading-relaxed">
                         Full history plus pre-computed analytics: monthly series, category matrix, merchants,
-                        recurring charges, FX rates you actually paid, wallet balances and a data-quality report.
+                        recurring charges, FX rates you actually paid and what each exchange cost against the
+                        market, wallet balances and a data-quality report.
                     </p>
 
                     <button
                         onClick={handleDownload}
-                        disabled={isDownloading}
+                        disabled={isDownloading || referenceRates.isLoading}
                         className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-70 disabled:cursor-not-allowed shadow-sm hover:shadow"
                     >
                         {isDownloading ? (
@@ -262,7 +284,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                         ) : (
                             <Download className="w-5 h-5" />
                         )}
-                        {isDownloading ? 'Generating...' : 'Download JSON'}
+                        {isDownloading ? 'Generating...' : referenceRates.isLoading ? 'Loading market rates…' : 'Download JSON'}
                     </button>
                 </div>
 
@@ -451,7 +473,11 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                     <Card
                         icon={<ArrowRightLeft className="w-4 h-4" />}
                         title="Exchange Rates You Paid"
-                        hint={`${dataPayload.fx.crossCurrencyConversions} conversions`}
+                        hint={
+                            dataPayload.fx.marketBenchmark.totalLostToExchangersInBase === null
+                                ? `${dataPayload.fx.crossCurrencyConversions} conversions`
+                                : `${dataPayload.fx.crossCurrencyConversions} conversions · exchangers kept ${money(dataPayload.fx.marketBenchmark.totalLostToExchangersInBase)} ${meta.baseCurrency}`
+                        }
                     >
                         <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                             {dataPayload.fx.pairs.map(p => (
@@ -460,6 +486,11 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                                         <span className="font-medium text-gray-700">{p.spends} → {p.receives}</span>
                                         <span className="block text-xs text-gray-400">
                                             {p.count}× · spread {p.spreadPct}%
+                                            {p.vsMarketPct !== null && (
+                                                <span className={p.vsMarketPct < 0 ? 'text-rose-500' : 'text-emerald-600'}>
+                                                    {' '}· vs market {p.vsMarketPct > 0 ? '+' : ''}{p.vsMarketPct}%
+                                                </span>
+                                            )}
                                         </span>
                                     </div>
                                     <div className="text-right shrink-0">
@@ -515,6 +546,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                                 { label: 'Note coverage', value: `${dataQuality.noteCoveragePct}%`, warn: false },
                                 { label: 'Uncategorized rows', value: String(dataQuality.uncategorizedRows), warn: dataQuality.uncategorizedRows > 0 },
                                 { label: 'Transfers missing currency legs', value: String(dataQuality.transfersMissingCurrencyLegs), warn: dataQuality.transfersMissingCurrencyLegs > 0 },
+                                { label: 'Conversions with implausible rate', value: String(dataQuality.conversionsWithImplausibleRate), warn: dataQuality.conversionsWithImplausibleRate > 0 },
                                 { label: 'Rows not in base currency', value: String(dataQuality.rowsNotInBaseCurrency), warn: dataQuality.rowsNotInBaseCurrency > 0 },
                                 { label: 'Repeated identical rows', value: String(dataQuality.repeatedIdenticalRows.groups), warn: false },
                                 { label: 'Wallets with zero balance', value: String(dataQuality.accountsWithZeroBalance.length), warn: dataQuality.accountsWithZeroBalance.length > 0 },

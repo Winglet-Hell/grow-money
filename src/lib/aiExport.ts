@@ -8,6 +8,16 @@ import type { Transaction, Trip, PaycheckConfig } from '../types';
 import { getGlobalCategory } from './categoryGroups';
 import { resolveTripActiveTransactions } from './tripUtils';
 import { getCurrencyMeta } from './currencies';
+import {
+    FIRST_SNAPSHOT_DATE,
+    IMPLAUSIBLE_CUT_PCT,
+    isCrossCurrencyTransfer,
+    isImplausibleCut,
+    makeRateLookup,
+    benchmarkConversion,
+    type ReferenceRates,
+    type ConversionBenchmark,
+} from './fxBenchmark';
 
 // ---------------------------------------------------------------------------
 // small numeric helpers
@@ -125,6 +135,7 @@ export interface AIExportInput {
     accounts?: ExportAccount[];
     netWorth?: number;
     liveRates?: ExportRates;
+    referenceRates?: ReferenceRates; // per-day market rates for the conversion dates (see fxBenchmark)
     trips?: Trip[];
     paycheck?: PaycheckConfig;
 }
@@ -134,7 +145,7 @@ export interface AIExportInput {
 // ---------------------------------------------------------------------------
 
 export function buildAIExportPayload(input: AIExportInput) {
-    const { transactions, accounts = [], netWorth, liveRates, trips = [], paycheck } = input;
+    const { transactions, accounts = [], netWorth, liveRates, referenceRates, trips = [], paycheck } = input;
 
     const expenses = transactions.filter(t => t.type === 'expense');
     const incomes = transactions.filter(t => t.type === 'income');
@@ -640,16 +651,66 @@ export function buildAIExportPayload(input: AIExportInput) {
     // -------------------------------------------------------------------- FX
     // Cross-currency transfers are the only place where a real, personally-paid
     // exchange rate is observable. Each leg keeps its own currency.
-    const crossTransfers = transfers.filter(
-        t =>
-            t.fromCurrency &&
-            t.toCurrency &&
-            t.fromCurrency !== t.toCurrency &&
-            (t.fromAmount ?? 0) > 0 &&
-            (t.toAmount ?? 0) > 0
-    );
+    const crossTransfers = transfers.filter(isCrossCurrencyTransfer);
     const internalTransfers = transfers.filter(t => !crossTransfers.includes(t));
     const transfersMissingLegData = transfers.filter(t => !t.fromCurrency && !t.toCurrency).length;
+
+    // Market benchmark: each conversion valued at the reference rate of its own day. The
+    // gap between what was sent and what came back is the exchanger's spread/commission.
+    // Reference values are RUB-based; they are restated in the base currency at the same
+    // day's rate so "InBase" keeps meaning what it means everywhere else in this file.
+    const rateOn = makeRateLookup(
+        referenceRates?.snapshots ?? {},
+        liveRates ? { rates: liveRates.rates, date: liveRates.date } : undefined
+    );
+    const inBase = (rub: number, date: string): number | null => {
+        const r = rateOn(date, baseCurrency);
+        return r ? rub / r : null;
+    };
+    const benchmarkOf = new Map<Transaction, ConversionBenchmark>();
+    crossTransfers.forEach(t => {
+        const bm = benchmarkConversion(t.date, t.fromAmount!, t.fromCurrency!, t.toAmount!, t.toCurrency!, rateOn);
+        if (bm) benchmarkOf.set(t, bm);
+    });
+    // The pair's or route's cut, aggregated over the conversions that have a reference rate.
+    const aggregateBenchmark = (list: Transaction[], spentCurrency: string | null) => {
+        let sentInBase = 0;
+        let lostInBase = 0;
+        let lostInSpent = 0;
+        let best = -Infinity;
+        let worst = Infinity;
+        let covered = 0;
+        list.forEach(t => {
+            const bm = benchmarkOf.get(t);
+            if (!bm) return;
+            covered += 1;
+            sentInBase += inBase(bm.sentRub, t.date) ?? 0;
+            lostInBase += inBase(bm.lossRub, t.date) ?? 0;
+            // Restate the loss in the currency the money usually leaves in; a conversion
+            // that ran the other way is converted at that day's rate of its received leg.
+            lostInSpent += bm.lossRub / (t.fromCurrency === spentCurrency ? bm.rateFrom : bm.rateTo);
+            best = Math.max(best, bm.vsMarketPct);
+            worst = Math.min(worst, bm.vsMarketPct);
+        });
+        if (!covered) {
+            return {
+                conversionsWithReferenceRate: 0,
+                vsMarketPct: null,
+                lostToExchangerInBase: null,
+                lostInSpentCurrency: null,
+                bestVsMarketPct: null,
+                worstVsMarketPct: null,
+            };
+        }
+        return {
+            conversionsWithReferenceRate: covered,
+            vsMarketPct: sentInBase > 0 ? round((-lostInBase / sentInBase) * 100, 2) : null,
+            lostToExchangerInBase: round(lostInBase),
+            lostInSpentCurrency: spentCurrency ? roundNative(lostInSpent, spentCurrency) : null,
+            bestVsMarketPct: round(best * 100, 2),
+            worstVsMarketPct: round(worst * 100, 2),
+        };
+    };
 
     const pairGroups = new Map<string, Transaction[]>();
     crossTransfers.forEach(t => {
@@ -718,6 +779,7 @@ export function buildAIExportPayload(input: AIExportInput) {
                 volumeReceived: round(to === base ? baseVolume : quoteVolume),
                 liveRate: live !== null ? round(live, 6) : null,
                 rateSeries: rates.map(x => round(x, 6)),
+                ...aggregateBenchmark(list, from),
                 base,
                 quote,
             };
@@ -737,6 +799,10 @@ export function buildAIExportPayload(input: AIExportInput) {
             // Positive = this conversion beat your own volume-weighted average.
             const lowerIsBetter = p ? p.base === t.toCurrency : false;
             const rawPct = p && p.weightedAvgRate ? ((rate - p.weightedAvgRate) / p.weightedAvgRate) * 100 : 0;
+            // Market rate of the day, quoted the same way as `rate` (quote units per base).
+            const bm = benchmarkOf.get(t);
+            const sentLegIsBase = p ? t.fromCurrency === p.base : true;
+            const marketRate = bm ? (sentLegIsBase ? bm.rateFrom / bm.rateTo : bm.rateTo / bm.rateFrom) : null;
             return {
                 date: t.date,
                 fromAccount: t.account,
@@ -748,9 +814,81 @@ export function buildAIExportPayload(input: AIExportInput) {
                 pair: p?.pair ?? `${t.fromCurrency}/${t.toCurrency}`,
                 rate: round(rate, 6),
                 vsYourAvgPct: round(lowerIsBetter ? -rawPct : rawPct, 2),
+                marketRateOnDate: marketRate !== null ? round(marketRate, 6) : null,
+                vsMarketPct: bm ? round(bm.vsMarketPct * 100, 2) : null,
+                lostToExchangerInBase: bm ? round(inBase(bm.lossRub, t.date) ?? 0) : null,
+                lostInSpentCurrency: bm ? roundNative(bm.lossRub / bm.rateFrom, t.fromCurrency!) : null,
             };
         })
         .sort((a, b) => (a.date < b.date ? 1 : -1));
+
+    // Where the cut is taken: the same source → destination account pair is, in practice,
+    // one venue (a P2P desk, a cash exchanger, an in-app swap).
+    const routeGroups = new Map<string, Transaction[]>();
+    crossTransfers.forEach(t => {
+        const key = `${t.account} → ${t.category}`;
+        routeGroups.set(key, [...(routeGroups.get(key) || []), t]);
+    });
+    const byRoute = [...routeGroups.entries()]
+        .map(([route, list]) => {
+            const spentCurrencies = new Set(list.map(t => t.fromCurrency!));
+            const spentCurrency = spentCurrencies.size === 1 ? list[0].fromCurrency! : null;
+            const sentInBase = sum(list.map(t => {
+                const bm = benchmarkOf.get(t);
+                return bm ? inBase(bm.sentRub, t.date) ?? 0 : 0;
+            }));
+            return {
+                route,
+                fromAccount: list[0].account,
+                toAccount: list[0].category,
+                pairs: [...new Set(list.map(t => `${t.fromCurrency} → ${t.toCurrency}`))],
+                count: list.length,
+                sentValueInBase: round(sentInBase),
+                ...aggregateBenchmark(list, spentCurrency),
+            };
+        })
+        .sort((a, b) => (b.lostToExchangerInBase ?? -Infinity) - (a.lostToExchangerInBase ?? -Infinity));
+
+    const benchmarked = crossTransfers.filter(t => benchmarkOf.has(t));
+    // Mis-recorded rows (see isImplausibleCut) stay in the totals — the model is told to
+    // treat them as a data-quality issue and gets clean figures alongside.
+    const implausible = benchmarked.filter(t => isImplausibleCut(benchmarkOf.get(t)!.vsMarketPct));
+    const marketTotal = aggregateBenchmark(crossTransfers, null);
+    const marketTotalClean = aggregateBenchmark(crossTransfers.filter(t => !implausible.includes(t)), null);
+    const marketBenchmark = {
+        note: [
+            'Every conversion is valued at the market (reference) rate of ITS OWN DAY: what was sent and what came back are both priced in the base currency at that day\'s rates, and the gap is the spread or commission the exchanger kept. This is the true cost of converting — independent of how the rate moved before or after.',
+            'Sign convention, everywhere in fx.*: vsMarketPct > 0 means the user received MORE value than the market rate would have given (beat the market); < 0 means the exchanger kept that share. lostToExchangerInBase / lostInSpentCurrency are POSITIVE when money was lost and negative when the user came out ahead.',
+            'Reference rates are currency-api daily mid-market snapshots (the same feed as fx.liveRates), not a central-bank official rate. Conversions dated before referenceAvailableFrom, or on days the feed lacks a currency, carry null in the market fields and are excluded from the totals.',
+            `Conversions whose |vsMarketPct| exceeds implausibleThresholdPct are listed in implausibleConversions: a real exchange almost never deviates that much, so these are most likely mis-recorded amounts, not real losses. They ARE included in totalLostToExchangersInBase; use totalLostToExchangersInBaseExcludingImplausible for the clean figure and report them under data quality.`,
+            'Not to be confused with conversions[].vsYourAvgPct / pairs[].spreadPct, which compare the user with THEMSELVES (timing and venue variation); the market fields compare the user with the market.',
+        ].join(' '),
+        source: 'currency-api daily snapshots, RUB-based, restated in the base currency at the same day\'s rate',
+        referenceAvailableFrom: FIRST_SNAPSHOT_DATE,
+        referenceRatesStillLoading: referenceRates?.isLoading ?? false,
+        conversionsWithReferenceRate: benchmarked.length,
+        conversionsWithoutReferenceRate: crossTransfers.length - benchmarked.length,
+        totalLostToExchangersInBase: marketTotal.lostToExchangerInBase,
+        totalLostToExchangersInBaseExcludingImplausible: marketTotalClean.lostToExchangerInBase,
+        weightedVsMarketPct: marketTotal.vsMarketPct,
+        weightedVsMarketPctExcludingImplausible: marketTotalClean.vsMarketPct,
+        bestConversionVsMarketPct: marketTotalClean.bestVsMarketPct,
+        worstConversionVsMarketPct: marketTotalClean.worstVsMarketPct,
+        implausibleThresholdPct: IMPLAUSIBLE_CUT_PCT,
+        implausibleConversions: implausible.map(t => {
+            const bm = benchmarkOf.get(t)!;
+            return {
+                date: t.date,
+                route: `${t.account} → ${t.category}`,
+                spent: round(t.fromAmount!),
+                spentCurrency: t.fromCurrency!,
+                received: round(t.toAmount!),
+                receivedCurrency: t.toCurrency!,
+                vsMarketPct: round(bm.vsMarketPct * 100, 2),
+                lostToExchangerInBase: round(inBase(bm.lossRub, t.date) ?? 0),
+            };
+        }),
+    };
 
     // -------------------------------------------------------------- accounts
     const lastUsedByAccount = new Map<string, string>();
@@ -826,6 +964,7 @@ export function buildAIExportPayload(input: AIExportInput) {
         uncategorizedRows: uncategorized,
         categoriesFallingBackToOther: unmappedCategories,
         transfersMissingCurrencyLegs: transfersMissingLegData,
+        conversionsWithImplausibleRate: implausible.length,
         rowsNotInBaseCurrency: offBaseRows,
         repeatedIdenticalRows: {
             note: 'Groups of rows sharing date + amount + account + payee. Usually genuine repeat purchases (two coffees in one day), not import errors — flagged so the model does not silently treat them as double-counting.',
@@ -838,6 +977,7 @@ export function buildAIExportPayload(input: AIExportInput) {
             'There is no opening balance in the source export, so a running balance cannot be reconstructed from the ledger.',
             'Transfers carry no category and no tag; they move money between accounts and are excluded from income and expense totals.',
             'Expense/income amounts are pre-converted to the base currency by the source app at the transaction date; the rate used is not recorded.',
+            `Market reference rates for conversions (fx.marketBenchmark) are currency-api daily mid-market snapshots, available from ${FIRST_SNAPSHOT_DATE}; they are not a central-bank official rate, and conversions before that date have no market comparison.`,
         ],
     };
 
@@ -913,7 +1053,7 @@ export function buildAIExportPayload(input: AIExportInput) {
         meta: {
             generatedAt: new Date().toISOString(),
             generatedBy: 'Grow Money — AI Analyst Export',
-            schemaVersion: 2,
+            schemaVersion: 3,
             baseCurrency,
             readMeFirst: [
                 `Every field named "amount", "*InBase", "total", "net", "spend*" or "income" is expressed in ${baseCurrency} unless the field name says otherwise.`,
@@ -1090,10 +1230,13 @@ export function buildAIExportPayload(input: AIExportInput) {
                 'Rates below are the ones actually paid on the user\'s own conversions, derived from both legs of cross-currency transfers. This is where conversion losses are visible.',
                 'pairs[].spreadPct is the gap between the best and the worst rate ever taken on that pair — the money left on the table by timing and venue.',
                 'conversions[].vsYourAvgPct is signed from the user\'s point of view: positive means that conversion beat their own volume-weighted average for the pair, negative means it was worse.',
+                'The market fields — vsMarketPct, marketRateOnDate, lostToExchangerInBase, lostInSpentCurrency, best/worstVsMarketPct — compare each conversion with the market rate of its own day; read marketBenchmark.note before using them. byRoute breaks the same cut down by venue (source → destination account).',
             ].join(' '),
             crossCurrencyConversions: crossTransfers.length,
             sameCurrencyMoves: internalTransfers.length,
+            marketBenchmark,
             pairs: fxPairs,
+            byRoute,
             conversions,
             liveRates: {
                 note: `Market reference rates, ${baseCurrency} per 1 unit of the listed currency.`,
