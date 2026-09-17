@@ -200,6 +200,38 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
             : <ArrowDown className="w-3 h-3 text-emerald-600" />;
     };
 
+    // Day subtotal: the accounting-currency total (₽, converted) is the headline; what was
+    // actually charged in other currencies goes on a quieter second line, so the two never
+    // read as one list of numbers.
+    const renderDayTotals = (stats: Record<string, { income: number; expense: number }>) => {
+        const rub = stats['RUB'];
+        const native = Object.entries(stats).filter(([currency]) => currency !== 'RUB');
+        return (
+            <div className="flex flex-col items-end gap-0.5 normal-case tracking-normal">
+                <div className="flex items-center gap-3 text-xs">
+                    {rub && rub.income > 0 && (
+                        <span className="text-emerald-600 font-semibold tabular-nums">+{formatCurrency(rub.income, 'RUB')}</span>
+                    )}
+                    {rub && rub.expense < 0 && (
+                        <span className="text-gray-700 font-semibold tabular-nums">{formatCurrency(rub.expense, 'RUB')}</span>
+                    )}
+                </div>
+                {native.length > 0 && (
+                    <div className="flex flex-wrap justify-end items-baseline gap-x-2 text-[11px] font-normal text-gray-400 tabular-nums">
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-gray-300">as charged</span>
+                        {native.map(([currency, stat]) => (
+                            <span key={currency}>
+                                {stat.income > 0 && <span className="text-emerald-600/70">+{formatCurrency(stat.income, currency)}</span>}
+                                {stat.income > 0 && stat.expense < 0 && <span className="mx-1 text-gray-300">·</span>}
+                                {stat.expense < 0 && <span>{formatCurrency(stat.expense, currency)}</span>}
+                            </span>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     const MobileCard = ({ transaction: t }: { transaction: Transaction }) => {
         const color = stringToColor(t.category);
         const Icon = getCategoryIcon(t.category);
@@ -328,22 +360,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
                                             <td colSpan={10} className="px-6 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/90 backdrop-blur-sm sticky top-0 z-10 border-t border-b border-gray-100">
                                                 <div className="flex items-center justify-between">
                                                     <span>{item.date}</span>
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        {Object.entries(item.stats).map(([currency, stat]) => (
-                                                            <div key={currency} className="flex items-center gap-3">
-                                                                {stat.income > 0 && (
-                                                                    <span className="text-emerald-600 font-medium normal-case">
-                                                                        +{formatCurrency(stat.income, currency)}
-                                                                    </span>
-                                                                )}
-                                                                {stat.expense < 0 && (
-                                                                    <span className="text-gray-500 font-medium normal-case">
-                                                                        {formatCurrency(stat.expense, currency)}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        ))}
-                                                    </div>
+                                                    {renderDayTotals(item.stats)}
                                                 </div>
                                             </td>
                                         </>
@@ -431,14 +448,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
                                     return (
                                         <div className="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider flex justify-between items-center sticky top-0 z-10 border-b border-gray-100">
                                             <span>{item.date}</span>
-                                            <div className="flex flex-col items-end gap-1">
-                                                {Object.entries(item.stats).map(([currency, stat]) => (
-                                                    <div key={currency} className="flex gap-2">
-                                                        {stat.income > 0 && <span className="text-emerald-600">+{formatCurrency(stat.income, currency)}</span>}
-                                                        {stat.expense < 0 && <span className="text-gray-500">{formatCurrency(stat.expense, currency)}</span>}
-                                                    </div>
-                                                ))}
-                                            </div>
+                                            {renderDayTotals(item.stats)}
                                         </div>
                                     );
                                 }
