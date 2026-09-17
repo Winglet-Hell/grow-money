@@ -40,6 +40,8 @@ import {
     TrendingUp,
     Repeat,
     Receipt,
+    ShieldCheck,
+    CircleEllipsis,
     type LucideIcon
 } from 'lucide-react';
 
@@ -197,8 +199,15 @@ const ICON_MAP: Record<string, LucideIcon> = {
     'retail': ShoppingBag,
     'trip': Plane,
     'gifts': Gift,
+    'gift': Gift,
+    'подар': Gift,
     'taxes': Landmark,
-    'other': HelpCircle,
+    'insurance': ShieldCheck,
+    'страхов': ShieldCheck,
+    // "Other" is a real bucket, not a missing icon — a question mark read as "unmapped".
+    'other': CircleEllipsis,
+    'прочее': CircleEllipsis,
+    'другое': CircleEllipsis,
 
     // Income Specific
     'paycheck': DollarSign,
