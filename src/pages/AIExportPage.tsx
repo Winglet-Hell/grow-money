@@ -12,11 +12,14 @@ import {
     AlertTriangle,
     Layers,
     TrendingUp,
+    CalendarDays,
+    Target,
 } from 'lucide-react';
 import type { Transaction, Trip } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useAccounts } from '../hooks/useAccounts';
+import { useCategoryLimits } from '../hooks/useCategoryLimits';
 import { useHistoricalRates } from '../hooks/useHistoricalRates';
 import { buildAIExportPayload, toPrettyJson } from '../lib/aiExport';
 import { formatCurrencyAmount } from '../lib/currencies';
@@ -27,6 +30,12 @@ import { supabase } from '../lib/supabase';
 interface AIExportPageProps {
     transactions: Transaction[];
 }
+
+const ordinal = (n: number) => {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+};
 
 // Trips live in Dexie when signed out and in Supabase when signed in — same
 // resolution order the Travel pages use.
@@ -74,6 +83,8 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
     const { isPrivacyMode } = usePrivacy();
     const { settings } = useUserSettings();
     const { accounts, totalNetWorth, rates, isLiveRates } = useAccounts(transactions);
+    const { limits: categoryLimits } = useCategoryLimits();
+    const recurringHiddenIds = settings.preferences.recurring?.hiddenIds;
     const trips = useTrips();
 
     // Market rates for the day of every conversion, so the export can say what each
@@ -102,8 +113,10 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                 referenceRates,
                 trips,
                 paycheck: settings.preferences.paycheck,
+                categoryLimits,
+                recurringHiddenIds,
             }),
-        [transactions, accounts, totalNetWorth, rates, isLiveRates, referenceRates, trips, settings.preferences.paycheck]
+        [transactions, accounts, totalNetWorth, rates, isLiveRates, referenceRates, trips, settings.preferences.paycheck, categoryLimits, recurringHiddenIds]
     );
 
     const json = useMemo(() => toPrettyJson(dataPayload), [dataPayload]);
@@ -156,14 +169,15 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
 3. Внешние знания (цены, доходности инструментов, прогнозы курсов) помечай как «внешнее допущение» и не смешивай с фактами из файла.
 4. Каждая рекомендация = конкретное действие + эффект в рублях в месяц + на чём основана. Общих советов не надо.
 5. Не пересказывай мне мои данные — мне нужны выводы.
-6. Не считай одну и ту же трату дважды: категория (expenses.byCategory), магазин (payees.rows) и регулярный платёж (recurring.rows) — это разные срезы одних и тех же денег.
+6. Не считай одну и ту же трату дважды: категория (expenses.byCategory), магазин (payees.rows) и регулярный платёж (recurring.detected, recurring.rows) — это разные срезы одних и тех же денег.
 7. Поездки (trips.rows) и переезд из Паттайи в Бангкок (profile.residence) объясняют всплески расходов — это не утечки.
+8. Текущий месяц (currentMonth) не закончен: сравнивай его только с прошлым месяцем на ту же дату (expensesPrevMonthSameDay) или через прогноз (projectedMonthEndExpenses), а не с полными месяцами.
 
 Структура ответа:
 
 1. ВЕРДИКТ. До 7 строк: где я нахожусь, что главное не так, во сколько это обходится мне в год.
 
-2. УТЕЧКИ. Таблица топ-10 по потерям в рублях в год: что | ₽/мес | ₽/год | % от расходов | почему это утечка | что делать. Источники: expenses.byCategory, payees.rows, recurring.rows, expenses.largest. Про подписки: status "lapsed" значит, что платёж уже прекратился — в текущие расходы его не включай. Кандидаты на отмену — только активные (status "active") в recurring.taggedAsSubscriptions.rows и recurring.rows.
+2. УТЕЧКИ. Таблица топ-10 по потерям в рублях в год: что | ₽/мес | ₽/год | % от расходов | почему это утечка | что делать. Источники: expenses.byCategory, payees.rows, recurring.detected, recurring.rows, expenses.largest. Подписки, аренда и счета — из recurring.detected (это тот же список, что я вижу в приложении, суммы в валюте платежа + в рублях): кандидаты на отмену — только status "active"; "missed" — платёж ожидался и не пришёл, возможно уже отменено; "ended" и hiddenByUser в текущие расходы не включай. recurring.rows — более широкий срез привычек (такси, продукты), там status "lapsed" тоже значит «уже не платится». Лимиты: budget.rows — мои месячные лимиты по категориям; где monthsOverLimit велик, лимит стабильно не выдерживается — скажи, лимит нереалистичный или трата раздута.
 
 3. СБЕРЕЖЕНИЯ И УСТОЙЧИВОСТЬ. Норма сбережений (savingsRatePct — какая часть дохода остаётся): последние 3 месяца против 6 против всего периода (monthly.averages) и динамика по месяцам (monthly.rows). Зависимость от одного источника дохода (income.concentrationTopSourcePct): что будет, если он пропадёт, и на сколько месяцев хватит остатков на счетах (accounts.rows) при текущих расходах. Фактический доход по работам (income.bySource) против плановой зарплаты (profile.jobs). Валютные риски — expenses.byCurrency, expenses.monthlyByCurrency.
 
@@ -269,9 +283,10 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                     </div>
 
                     <p className="text-gray-500 text-sm mb-6 leading-relaxed">
-                        Full history plus pre-computed analytics: monthly series, category matrix, merchants,
-                        recurring charges, FX rates you actually paid and what each exchange cost against the
-                        market, wallet balances and a data-quality report.
+                        Full history plus pre-computed analytics: monthly series, the running month with its
+                        projection, category matrix and your limits, merchants, recurring charges as the Recurring
+                        page shows them, FX rates you actually paid and what each exchange cost against the market,
+                        wallet balances and a data-quality report.
                     </p>
 
                     <button
@@ -360,6 +375,71 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                         </div>
                     </Card>
 
+                    {/* Current month — what the dashboard shows */}
+                    <Card
+                        icon={<CalendarDays className="w-4 h-4" />}
+                        title="This Month"
+                        hint={`${dataPayload.currentMonth.month} · day ${dataPayload.currentMonth.dayOfMonth ?? '?'} of ${dataPayload.currentMonth.daysInMonth ?? '?'}`}
+                    >
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar text-sm">
+                            {(() => {
+                                const cm = dataPayload.currentMonth;
+                                const rows: { label: string; value: string; sub?: string; tone?: 'good' | 'warn' }[] = [
+                                    { label: 'Income to date', value: money(cm.incomeToDate, '+'), sub: cm.incomePrevMonthFull !== null ? `prev month total ${money(cm.incomePrevMonthFull)}` : undefined },
+                                    { label: 'Expenses to date', value: money(cm.expensesToDate, '-'), sub: cm.expensesPrevMonthSameDay !== null ? `prev month by the same day ${money(cm.expensesPrevMonthSameDay)}` : undefined, tone: cm.expensesPrevMonthSameDay !== null && cm.expensesToDate > cm.expensesPrevMonthSameDay ? 'warn' : undefined },
+                                    { label: 'Saved so far', value: money(cm.netToDate), sub: cm.savingsRateToDatePct !== null ? `savings rate ${cm.savingsRateToDatePct}%` : undefined },
+                                    { label: 'Month-end projection', value: cm.projectedMonthEndExpenses !== null ? money(cm.projectedMonthEndExpenses) : '—', sub: cm.projectionBasis === 'history' ? 'spent + what past months spent after this day' : cm.projectionBasis === 'linear' ? 'current daily pace' : undefined, tone: cm.projectedMonthEndExpenses !== null && cm.budgetTotal !== null && cm.projectedMonthEndExpenses > cm.budgetTotal ? 'warn' : 'good' },
+                                    { label: 'Budget used', value: cm.budgetUsedPct !== null ? `${cm.budgetUsedPct}%` : 'no limits set', sub: cm.budgetTotal !== null ? `of ${money(cm.budgetTotal)} ${meta.baseCurrency} across limits` : undefined },
+                                    { label: 'Avg. complete month', value: money(cm.avgCompleteMonthExpenses, '-'), sub: `income ${money(cm.avgCompleteMonthIncome, '+')}` },
+                                ];
+                                return rows.map(row => (
+                                    <div key={row.label} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg">
+                                        <div className="min-w-0">
+                                            <span className="text-gray-600">{row.label}</span>
+                                            {row.sub && <span className="block text-xs text-gray-400 truncate">{row.sub}</span>}
+                                        </div>
+                                        <span className={`font-semibold shrink-0 ${row.tone === 'warn' ? 'text-amber-600' : row.tone === 'good' ? 'text-emerald-600' : 'text-gray-900'}`}>{row.value}</span>
+                                    </div>
+                                ));
+                            })()}
+                        </div>
+                    </Card>
+
+                    {/* Budget limits with their track record */}
+                    <Card
+                        icon={<Target className="w-4 h-4" />}
+                        title="Budget Limits"
+                        hint={dataPayload.budget.rows.length
+                            ? `${dataPayload.budget.categoriesWithLimit} categories · ${money(dataPayload.budget.monthlyTotal)} ${meta.baseCurrency}/mo`
+                            : 'no limits set'}
+                    >
+                        <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                            {dataPayload.budget.rows.map(b => (
+                                <div key={b.category} className="p-3 bg-gray-50 rounded-lg text-sm">
+                                    <div className="flex items-center justify-between mb-1.5 gap-3">
+                                        <span className="font-medium text-gray-700 truncate">{b.category}</span>
+                                        <span className="font-semibold text-gray-900 shrink-0">{money(b.spentThisMonth)} / {money(b.monthlyLimit)}</span>
+                                    </div>
+                                    <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full ${b.usedThisMonthPct > 100 ? 'bg-rose-500' : b.usedThisMonthPct > 85 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                                            style={{ width: `${Math.min(100, b.usedThisMonthPct)}%` }}
+                                        />
+                                    </div>
+                                    <span className="block text-xs text-gray-400 mt-1.5">
+                                        {b.usedThisMonthPct}% this month · over limit in {b.monthsOverLimit} of {b.monthsMeasured} months
+                                        {b.monthsMeasured > 0 && b.monthsOverLimit / b.monthsMeasured >= 0.5 && (
+                                            <span className="text-amber-600 font-medium"> · limit rarely held</span>
+                                        )}
+                                    </span>
+                                </div>
+                            ))}
+                            {dataPayload.budget.rows.length === 0 && (
+                                <p className="text-gray-400 text-sm italic">Set limits on the Expenses page and they will be exported here.</p>
+                            )}
+                        </div>
+                    </Card>
+
                     {/* Income Sources */}
                     <Card title="Income Sources" hint={`top source ${summary.incomeConcentrationTopSourcePct}%`}>
                         <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
@@ -444,10 +524,48 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                         </div>
                     </Card>
 
-                    {/* Recurring */}
+                    {/* Recurring — the same list as the Recurring page */}
                     <Card
                         icon={<Repeat className="w-4 h-4" />}
-                        title="Recurring Charges"
+                        title="Recurring (as in app)"
+                        hint={`${dataPayload.recurring.detected.active.length} active · ≈${money(dataPayload.recurring.detected.activeMonthlyCostInBase)} ${meta.baseCurrency}/mo`}
+                    >
+                        <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                            {[...dataPayload.recurring.detected.missed, ...dataPayload.recurring.detected.active].map(item => (
+                                <div key={`${item.name}|${item.category}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm transition-colors hover:bg-gray-100">
+                                    <div className="min-w-0">
+                                        <span className="font-medium text-gray-700 truncate block">
+                                            {item.name}
+                                            {item.status === 'missed' && <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-700 uppercase tracking-wide">missed</span>}
+                                            {item.isNew && item.status === 'active' && <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-sky-100 text-sky-700 uppercase tracking-wide">new</span>}
+                                        </span>
+                                        <span className="block text-xs text-gray-400">
+                                            {item.cadence}{item.typicalDayOfMonth ? ` · ~${ordinal(item.typicalDayOfMonth)}` : ''} · {item.status === 'missed' ? 'expected' : 'next'} {item.nextExpectedDate}
+                                            {item.priceChange && <span className="text-rose-500"> · price {item.priceChange.from} → {item.priceChange.to} {item.priceChange.currency}</span>}
+                                        </span>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        <div className="font-semibold text-gray-900">{nativeMoney(item.typicalAmount, item.currency)}</div>
+                                        <div className="text-xs text-gray-400">{money(item.monthlyCostInBase)} {meta.baseCurrency}/mo</div>
+                                    </div>
+                                </div>
+                            ))}
+                            {dataPayload.recurring.detected.active.length === 0 && dataPayload.recurring.detected.missed.length === 0 && (
+                                <p className="text-gray-400 text-sm italic">No fixed recurring charges detected yet.</p>
+                            )}
+                            {(dataPayload.recurring.detected.ended.length > 0 || dataPayload.recurring.detected.hiddenByUser.length > 0) && (
+                                <p className="text-xs text-gray-400 px-1">
+                                    Also exported: {dataPayload.recurring.detected.ended.length} ended
+                                    {dataPayload.recurring.detected.hiddenByUser.length > 0 && <> · {dataPayload.recurring.detected.hiddenByUser.length} hidden by you (flagged so the model skips them)</>}
+                                </p>
+                            )}
+                        </div>
+                    </Card>
+
+                    {/* Repeating habits — the wider profile */}
+                    <Card
+                        icon={<Repeat className="w-4 h-4" />}
+                        title="Repeating Habits (wide)"
                         hint={`~${money(dataPayload.recurring.estimatedFixedMonthlyCost)} / mo fixed`}
                     >
                         <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">

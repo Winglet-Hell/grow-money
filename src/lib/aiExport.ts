@@ -6,6 +6,8 @@
 // balances, transfer legs that are NOT in the base currency) is flagged explicitly.
 import type { Transaction, Trip, PaycheckConfig } from '../types';
 import { getGlobalCategory } from './categoryGroups';
+import { detectRecurring, typicalDayOfMonth } from './recurring';
+import { summarizePeriod, monthKeyFromDate } from './periods';
 import { resolveTripActiveTransactions } from './tripUtils';
 import { getCurrencyMeta } from './currencies';
 import {
@@ -138,6 +140,9 @@ export interface AIExportInput {
     referenceRates?: ReferenceRates; // per-day market rates for the conversion dates (see fxBenchmark)
     trips?: Trip[];
     paycheck?: PaycheckConfig;
+    categoryLimits?: Record<string, number>; // monthly budget per category, in the base currency
+    recurringHiddenIds?: string[];           // series the user marked "not recurring" on the Recurring page
+    now?: Date;                              // wall clock for the "current month" view; defaults to new Date()
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +150,10 @@ export interface AIExportInput {
 // ---------------------------------------------------------------------------
 
 export function buildAIExportPayload(input: AIExportInput) {
-    const { transactions, accounts = [], netWorth, liveRates, referenceRates, trips = [], paycheck } = input;
+    const {
+        transactions, accounts = [], netWorth, liveRates, referenceRates, trips = [], paycheck,
+        categoryLimits = {}, recurringHiddenIds = [], now = new Date(),
+    } = input;
 
     const expenses = transactions.filter(t => t.type === 'expense');
     const incomes = transactions.filter(t => t.type === 'income');
@@ -593,6 +601,62 @@ export function buildAIExportPayload(input: AIExportInput) {
             };
         })
         .sort((a, b) => b.totalPaid - a.totalPaid);
+
+    // ------------------------------------------- recurring, as the app shows it
+    // Same detector as the Recurring page, so the model and the user look at one list:
+    // fixed charges only (steady interval AND steady amount in the charge's own currency),
+    // with the user's own "not recurring" dismissals applied.
+    const detected = detectRecurring(transactions, { hiddenIds: recurringHiddenIds, now });
+    const detectedRow = (r: (typeof detected.series)[number]) => ({
+        name: r.name,
+        category: r.category,
+        account: r.account,
+        cadence: r.cadence,
+        intervalDays: round(r.intervalDays, 1),
+        typicalDayOfMonth: typicalDayOfMonth(r),
+        typicalAmount: roundNative(r.amount, r.currency),
+        currency: r.currency,
+        typicalAmountInBase: round(r.amountRub),
+        monthlyCostInBase: round(r.monthlyRub),
+        charges: r.count,
+        firstDate: r.firstDate,
+        lastDate: r.lastDate,
+        nextExpectedDate: r.nextDate,
+        status: r.status,
+        isNew: r.isNew,
+        regularityPct: round(r.regularity * 100),
+        priceChange: r.priceChange
+            ? { from: roundNative(r.priceChange.from, r.currency), to: roundNative(r.priceChange.to, r.currency), currency: r.currency }
+            : null,
+    });
+
+    // ------------------------------------------------ current month & budget
+    const currentMonthKey = monthKeyFromDate(now);
+    const monthView = summarizePeriod(transactions, { kind: 'month', key: currentMonthKey }, now);
+    const lastCompleteMonth = completeMonths[completeMonths.length - 1] ?? null;
+
+    const spentIn = (mk: string | null, category?: string) =>
+        mk ? sum(expenses.filter(t => monthKey(t.date) === mk && (!category || t.category === category)).map(baseAmount)) : 0;
+    const budgetRows = Object.entries(categoryLimits)
+        .filter(([, limit]) => typeof limit === 'number' && limit > 0)
+        .map(([category, limit]) => {
+            const spentThisMonth = spentIn(currentMonthKey, category);
+            const spentLastComplete = spentIn(lastCompleteMonth, category);
+            const catMonths = completeMonths.map(mk => spentIn(mk, category));
+            return {
+                category,
+                monthlyLimit: round(limit),
+                spentThisMonth: round(spentThisMonth),
+                usedThisMonthPct: share(spentThisMonth, limit),
+                spentLastCompleteMonth: round(spentLastComplete),
+                usedLastCompleteMonthPct: share(spentLastComplete, limit),
+                avgCompleteMonth: round(mean(catMonths)),
+                monthsOverLimit: catMonths.filter(v => v > limit).length,
+                monthsMeasured: catMonths.length,
+            };
+        })
+        .sort((a, b) => b.monthlyLimit - a.monthlyLimit);
+    const budgetTotal = sum(budgetRows.map(r => r.monthlyLimit));
 
     // ---------------------------------------------------------------- income
     interface IncAcc {
@@ -1053,7 +1117,7 @@ export function buildAIExportPayload(input: AIExportInput) {
         meta: {
             generatedAt: new Date().toISOString(),
             generatedBy: 'Grow Money — AI Analyst Export',
-            schemaVersion: 3,
+            schemaVersion: 4,
             baseCurrency,
             readMeFirst: [
                 `Every field named "amount", "*InBase", "total", "net", "spend*" or "income" is expressed in ${baseCurrency} unless the field name says otherwise.`,
@@ -1061,6 +1125,7 @@ export function buildAIExportPayload(input: AIExportInput) {
                 'Transfers are movements between the user\'s own accounts. They are NOT spending and NOT income, and their amounts are in each leg\'s own currency — never in the base currency.',
                 'Percentages are already percentages (12.5 means 12.5%), not fractions.',
                 'Aggregates cover the FULL history. The ledger at the end is also complete — nothing is truncated.',
+                'currentMonth and budget describe the running month and the user\'s own limits; recurring.detected is the app\'s own list of fixed recurring charges.',
             ],
             coverage: {
                 firstDate,
@@ -1215,6 +1280,55 @@ export function buildAIExportPayload(input: AIExportInput) {
                 total: round(sum(subscriptions.map(s => s.totalPaid))),
                 rows: subscriptions,
             },
+            detected: {
+                note: [
+                    'The list the user sees on the app\'s Recurring page — fixed charges only: same tag/note in the same category, steady interval (weekly/monthly/quarterly/yearly) and steady amount, compared in the charge\'s OWN currency (typicalAmount + currency), so a moving exchange rate does not break a flat THB or USD subscription. Everything the user filed under a subscription category is kept even with a loose rhythm.',
+                    'Prefer this block over "rows" above when talking about subscriptions, rent and bills; "rows" is the wider habit profile (taxi, groceries…) and overlaps with it.',
+                    `Statuses are judged against the newest transaction (${detected.dataEnd ?? 'n/a'}), not today: "missed" = a charge was expected and has not appeared; "ended" = nothing for almost two cycles. monthlyCostInBase already normalises yearly/quarterly charges to a month.`,
+                    'hiddenByUser lists series the user explicitly dismissed as not recurring — do not count them.',
+                ].join(' '),
+                activeMonthlyCostInBase: round(detected.monthlyRub),
+                dueBeforeMonthEndInBase: round(detected.dueThisMonthRub),
+                active: detected.active.map(detectedRow),
+                missed: detected.missed.map(detectedRow),
+                ended: detected.ended.map(detectedRow),
+                hiddenByUser: detected.hidden.map(r => ({ name: r.name, category: r.category })),
+            },
+        },
+
+        currentMonth: {
+            note: [
+                `The running calendar month (${currentMonthKey}) as of ${now.toISOString().slice(0, 10)}, i.e. what the user's dashboard shows. Amounts in ${baseCurrency}.`,
+                'expensesPrevMonthSameDay is the previous month cut at the same day of month — the like-for-like comparison. projectedMonthEndExpenses adds what completed months typically spent AFTER this day (rent and bills land on fixed days, so a straight daily-average extrapolation is badly low early in the month); projectionBasis says which method was used.',
+            ].join(' '),
+            month: currentMonthKey,
+            dayOfMonth: monthView.dayOfMonth ?? null,
+            daysInMonth: monthView.daysInMonth ?? null,
+            incomeToDate: round(monthView.income),
+            expensesToDate: round(monthView.expenses),
+            netToDate: round(monthView.net),
+            savingsRateToDatePct: monthView.savingsRate === null ? null : round(monthView.savingsRate * 100),
+            dailyAverageExpenses: round(monthView.dailyAverage ?? 0),
+            expensesPrevMonthSameDay: monthView.prevExpensesToDate !== undefined ? round(monthView.prevExpensesToDate) : null,
+            expensesPrevMonthFull: monthView.prevExpensesFull !== undefined ? round(monthView.prevExpensesFull) : null,
+            incomePrevMonthFull: monthView.prevIncome !== undefined ? round(monthView.prevIncome) : null,
+            projectedMonthEndExpenses: monthView.projectedExpenses !== undefined ? round(monthView.projectedExpenses) : null,
+            projectionBasis: monthView.projectionBasis ?? null,
+            avgCompleteMonthExpenses: round(monthView.avgMonthlyExpenses),
+            avgCompleteMonthIncome: round(monthView.avgMonthlyIncome),
+            budgetTotal: budgetTotal > 0 ? round(budgetTotal) : null,
+            budgetUsedPct: budgetTotal > 0 ? share(monthView.expenses, budgetTotal) : null,
+        },
+
+        budget: {
+            note: [
+                `Monthly spending limits the user set per category, in ${baseCurrency}. Categories without a limit are simply absent — that is not a zero budget.`,
+                'usedThisMonthPct is month-to-date against the full-month limit, so early in the month low numbers are normal; usedLastCompleteMonthPct and monthsOverLimit show the real track record.',
+            ].join(' '),
+            monthlyTotal: round(budgetTotal),
+            categoriesWithLimit: budgetRows.length,
+            lastCompleteMonth,
+            rows: budgetRows,
         },
 
         income: {
