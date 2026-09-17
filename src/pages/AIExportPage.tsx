@@ -107,6 +107,8 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                     balance: a.current,
                     rubEquivalent: a.rubEquivalent,
                     balanceDate: a.balance_date,
+                    operationsSinceBalance: a.txSinceBalance,
+                    lastActivity: a.lastActivity,
                 })),
                 netWorth: totalNetWorth,
                 liveRates: { rates, date: null, isLive: isLiveRates },
@@ -629,15 +631,26 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                     <Card
                         icon={<Wallet className="w-4 h-4" />}
                         title="Wallet Balances"
-                        hint={`net worth ${money(summary.netWorthInBase)} ${meta.baseCurrency}`}
+                        hint={`net worth ${money(summary.netWorthInBase)} ${meta.baseCurrency} · volatile ${dataPayload.accounts.volatileAssets.sharePct}%${dataPayload.accounts.walletsWithOutdatedBalance ? ` · ${dataPayload.accounts.walletsWithOutdatedBalance} outdated` : ''}`}
                     >
                         <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                            {dataPayload.accounts.byCurrency.length > 0 && (
+                                <div className="flex flex-wrap gap-x-3 gap-y-1 px-1 text-xs text-gray-500">
+                                    {dataPayload.accounts.byCurrency.filter(c => c.sharePct >= 0.5).map(c => (
+                                        <span key={c.currency}><span className="font-semibold text-gray-700">{c.currency === 'USD' ? 'USD·USDT' : c.currency}</span> {c.sharePct}%</span>
+                                    ))}
+                                </div>
+                            )}
                             {dataPayload.accounts.rows.map(a => (
                                 <div key={a.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm transition-colors hover:bg-gray-100">
                                     <div className="min-w-0">
-                                        <span className="font-medium text-gray-700 truncate block">{a.name}</span>
+                                        <span className="font-medium text-gray-700 truncate block">
+                                            {a.name}
+                                            {a.balanceLikelyOutdated && <span className="ml-2 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-700 uppercase tracking-wide">outdated</span>}
+                                        </span>
                                         <span className="block text-xs text-gray-400">
-                                            {a.currency} · {a.spendCount} tx
+                                            {a.currency} · {a.spendCount} tx · {a.balanceEnteredOn ? `entered ${a.balanceEnteredOn}` : 'no balance date'}
+                                            {a.balanceLikelyOutdated && <span className="text-amber-600"> · {a.operationsSinceBalance} ops since</span>}
                                         </span>
                                     </div>
                                     <div className="text-right shrink-0">

@@ -124,6 +124,8 @@ export interface ExportAccount {
     balance: number;         // manually maintained, in the account's own currency
     rubEquivalent: number;
     balanceDate?: string;
+    operationsSinceBalance?: number; // imported operations dated after the balance was entered
+    lastActivity?: string | null;    // newest operation touching the wallet
 }
 
 export interface ExportRates {
@@ -965,18 +967,51 @@ export function buildAIExportPayload(input: AIExportInput) {
 
     const accountRows = accounts.map(a => {
         const activity = spendByAccountKey.get(norm(a.name));
+        const opsSince = a.operationsSinceBalance ?? 0;
         return {
             name: a.name,
             type: a.type,
             currency: a.currency,
             balance: roundNative(a.balance, a.currency),
             balanceInBase: round(a.rubEquivalent),
-            balanceEnteredOn: a.balanceDate ?? null,
+            balanceEnteredOn: a.balanceDate ? a.balanceDate.slice(0, 10) : null,
+            operationsSinceBalance: opsSince,
+            balanceLikelyOutdated: !!a.balanceDate && opsSince > 0,
             spendTotal: activity?.amount ?? 0,
             spendCount: activity?.count ?? 0,
-            lastUsed: lastUsedByAccount.get(a.name) ?? activity?.lastUsed ?? null,
+            lastUsed: a.lastActivity ?? lastUsedByAccount.get(a.name) ?? activity?.lastUsed ?? null,
         };
     });
+
+    // Where the net worth sits, by currency family (dollar stablecoins count as dollars).
+    const exposureFamily = (c: string) => (c === 'USDT' || c === 'USDC' ? 'USD' : c);
+    const exposureMap = new Map<string, { inBase: number; wallets: number }>();
+    accounts.forEach(a => {
+        if (a.rubEquivalent <= 0) return;
+        const f = exposureFamily(a.currency.toUpperCase());
+        const e = exposureMap.get(f) ?? { inBase: 0, wallets: 0 };
+        e.inBase += a.rubEquivalent;
+        e.wallets += 1;
+        exposureMap.set(f, e);
+    });
+    const exposureTotal = sum([...exposureMap.values()].map(e => e.inBase));
+    const netWorthByCurrency = [...exposureMap.entries()]
+        .map(([currency, e]) => ({ currency, inBase: round(e.inBase), sharePct: share(e.inBase, exposureTotal), wallets: e.wallets }))
+        .sort((a, b) => b.inBase - a.inBase);
+
+    // What can actually halve in a bad month: coins with a price of their own. Stablecoins
+    // are dollars for this purpose, so they are NOT volatile.
+    const volatileWallets = accounts.filter(a => {
+        const c = a.currency.toUpperCase();
+        return a.rubEquivalent > 0 && exposureFamily(c) !== 'USD' && getCurrencyMeta(c).kind === 'crypto';
+    });
+    const volatileInBase = sum(volatileWallets.map(a => a.rubEquivalent));
+    const volatileAssets = {
+        sharePct: share(volatileInBase, exposureTotal),
+        inBase: round(volatileInBase),
+        currencies: [...new Set(volatileWallets.map(a => a.currency.toUpperCase()))],
+        wallets: volatileWallets.length,
+    };
 
     // ----------------------------------------------------------------- trips
     const tripRows = trips
@@ -1361,8 +1396,17 @@ export function buildAIExportPayload(input: AIExportInput) {
         },
 
         accounts: {
-            note: 'Balances are entered manually by the user and are not moved by transactions. balanceEnteredOn is when that number was last confirmed. A day-by-day balance history cannot be reconstructed from the ledger — the source export carries no opening balance.',
+            note: [
+                'Balances are entered manually by the user and are not moved by transactions. balanceEnteredOn is when that number was last confirmed (null = never dated).',
+                'balanceLikelyOutdated is true when operations were imported with dates after the balance was entered — treat that balance as approximate.',
+                'A day-by-day balance history cannot be reconstructed from the ledger — the source export carries no opening balance.',
+                'byCurrency is the net-worth exposure by currency family (USDT/USDC counted as USD); wallets without a known rate are left out.',
+                'volatileAssets is the share held in coins with a price of their own (BTC, ETH…) — stablecoins are treated as cash, so "crypto" and "volatile" are different things here.',
+            ].join(' '),
             totalNetWorthInBase: netWorth !== undefined ? round(netWorth) : null,
+            walletsWithOutdatedBalance: accountRows.filter(r => r.balanceLikelyOutdated).length,
+            byCurrency: netWorthByCurrency,
+            volatileAssets,
             rows: accountRows,
         },
 
