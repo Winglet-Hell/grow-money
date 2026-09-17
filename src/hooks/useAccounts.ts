@@ -18,6 +18,11 @@ export interface AccountStatus extends AccountConfig {
     current: number;
     rubEquivalent: number;
     hasRate: boolean; // false when no RUB rate is known, so the balance cannot be valued
+    isStored: boolean; // has a DB row (discovered-only accounts get one on first save)
+    // Activity from the imported operations — the one clue to whether a manual balance is stale.
+    txCount: number;
+    lastActivity: string | null;   // newest operation touching this account ("YYYY-MM-DD")
+    txSinceBalance: number;        // operations dated after the balance was last entered
 }
 
 const DEFAULT_RATES: Record<string, number> = {
@@ -111,10 +116,42 @@ export function useAccounts(transactions: Transaction[]) {
         const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, '');
         const byKey = new Map<string, AccountStatus>();
 
+        // Operations per account: the source account of every row plus the destination
+        // leg of transfers. Dates are compared as "YYYY-MM-DD" strings.
+        const activity = new Map<string, { count: number; last: string | null; dates: string[] }>();
+        const touch = (name: string | undefined, date: string) => {
+            if (!name) return;
+            const key = normalize(name);
+            const a = activity.get(key) ?? { count: 0, last: null, dates: [] };
+            a.count += 1;
+            const day = date.slice(0, 10);
+            a.dates.push(day);
+            if (!a.last || day > a.last) a.last = day;
+            activity.set(key, a);
+        };
+        if (Array.isArray(transactions)) {
+            transactions.forEach(t => {
+                touch(t.account, t.date);
+                if (t.type === 'transfer') touch(t.category, t.date);
+            });
+        }
+        const activityOf = (key: string, balanceDate?: string) => {
+            const a = activity.get(key);
+            if (!a) return { txCount: 0, lastActivity: null, txSinceBalance: 0 };
+            const since = balanceDate ? balanceDate.slice(0, 10) : null;
+            return {
+                txCount: a.count,
+                lastActivity: a.last,
+                // Without a date there is nothing to compare against; the card says so instead.
+                txSinceBalance: since ? a.dates.filter(d => d > since).length : 0,
+            };
+        };
+
         // 1. DB accounts — the manually maintained balances.
         dbAccounts.forEach(acc => {
-            byKey.set(normalize(acc.name), {
-                id: acc.id || normalize(acc.name),
+            const key = normalize(acc.name);
+            byKey.set(key, {
+                id: acc.id || key,
                 name: acc.name,
                 currency: acc.currency,
                 type: acc.type,
@@ -123,6 +160,8 @@ export function useAccounts(transactions: Transaction[]) {
                 rubEquivalent: 0,
                 hasRate: true, // recomputed below, once the rate table is consulted
                 balance_date: acc.balance_date,
+                isStored: !!acc.id,
+                ...activityOf(key, acc.balance_date),
             });
         });
 
@@ -144,6 +183,8 @@ export function useAccounts(transactions: Transaction[]) {
                     current: 0,
                     rubEquivalent: 0,
                     hasRate: true, // recomputed below, once the rate table is consulted
+                    isStored: false,
+                    ...activityOf(key),
                 });
             };
             transactions.forEach(t => {

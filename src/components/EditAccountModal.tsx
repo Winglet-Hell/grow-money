@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Wallet, Bitcoin, Landmark, Banknote, CreditCard, Trash2 } from 'lucide-react';
+import { X, Wallet, Bitcoin, Landmark, Banknote, CreditCard, Trash2, Merge } from 'lucide-react';
 import type { Account } from '../types';
-import { updateAccount, deleteAccount, isStoredAccountId } from '../lib/accountUtils';
+import { updateAccount, deleteAccount, mergeAccounts, isStoredAccountId } from '../lib/accountUtils';
 import { db } from '../lib/db';
 import { CurrencySelect } from './CurrencySelect';
 import { ConfirmDialog } from './ConfirmDialog';
+
+export interface MergeTarget { id: string; name: string; currency: string; balance: number }
 
 interface EditAccountModalProps {
     isOpen: boolean;
     onClose: () => void;
     account: { id: string; name: string; currency: string; balance: number; type: string };
     onSave: () => void;
+    // Other stored wallets this one could be folded into (same currency, filtered here).
+    mergeTargets?: MergeTarget[];
+    // Called after a merge or rename re-pointed local operations, so the app reloads them.
+    onTransactionsChanged?: () => void;
 }
 
 const ACCOUNT_TYPES: { id: Account['type']; label: string; icon: React.ReactNode }[] = [
@@ -26,7 +32,9 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
     isOpen,
     onClose,
     account,
-    onSave
+    onSave,
+    mergeTargets = [],
+    onTransactionsChanged,
 }) => {
     const [name, setName] = useState('');
     const [currency, setCurrency] = useState('THB');
@@ -35,6 +43,9 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [mergeTargetId, setMergeTargetId] = useState('');
+    const [isMergeOpen, setIsMergeOpen] = useState(false);
+    const [isMerging, setIsMerging] = useState(false);
 
     useEffect(() => {
         if (isOpen && account) {
@@ -43,6 +54,7 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
             setCurrency(account.currency);
             setBalance(account.balance.toString());
             setType(account.type as Account['type']);
+            setMergeTargetId('');
         } else {
             document.body.style.overflow = 'unset';
         }
@@ -60,12 +72,15 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
         const val = parseFloat(balance.replace(/,/g, '.'));
         const finalBalance = isNaN(val) ? 0 : val;
 
-        // Balance is manual — just persist what the user typed.
+        // Balance is manual — persist what the user typed, and stamp when, so the card
+        // can say how fresh the number is.
+        const balanceChanged = finalBalance !== account.balance;
         await updateAccount(account.id, {
             name,
             currency,
             balance: finalBalance,
             type,
+            ...(balanceChanged || !isStoredAccountId(account.id) ? { balance_date: new Date().toISOString() } : {}),
         });
 
         // Keep local transactions pointing at the account if it was renamed, so analytics
@@ -75,9 +90,37 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
                 .where('account')
                 .equals(account.name)
                 .modify({ account: name });
+            await db.transactions
+                .where('category')
+                .equals(account.name)
+                .and(t => t.type === 'transfer')
+                .modify({ category: name });
+            onTransactionsChanged?.();
         }
 
         setIsSubmitting(false);
+        onSave();
+        onClose();
+    };
+
+    // Merge: fold this wallet into another one of the same currency.
+    const sameCurrencyTargets = mergeTargets.filter(t => t.id !== account.id && t.currency === account.currency && isStoredAccountId(t.id));
+    const mergeTarget = sameCurrencyTargets.find(t => t.id === mergeTargetId);
+
+    const handleMerge = async () => {
+        if (!mergeTarget) return;
+        setIsMerging(true);
+        const result = await mergeAccounts(
+            { id: account.id, name: account.name, currency: account.currency, balance: account.balance },
+            mergeTarget
+        );
+        setIsMerging(false);
+        if (!result.success) {
+            console.error('Merge failed:', result.error);
+            return;
+        }
+        setIsMergeOpen(false);
+        onTransactionsChanged?.();
         onSave();
         onClose();
     };
@@ -178,6 +221,39 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
                         Enter the actual balance of this wallet. It's set manually — imported
                         transactions won't change it.
                     </p>
+
+                    {sameCurrencyTargets.length > 0 && (
+                        <div className="pt-3 border-t border-gray-100">
+                            <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5">
+                                <Merge className="w-4 h-4 text-gray-400" />
+                                Merge into another wallet
+                            </label>
+                            <div className="flex gap-2">
+                                <select
+                                    value={mergeTargetId}
+                                    onChange={(e) => setMergeTargetId(e.target.value)}
+                                    className="flex-1 min-w-0 rounded-lg border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm py-2 px-3 border bg-white"
+                                >
+                                    <option value="">Choose a {account.currency} wallet…</option>
+                                    {sameCurrencyTargets.map(t => (
+                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    disabled={!mergeTarget}
+                                    onClick={() => setIsMergeOpen(true)}
+                                    className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Merge
+                                </button>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                                For a wallet renamed in the source app: the balance moves over, imported operations
+                                are re-pointed, and this wallet is removed.
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl flex items-center gap-3">
@@ -208,6 +284,18 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
                     </button>
                 </div>
             </div>
+
+            <ConfirmDialog
+                isOpen={isMergeOpen}
+                title={mergeTarget ? `Merge "${account.name}" into "${mergeTarget.name}"?` : ''}
+                description={mergeTarget
+                    ? `${mergeTarget.name} will hold ${account.balance + mergeTarget.balance} ${account.currency} (${mergeTarget.balance} + ${account.balance}). Operations recorded under "${account.name}" will show as "${mergeTarget.name}", and "${account.name}" will be deleted.`
+                    : ''}
+                confirmLabel="Merge"
+                isBusy={isMerging}
+                onConfirm={handleMerge}
+                onCancel={() => setIsMergeOpen(false)}
+            />
 
             <ConfirmDialog
                 isOpen={isDeleteOpen}

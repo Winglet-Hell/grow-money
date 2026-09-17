@@ -126,6 +126,25 @@ function AppContent() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Reads the device copy into state. Also used after a wallet rename/merge re-points
+  // operations in Dexie, so the pages see the new names without a reload.
+  const reloadFromDb = async () => {
+    try {
+      const count = await db.transactions.count();
+      if (count > 0) {
+        const savedTransactions = await db.transactions.toArray();
+        // UI PREFERENCE: Sort Newest First (Desc)
+        savedTransactions.sort((a, b) => {
+          if (a.date !== b.date) return b.date.localeCompare(a.date);
+          return (a.index || 0) - (b.index || 0);
+        });
+        setTransactions(savedTransactions);
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  };
+
   // 2. Load locally-stored transactions once the session is actually known.
   //    (Previously this ran once on mount reading a stale `session` closure that was
   //     still null, so it never loaded data after the session resolved — the app showed
@@ -142,26 +161,7 @@ function AppContent() {
     if (dataLoadedRef.current) return; // don't reload on token refresh
     dataLoadedRef.current = true;
 
-    const loadData = async () => {
-      try {
-        const count = await db.transactions.count();
-        if (count > 0) {
-          const savedTransactions = await db.transactions.toArray();
-          // UI PREFERENCE: Sort Newest First (Desc)
-          savedTransactions.sort((a, b) => {
-            if (a.date !== b.date) return b.date.localeCompare(a.date);
-            return (a.index || 0) - (b.index || 0);
-          });
-          setTransactions(savedTransactions);
-        }
-      } catch (error) {
-        console.error('Error loading data:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadData();
+    reloadFromDb().finally(() => setIsLoading(false));
   }, [session, authReady]);
 
   // Replaces whatever is on the device with a freshly parsed statement. Used by the
@@ -375,7 +375,7 @@ function AppContent() {
                 <Route path="/paycheck" element={<PaycheckPage transactions={transactions} />} />
                 <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
                 <Route path="/wishlist" element={<WishlistPage transactions={transactions} />} />
-                <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} />} />
+                <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} onTransactionsChanged={reloadFromDb} />} />
                 <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
                 <Route path="/trip-analytics" element={<TripAnalyticsPage transactions={transactions} />} />
                 <Route path="/travel-index" element={<TravelIndexPage transactions={transactions} />} />

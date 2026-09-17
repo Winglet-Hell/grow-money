@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { db } from './db';
 import type { Account, Transaction } from '../types';
 import { normalizeCurrencyCode, inferCurrencyFromName, isCryptoCode } from './currencies';
 
@@ -121,6 +122,7 @@ export async function createManualAccount(
                 name,
                 currency,
                 balance: initialBalance,
+                balance_date: new Date().toISOString(),
                 type,
                 is_hidden: false
             });
@@ -214,5 +216,43 @@ export async function deleteAccount(accountId: string): Promise<{ success: boole
         return { success: true };
     } catch (err) {
         return { success: false, error: err };
+    }
+}
+
+// Folds one stored wallet into another of the same currency: the balance moves over,
+// local operations that named the old wallet are re-pointed at the new one, and the
+// old row is deleted. This is how a wallet renamed in the source app (which has no
+// stable account id, so every rename imports as a brand-new zero-balance wallet) gets
+// its balance back without retyping it.
+export async function mergeAccounts(
+    source: { id: string; name: string; currency: string; balance: number },
+    target: { id: string; name: string; currency: string; balance: number }
+): Promise<{ success: boolean; renamed: number; error?: any }> {
+    if (source.currency !== target.currency) {
+        return { success: false, renamed: 0, error: 'Wallets must share a currency to merge balances' };
+    }
+    if (!isStoredAccountId(target.id)) {
+        return { success: false, renamed: 0, error: 'Target wallet is not saved yet' };
+    }
+    try {
+        const { error: updateError } = await supabase
+            .from('accounts')
+            .update({ balance: source.balance + target.balance, balance_date: new Date().toISOString() })
+            .eq('id', target.id);
+        if (updateError) return { success: false, renamed: 0, error: updateError };
+
+        const renamedSources = await db.transactions.where('account').equals(source.name).modify({ account: target.name });
+        const renamedDestinations = await db.transactions
+            .where('category').equals(source.name)
+            .and(t => t.type === 'transfer')
+            .modify({ category: target.name });
+
+        if (isStoredAccountId(source.id)) {
+            const { error: deleteError } = await supabase.from('accounts').delete().eq('id', source.id);
+            if (deleteError) return { success: false, renamed: renamedSources + renamedDestinations, error: deleteError };
+        }
+        return { success: true, renamed: renamedSources + renamedDestinations };
+    } catch (err) {
+        return { success: false, renamed: 0, error: err };
     }
 }
