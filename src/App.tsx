@@ -8,6 +8,7 @@ import { cn } from './lib/utils';
 import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
 import { syncAccountsWithSupabase } from './lib/accountUtils';
+import { invalidateAccounts, clearAccountsCache } from './lib/accountsStore';
 import { parseFile } from './lib/parser';
 import { readImportMeta, writeImportMeta, clearImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
 import { ImportStatementDialog, type ImportState } from './components/ImportStatementDialog';
@@ -119,8 +120,12 @@ function AppContent() {
       setSession(session);
       setUserEmail(session?.user?.email);
       setAuthReady(true);
-      // On sign-out, allow local data to load again on the next sign-in.
-      if (!session) dataLoadedRef.current = false;
+      // On sign-out, allow local data to load again on the next sign-in, and drop the
+      // cached wallet list so the next account never sees the previous one's.
+      if (!session) {
+        dataLoadedRef.current = false;
+        clearAccountsCache();
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -187,9 +192,12 @@ function AppContent() {
     writeImportMeta(meta);
     setImportMeta(meta);
 
-    // Sync newly discovered accounts to Supabase
+    // Sync newly discovered accounts to Supabase, then let every mounted wallet list
+    // know the set of wallets may have grown.
     if (session?.user?.id) {
-      return syncAccountsWithSupabase(data, session.user.id);
+      const created = await syncAccountsWithSupabase(data, session.user.id);
+      await invalidateAccounts();
+      return created;
     }
     return [];
   };

@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Transaction, Account } from '../types';
-import { supabase } from '../lib/supabase';
 import { inferAccountDetails } from '../lib/accountUtils';
-import { registerRateCodes, loadCurrencyCatalogue } from '../lib/currencies';
+import { loadCurrencyCatalogue } from '../lib/currencies';
+import { fetchLiveRates, getCachedLiveRates } from '../lib/liveRates';
+import { getCachedAccounts, loadAccounts, invalidateAccounts, subscribeAccounts } from '../lib/accountsStore';
 
 export interface AccountConfig {
     id: string;
@@ -35,77 +36,52 @@ const DEFAULT_RATES: Record<string, number> = {
     BTC: 9500000,
 };
 
+// Live rates on top of the offline fallbacks, so an unknown code still has a value.
+const withDefaults = (live: Record<string, number>) => ({ ...DEFAULT_RATES, ...live });
+
 export function useAccounts(transactions: Transaction[]) {
-    const [rates, setRates] = useState<Record<string, number>>(DEFAULT_RATES);
-    const [dbAccounts, setDbAccounts] = useState<Account[]>([]);
-    const [isLoadingRates, setIsLoadingRates] = useState(false);
-    const [isLiveRates, setIsLiveRates] = useState(false);
+    // Both caches are shared across pages (see lib/liveRates and lib/accountsStore), so
+    // the second page to mount starts with the numbers already in hand.
+    const cachedRates = getCachedLiveRates();
+    const [rates, setRates] = useState<Record<string, number>>(() => cachedRates ? withDefaults(cachedRates.rates) : DEFAULT_RATES);
+    const [isLiveRates, setIsLiveRates] = useState(!!cachedRates);
+    const [isLoadingRates, setIsLoadingRates] = useState(!cachedRates);
+    const [dbAccounts, setDbAccounts] = useState<Account[]>(() => getCachedAccounts() ?? []);
 
-    // Fetch Accounts from DB
-    const fetchSupabaseAccounts = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-
-        let query = supabase.from('accounts').select('*');
-
-        if (user) {
-            query = query.eq('user_id', user.id);
-        } else {
-            query = query.is('user_id', null);
-        }
-
-        const { data } = await query.order('created_at', { ascending: true });
-        if (data) {
-            setDbAccounts(data);
-        }
-    };
-
+    // Accounts: load once, then follow the store — every save/delete/merge/import goes
+    // through invalidateAccounts(), which re-queries and pushes to all mounted hooks.
     useEffect(() => {
-        fetchSupabaseAccounts();
-    }, [transactions]);
+        let cancelled = false;
+        const unsubscribe = subscribeAccounts(() => {
+            const next = getCachedAccounts();
+            if (!cancelled && next) setDbAccounts(next);
+        });
+        loadAccounts().then(next => { if (!cancelled) setDbAccounts(next); });
+        return () => { cancelled = true; unsubscribe(); };
+    }, []);
 
-    // Fetch Rates
+    const fetchSupabaseAccounts = useCallback(async () => {
+        const next = await invalidateAccounts();
+        setDbAccounts(next);
+    }, []);
+
+    // Rates: one download per session, shared.
     useEffect(() => {
-        const fetchRates = async () => {
-            setIsLoadingRates(true);
-            try {
-                const response = await fetch('https://latest.currency-api.pages.dev/v1/currencies/rub.json');
-                const data = await response.json();
-
-                if (data && data.rub) {
-                    const newRates: Record<string, number> = { ...DEFAULT_RATES };
-                    const apiRates = data.rub;
-
-                    Object.keys(apiRates).forEach(currency => {
-                        const code = currency.toUpperCase();
-                        const rate = apiRates[currency];
-                        if (rate > 0) {
-                            newRates[code] = 1 / rate;
-                        }
-                    });
-
-                    // Stablecoins are occasionally absent — fall back to USD parity.
-                    if (newRates['USD']) {
-                        if (!newRates['USDT']) newRates['USDT'] = newRates['USD'];
-                        if (!newRates['USDC']) newRates['USDC'] = newRates['USD'];
-                    }
-
-                    // Let the shared catalogue know which codes can actually be valued.
-                    registerRateCodes(Object.keys(newRates));
-
-                    setRates(newRates);
-                    setIsLiveRates(true);
-                }
-            } catch (error) {
-                console.error('Failed to fetch rates:', error);
+        let cancelled = false;
+        // isLoadingRates already starts true when nothing is cached (see useState above).
+        fetchLiveRates().then(snapshot => {
+            if (cancelled) return;
+            if (snapshot) {
+                setRates(withDefaults(snapshot.rates));
+                setIsLiveRates(true);
+            } else {
                 setIsLiveRates(false);
-            } finally {
-                setIsLoadingRates(false);
             }
-        };
-
-        fetchRates();
+            setIsLoadingRates(false);
+        });
         // Codes + display names for the currency pickers.
         loadCurrencyCatalogue();
+        return () => { cancelled = true; };
     }, []);
 
     // Wallet balances are entered MANUALLY and stored in the DB — that is the single
