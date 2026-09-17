@@ -9,6 +9,7 @@ export interface UserPreferences {
     tableShowCategory?: boolean;
     customSearchTags?: string[]; // quick-filter chips on the Trip Analytics page
     paycheck?: PaycheckConfig;
+    recurring?: { hiddenIds?: string[] }; // detected series the user marked "not recurring"
 }
 
 export interface UserProfile {

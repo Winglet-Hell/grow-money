@@ -5,6 +5,7 @@ import type { ImportMeta } from '../lib/importing';
 import { SummaryCards } from '../components/SummaryCards';
 import { Charts } from '../components/Charts';
 import { TransactionTable } from '../components/TransactionTable';
+import { RecurringStrip } from '../components/RecurringStrip';
 import { useCategoryLimits } from '../hooks/useCategoryLimits';
 import { cn, getFormattedDateRange, formatDate } from '../lib/utils';
 import {
@@ -224,6 +225,7 @@ export function DashboardPage({ transactions, importMeta, onImport }: DashboardP
             )}
 
             <SummaryCards transactions={transactions} period={period} budget={budget} />
+            <RecurringStrip transactions={transactions} />
             <Charts transactions={transactions} period={period} budget={budget} onSelectMonth={chooseMonth} />
             <TransactionTable
                 transactions={periodTransactions}
