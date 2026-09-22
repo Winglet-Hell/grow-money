@@ -30,8 +30,8 @@ export interface RecurringSeries {
     currency: string;           // the currency most charges were paid in; 'RUB' for a truly mixed series
     cadence: Cadence;
     intervalDays: number;       // median gap between charges
-    amount: number;             // typical charge, in `currency` (median of the comparable charges)
-    amountRub: number;          // typical charge, in RUB
+    amount: number;             // current charge, in `currency` (median of the latest comparable charges)
+    amountRub: number;          // current charge, in RUB (median of the latest charges)
     monthlyRub: number;         // typical charge normalised to a month
     charges: RecurringCharge[]; // ascending by date
     count: number;
@@ -78,6 +78,7 @@ const AMOUNT_TOLERANCE_RUB = 0.35; // looser when currencies were mixed and RUB 
 const DOMINANT_SHARE = 0.6;      // share of charges one currency family needs to speak for the series
 const ENDED_AFTER = 1.75;        // intervals since the last charge → treated as ended
 const PRICE_CHANGE = 0.10;
+const RECENT_CHARGES = 3;        // what a series costs and when it lands *now*: its latest charges
 
 const DAY_MS = 86_400_000;
 const dayNumber = (date: string) => Math.round(Date.parse(date.slice(0, 10)) / DAY_MS);
@@ -212,7 +213,11 @@ export function detectRecurring(transactions: Transaction[], options: DetectOpti
             ? { from: previousTypical, to: last.amount }
             : undefined;
 
-        const amountRub = median(charges.map(c => c.amountRub));
+        // The price shown is today's: the median of the latest charges, so a rise that has
+        // stuck replaces the old price while one odd charge doesn't move it. The whole history
+        // above only decides whether this is a steady series at all.
+        const currentAmount = median(amounts.slice(-RECENT_CHARGES));
+        const amountRub = median(charges.slice(-RECENT_CHARGES).map(c => c.amountRub));
         const first = charges[0];
 
         series.push({
@@ -223,7 +228,7 @@ export function detectRecurring(transactions: Transaction[], options: DetectOpti
             currency: displayCurrency,
             cadence: spec.cadence,
             intervalDays,
-            amount: typical,
+            amount: currentAmount,
             amountRub,
             monthlyRub: amountRub * spec.perMonth,
             charges,
@@ -284,11 +289,19 @@ export const CADENCE_LABEL: Record<Cadence, string> = {
     yearly: 'Yearly',
 };
 
-/** Day-of-month the series usually lands on (median), for "around the 12th" labels. */
+/**
+ * Day of the month the series lands on lately (median of its latest charges), for "around
+ * the 12th" labels — a bill that moved from the 17th to the end of the month says so.
+ */
 export function typicalDayOfMonth(series: RecurringSeries): number | null {
     if (series.cadence !== 'monthly') return null;
-    const days = series.charges.map(c => dayOfMonthOf(c.date)).filter((d): d is number => d !== null);
-    return days.length ? Math.round(median(days)) : null;
+    const days = series.charges.slice(-RECENT_CHARGES).map(c => dayOfMonthOf(c.date)).filter((d): d is number => d !== null);
+    if (!days.length) return null;
+    // Charges on either side of the month boundary (the 30th, the 1st) would median out
+    // mid-month; count early days as the end of the month before them instead.
+    const straddles = Math.max(...days) - Math.min(...days) > 15;
+    const day = Math.round(median(straddles ? days.map(d => (d <= 15 ? d + 31 : d)) : days));
+    return day > 31 ? day - 31 : day;
 }
 
 /** Charges of a series that fall in a given "YYYY-MM". */
