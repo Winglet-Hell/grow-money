@@ -7,11 +7,12 @@ import type { Transaction } from '../types';
 
 interface FileUploaderProps {
     onDataLoaded: (data: Transaction[], fileName?: string) => void;
+    onTestData: (data: Transaction[]) => void; // "Try Test Data": shown, never stored
     isAuthenticated?: boolean;
     onSignIn?: () => void;
 }
 
-export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, isAuthenticated = false, onSignIn }) => {
+export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, onTestData, isAuthenticated = false, onSignIn }) => {
     const [isDragOver, setIsDragOver] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -66,10 +67,10 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, isAuth
         try {
             console.log("Generating local test data...");
             const transactionData = generateTestData();
-            onDataLoaded(transactionData, 'Test data');
+            onTestData(transactionData);
         } catch (err) {
             console.error("Error loading test data:", err);
-            onDataLoaded(generateTestData(), 'Test data');
+            onTestData(generateTestData());
         } finally {
             setTimeout(() => {
                 setLoading(false);

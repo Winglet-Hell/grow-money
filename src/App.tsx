@@ -99,6 +99,7 @@ function AppContent() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [importMeta, setImportMeta] = useState<ImportMeta | null>(() => readImportMeta());
   const [importState, setImportState] = useState<ImportState>({ status: 'idle' });
+  const [isTestData, setIsTestData] = useState(false); // "Try Test Data" is on screen (held in memory only)
   const importInputRef = useRef<HTMLInputElement>(null);
   const dataLoadedRef = useRef(false);
 
@@ -132,7 +133,8 @@ function AppContent() {
   }, []);
 
   // Reads the device copy into state. Also used after a wallet rename/merge re-points
-  // operations in Dexie, so the pages see the new names without a reload.
+  // operations in Dexie, so the pages see the new names without a reload. Replaces test
+  // data a visitor was looking at before signing in, even when nothing is stored.
   const reloadFromDb = async () => {
     try {
       const count = await db.transactions.count();
@@ -144,7 +146,11 @@ function AppContent() {
           return (a.index || 0) - (b.index || 0);
         });
         setTransactions(savedTransactions);
+      } else {
+        setTransactions([]);
       }
+      setImportMeta(readImportMeta());
+      setIsTestData(false);
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -180,6 +186,7 @@ function AppContent() {
     });
 
     setTransactions(data);
+    setIsTestData(false);
     await db.transactions.clear();
     await db.transactions.bulkAdd(data);
 
@@ -204,6 +211,21 @@ function AppContent() {
 
   const handleDataLoaded = async (data: Transaction[], fileName?: string) => {
     await applyImport(data, fileName);
+  };
+
+  // "Try Test Data" is a look around for signed-out visitors, so it is held in memory only.
+  // Going through applyImport would replace the statement stored on this device — signing
+  // out keeps it there for the next sign-in — with the demo rows.
+  const loadTestData = (data: Transaction[]) => {
+    data.sort((a, b) => (a.date !== b.date ? b.date.localeCompare(a.date) : (a.index || 0) - (b.index || 0)));
+    setTransactions(data);
+    setIsTestData(true);
+    setImportMeta({
+      at: new Date().toISOString(),
+      count: data.length,
+      fileName: 'Test data',
+      latestDate: data.reduce<string | null>((max, t) => (!max || t.date > max ? t.date : max), null),
+    });
   };
 
   // "Import statement" opens the OS file picker straight away (must happen inside the
@@ -244,7 +266,14 @@ function AppContent() {
 
   // Wiping local data means re-uploading the statement to get it back, so every
   // entry point (header menu, mobile menu) goes through a confirmation first.
-  const requestReset = () => setIsResetDialogOpen(true);
+  // Test data was never stored: clearing it just closes the demo and leaves the device copy alone.
+  const requestReset = () => (isTestData ? closeTestData() : setIsResetDialogOpen(true));
+
+  const closeTestData = () => {
+    setTransactions([]);
+    setIsTestData(false);
+    setImportMeta(readImportMeta());
+  };
 
   const handleReset = async () => {
     setIsResetDialogOpen(false);
@@ -352,7 +381,7 @@ function AppContent() {
                 </p>
               </div>
 
-              <FileUploader onDataLoaded={handleDataLoaded} isAuthenticated={!!session} onSignIn={() => setShowAuth(true)} />
+              <FileUploader onDataLoaded={handleDataLoaded} onTestData={loadTestData} isAuthenticated={!!session} onSignIn={() => setShowAuth(true)} />
 
               {/* Comprehensive Features Grid - Hidden on mobile as per user request */}
               <div className="mt-12 md:mt-32 w-full hidden md:block">
