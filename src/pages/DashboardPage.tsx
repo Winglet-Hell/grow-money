@@ -7,6 +7,7 @@ import { Charts } from '../components/Charts';
 import { TransactionTable } from '../components/TransactionTable';
 import { RecurringStrip } from '../components/RecurringStrip';
 import { useCategoryLimits } from '../hooks/useCategoryLimits';
+import { monthlyBudget } from '../lib/budget';
 import { cn, getFormattedDateRange, formatDate } from '../lib/utils';
 import {
     filterByPeriod, monthKeyFromDate, shiftMonthKey, monthLabel, daysInMonth,
@@ -71,7 +72,7 @@ export function DashboardPage({ transactions, importMeta, onImport }: DashboardP
 
     // Category limits double as the monthly budget for the pace card and the target line.
     const { limits } = useCategoryLimits();
-    const budget = useMemo(() => Object.values(limits).reduce((sum, v) => sum + v, 0), [limits]);
+    const budget = useMemo(() => monthlyBudget(limits, transactions), [limits, transactions]);
 
     const periodTransactions = useMemo(() => filterByPeriod(transactions, period), [transactions, period]);
 

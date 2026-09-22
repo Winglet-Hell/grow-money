@@ -9,6 +9,7 @@ import { getGlobalCategory } from './categoryGroups';
 import { detectRecurring, typicalDayOfMonth } from './recurring';
 import { summarizePeriod, monthKeyFromDate } from './periods';
 import { resolveTripActiveTransactions } from './tripUtils';
+import { activeLimits } from './budget';
 import { getCurrencyMeta } from './currencies';
 import {
     FIRST_SNAPSHOT_DATE,
@@ -645,8 +646,7 @@ export function buildAIExportPayload(input: AIExportInput) {
 
     const spentIn = (mk: string | null, category?: string) =>
         mk ? sum(expenses.filter(t => monthKey(t.date) === mk && (!category || t.category === category)).map(baseAmount)) : 0;
-    const budgetRows = Object.entries(categoryLimits)
-        .filter(([, limit]) => typeof limit === 'number' && limit > 0)
+    const budgetRows = Object.entries(activeLimits(categoryLimits, transactions))
         .map(([category, limit]) => {
             const spentThisMonth = spentIn(currentMonthKey, category);
             const spentLastComplete = spentIn(lastCompleteMonth, category);

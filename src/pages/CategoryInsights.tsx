@@ -186,24 +186,21 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             // Calculate Limit
             let limit: number | undefined = undefined;
             if (viewMode === 'global') {
-                // First check if there's a limit set on the Global Group name itself
-                const globalLimit = getLimit(category);
-                if (globalLimit !== undefined) {
-                    limit = globalLimit;
-                } else {
-                    // Fallback: Sum limits of all detailed constituents
-                    const constituents = groupConstituents[category] || new Set();
-                    let hasAnyConstituentLimit = false;
-                    const sum = Array.from(constituents).reduce((acc, cat) => {
-                        const l = getLimit(cat);
-                        if (l !== undefined) {
-                            hasAnyConstituentLimit = true;
-                            return acc + l;
-                        }
-                        return acc;
-                    }, 0);
-                    limit = hasAnyConstituentLimit ? sum : undefined;
-                }
+                // A group's limit is the sum of its categories' limits. Limits are only set per
+                // category; a row stored under a group's name is a leftover (the demo data has a
+                // "Shopping" category) or a category that shares the name ("Health"), and letting
+                // it stand for the whole group replaced the group's real budget with that one row.
+                const constituents = groupConstituents[category] || new Set();
+                let hasAnyConstituentLimit = false;
+                const sum = Array.from(constituents).reduce((acc, cat) => {
+                    const l = getLimit(cat);
+                    if (l !== undefined) {
+                        hasAnyConstituentLimit = true;
+                        return acc + l;
+                    }
+                    return acc;
+                }, 0);
+                limit = hasAnyConstituentLimit ? sum : undefined;
             } else {
                 limit = getLimit(category);
             }
