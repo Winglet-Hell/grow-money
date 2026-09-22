@@ -10,6 +10,12 @@ interface SpendingHeatmapProps {
     transactions: Transaction[];
 }
 
+// The viewer's calendar date as "YYYY-MM-DD". The grid walks local days; toISOString() gives
+// the UTC date instead, which runs a day behind after midnight east of Greenwich (until 03:00
+// in Moscow) and shifted every cell onto the previous day's spending.
+const localDateKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }) => {
     const { isPrivacyMode } = usePrivacy();
     const [selectedDayList, setSelectedDayList] = useState<{ date: Date; transactions: Transaction[] } | null>(null);
@@ -99,7 +105,7 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
             safeguard++;
             if (safeguard > 1000) break;
 
-            const isoDate = iterDate.toISOString().split('T')[0];
+            const isoDate = localDateKey(iterDate);
             const data = dailySpend.get(isoDate);
             const amount = data ? data.amount : 0;
             const count = data ? data.count : 0;
@@ -110,36 +116,42 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
             // Actually, better condition:
             if (iterDate > endDate && currentWeek.length === 0) break;
 
-            if (amount > 0) {
-                minSpend = Math.min(minSpend, amount);
-                totalSpend += amount;
+            if (iterDate > endDate) {
+                // Days after today only pad out the last week: left blank and out of the stats,
+                // since a day that hasn't happened yet isn't a day without spending.
+                currentWeek.push(null);
+            } else {
+                if (amount > 0) {
+                    minSpend = Math.min(minSpend, amount);
+                    totalSpend += amount;
+                }
+
+                const intensity = getIntensity(amount);
+
+                // Update Stats
+                stats[intensity as keyof typeof stats].count++;
+                stats[intensity as keyof typeof stats].total += amount;
+                if (amount > 0) {
+                    // Only track min/max for non-zero amounts for tiers > 0
+                    // But for tier 0 min/max are 0.
+                    stats[intensity as keyof typeof stats].min = Math.min(stats[intensity as keyof typeof stats].min, amount);
+                    stats[intensity as keyof typeof stats].max = Math.max(stats[intensity as keyof typeof stats].max, amount);
+                } else if (intensity === 0) { // For tier 0, min/max are 0
+                    stats[intensity as keyof typeof stats].min = 0;
+                    stats[intensity as keyof typeof stats].max = 0;
+                }
+
+                const dayData = {
+                    date: new Date(iterDate),
+                    dateStr: isoDate,
+                    amount,
+                    count,
+                    intensity,
+                    transactions: dayTransactions
+                };
+
+                currentWeek.push(dayData);
             }
-
-            const intensity = getIntensity(amount);
-
-            // Update Stats
-            stats[intensity as keyof typeof stats].count++;
-            stats[intensity as keyof typeof stats].total += amount;
-            if (amount > 0) {
-                // Only track min/max for non-zero amounts for tiers > 0
-                // But for tier 0 min/max are 0.
-                stats[intensity as keyof typeof stats].min = Math.min(stats[intensity as keyof typeof stats].min, amount);
-                stats[intensity as keyof typeof stats].max = Math.max(stats[intensity as keyof typeof stats].max, amount);
-            } else if (intensity === 0) { // For tier 0, min/max are 0
-                stats[intensity as keyof typeof stats].min = 0;
-                stats[intensity as keyof typeof stats].max = 0;
-            }
-
-            const dayData = {
-                date: new Date(iterDate),
-                dateStr: isoDate,
-                amount,
-                count,
-                intensity,
-                transactions: dayTransactions
-            };
-
-            currentWeek.push(dayData);
 
             if (currentWeek.length === 7) {
                 weeks.push({ days: currentWeek });
