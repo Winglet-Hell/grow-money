@@ -348,7 +348,7 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
                                         {label}
                                     </span>
                                     <span className="text-[9px] text-gray-400">
-                                        {s.count} days
+                                        {s.count} {s.count === 1 ? 'day' : 'days'}
                                     </span>
                                 </div>
                             </div>

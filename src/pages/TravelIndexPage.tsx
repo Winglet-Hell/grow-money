@@ -726,7 +726,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                                 </div>
                                             </div>
                                             <div className="flex justify-between text-xs text-gray-500">
-                                                <span>{result.txCount} txs • {formatMoney(result.totalAmount)} total{result.tripCount > 1 ? ` • ${result.tripCount} trips` : ''}</span>
+                                                <span>{result.txCount} {result.txCount === 1 ? 'tx' : 'txs'} • {formatMoney(result.totalAmount)} total{result.tripCount > 1 ? ` • ${result.tripCount} trips` : ''}</span>
                                             </div>
                                         </div>
                                     ))}

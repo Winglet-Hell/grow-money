@@ -1261,7 +1261,7 @@ ${JSON.stringify(data, null, 2)}`;
                                         <Plane className="w-6 h-6" />
                                     </div>
                                     <span className="px-2 py-1 rounded text-xs font-bold bg-blue-100 text-blue-600">
-                                        {days} Days
+                                        {days} {days === 1 ? 'Day' : 'Days'}
                                     </span>
                                 </div>
 

@@ -776,7 +776,7 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                                             <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
                                             <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs">{pair.to}</span>
                                         </div>
-                                        <div className="text-xs text-gray-400 mt-1">{pair.count} exchanges · last {formatDate(pair.lastDate)}</div>
+                                        <div className="text-xs text-gray-400 mt-1">{pair.count} exchange{pair.count === 1 ? '' : 's'} · last {formatDate(pair.lastDate)}</div>
                                     </div>
                                     <div className="text-right">
                                         <div className="font-bold text-gray-900">{formatRate(pair.avgRate)}</div>

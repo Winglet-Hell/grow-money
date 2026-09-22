@@ -697,7 +697,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                 </TableHead>
                                 <TableHead className="text-right cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handleSort('yearForecast')}>
                                     <div className="flex items-center justify-end gap-1">
-                                        Forecast (Rem. Year)
+                                        Year Forecast
                                         {sortField === 'yearForecast' && <ArrowUpDown className="w-3 h-3" />}
                                     </div>
                                 </TableHead>
