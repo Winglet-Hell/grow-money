@@ -107,11 +107,17 @@ const payeeOf = (t: Transaction): string | null => {
 // ("Сумма в валюте учета"). Transfers do NOT — they are handled separately.
 const baseAmount = (t: Transaction): number => Math.abs(t.amount);
 
+// Amount and currency always come as a pair: a row that names its wallet currency but
+// has no amount in it (older imports dropped tiny crypto amounts) falls back to the
+// base amount under the base currency — never a ruble amount reported as that many BTC.
+const hasNativeAmount = (t: Transaction): boolean =>
+    t.originalAmount !== undefined && Boolean(t.originalCurrency);
+
 const nativeCurrencyOf = (t: Transaction, baseCurrency: string): string =>
-    (t.originalCurrency || t.currency || baseCurrency).toUpperCase();
+    ((hasNativeAmount(t) ? t.originalCurrency : t.currency) || baseCurrency).toUpperCase();
 
 const nativeAmountOf = (t: Transaction): number =>
-    Math.abs(t.originalAmount !== undefined ? t.originalAmount : t.amount);
+    Math.abs(hasNativeAmount(t) ? t.originalAmount! : t.amount);
 
 // ---------------------------------------------------------------------------
 // inputs
@@ -1104,7 +1110,7 @@ export function buildAIExportPayload(input: AIExportInput) {
             round(baseAmount(t)),
             t.account || 'Unknown',
             payeeOf(t),
-            round(nativeAmountOf(t)),
+            roundNative(nativeAmountOf(t), nativeCurrencyOf(t, baseCurrency)),
             nativeCurrencyOf(t, baseCurrency),
             (t.note || '').trim() || null,
         ]);
@@ -1125,9 +1131,9 @@ export function buildAIExportPayload(input: AIExportInput) {
             t.date,
             t.account || 'Unknown',
             t.category || 'Unknown',
-            t.fromAmount !== undefined ? round(t.fromAmount) : round(Math.abs(t.amount)),
+            roundNative(t.fromAmount ?? Math.abs(t.amount), t.fromCurrency ?? t.originalCurrency ?? baseCurrency),
             t.fromCurrency ?? t.originalCurrency ?? null,
-            t.toAmount !== undefined ? round(t.toAmount) : null,
+            t.toAmount !== undefined ? roundNative(t.toAmount, t.toCurrency ?? baseCurrency) : null,
             t.toCurrency ?? null,
             (t.note || '').trim() || null,
         ]);
@@ -1277,7 +1283,7 @@ export function buildAIExportPayload(input: AIExportInput) {
                     payee: payeeOf(t),
                     amount: round(baseAmount(t)),
                     account: t.account,
-                    nativeAmount: round(nativeAmountOf(t)),
+                    nativeAmount: roundNative(nativeAmountOf(t), nativeCurrencyOf(t, baseCurrency)),
                     nativeCurrency: nativeCurrencyOf(t, baseCurrency),
                 })),
         },

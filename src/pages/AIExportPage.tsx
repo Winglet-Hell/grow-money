@@ -496,7 +496,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                                         <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${c.sharePct}%` }} />
                                     </div>
                                     <span className="block text-xs text-gray-400 mt-1.5">
-                                        {c.sharePct}% · {c.count}× · {money(c.amountNative)} {c.currency}
+                                        {c.sharePct}% · {c.count}× · {nativeMoney(c.amountNative, c.currency)}
                                     </span>
                                 </div>
                             ))}

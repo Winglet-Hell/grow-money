@@ -122,7 +122,8 @@ function extractTransferLegs(row: any, headers: string[]): Pick<Transaction, 'fr
     };
 }
 
-function mapRow(row: any, type: Transaction['type'], index: number): Transaction | null {
+// `date1904`: the workbook counts serial dates from 1904 (old Mac Excel) instead of 1900.
+function mapRow(row: any, type: Transaction['type'], index: number, date1904 = false): Transaction | null {
     const mapped: any = {}; // Use any to allow flexible mapping temporarily
 
     // ... (existing data extraction logic remains same, we only need to change the return part)
@@ -152,19 +153,20 @@ function mapRow(row: any, type: Transaction['type'], index: number): Transaction
             else if (engKey === 'date') {
                 // ... existing date logic ...
                 try {
-                    const strVal = String(value).trim();
-                    const parsed = parseDateString(strVal);
-                    if (parsed) value = parsed;
-                    else if (typeof value === 'number') {
-                        // ... excel date logic ...
-                        const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                    if (typeof value === 'number') {
+                        // Excel serial date. Checked before the string parsers: sheets are read
+                        // with raw values (see parseExcelData), and new Date("46229") is the year 46229.
+                        const excelEpoch = new Date(Date.UTC(date1904 ? 1904 : 1899, date1904 ? 0 : 11, date1904 ? 1 : 30));
                         const msPerDay = 86400 * 1000;
                         const dateObj = new Date(excelEpoch.getTime() + value * msPerDay);
                         const year = dateObj.getUTCFullYear();
                         const month = (dateObj.getUTCMonth() + 1).toString().padStart(2, '0');
                         const day = dateObj.getUTCDate().toString().padStart(2, '0');
                         value = `${year}-${month}-${day}`;
-                    } else value = strVal; // Fallback
+                    } else {
+                        const strVal = String(value).trim();
+                        value = parseDateString(strVal) ?? strVal; // Fallback
+                    }
                 } catch (e) {
                     value = String(value);
                 }
@@ -259,8 +261,7 @@ function uniquifyIds(transactions: Transaction[]): Transaction[] {
 
 async function parseExcelData(fileData: ArrayBuffer): Promise<Transaction[]> {
     const XLSX = await import('xlsx');
-    // raw: false forces getting the formatted string (e.g. "25.10.2023")
-    // cellDates: false ensures we don't get Date objects
+    // cellDates: false ensures we don't get Date objects (dates stay Excel serial numbers)
     const workbook = XLSX.read(fileData, { type: 'array', cellDates: false });
 
     let allTransactions: Transaction[] = [];
@@ -297,9 +298,13 @@ async function parseExcelData(fileData: ArrayBuffer): Promise<Transaction[]> {
 
         if (headerRowIndex === -1) continue;
 
-        const jsonData = XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, raw: false });
+        // Raw cell values, not the formatted text: the export formats every amount as "0.00",
+        // which turns 0.00005 BTC into 0 (dropped as "no amount") and 1.23456 BTC into 1.23.
+        // Dates then arrive as Excel serial numbers, which mapRow converts.
+        const date1904 = Boolean(workbook.Workbook?.WBProps?.date1904);
+        const jsonData = XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, raw: true });
         const sheetTransactions = jsonData
-            .map((row: any, index: number) => mapRow(row, type!, index))
+            .map((row: any, index: number) => mapRow(row, type!, index, date1904))
             .filter((t): t is Transaction => t !== null);
 
         allTransactions = [...allTransactions, ...sheetTransactions];
