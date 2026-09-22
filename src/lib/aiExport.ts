@@ -784,21 +784,22 @@ export function buildAIExportPayload(input: AIExportInput) {
         };
     };
 
+    // One group per direction: buying a currency and selling the leftover back are two deals
+    // on opposite sides of the market rate, and averaging them lands in between — better
+    // than either deal was.
     const pairGroups = new Map<string, Transaction[]>();
     crossTransfers.forEach(t => {
-        const [a, b] = [t.fromCurrency!, t.toCurrency!].sort();
-        const key = `${a}|${b}`;
+        const key = `${t.fromCurrency}|${t.toCurrency}`;
         pairGroups.set(key, [...(pairGroups.get(key) || []), t]);
     });
 
     const fxPairs = [...pairGroups.entries()]
         .map(([key, list]) => {
-            const [a, b] = key.split('|');
+            // What is spent -> what is received; every conversion in the group flows this way.
+            const [from, to] = key.split('|');
             // Quote the pair so the headline rate reads >= 1 (e.g. "1 USDT = 78 RUB").
-            const bPerA = list.map(t =>
-                t.fromCurrency === a ? t.toAmount! / t.fromAmount! : t.fromAmount! / t.toAmount!
-            );
-            const [base, quote] = mean(bPerA) >= 1 ? [a, b] : [b, a];
+            const toPerFrom = list.map(t => t.toAmount! / t.fromAmount!);
+            const [base, quote] = mean(toPerFrom) >= 1 ? [from, to] : [to, from];
             const rateOf = (t: Transaction) =>
                 t.fromCurrency === base ? t.toAmount! / t.fromAmount! : t.fromAmount! / t.toAmount!;
 
@@ -818,12 +819,6 @@ export function buildAIExportPayload(input: AIExportInput) {
                     quoteVolume += t.fromAmount!;
                 }
             });
-
-            // Which way the money actually flows (what is spent -> what is received).
-            const forward = list.filter(t => t.fromCurrency === a).length;
-            const backward = list.length - forward;
-            const [from, to] =
-                forward > backward ? [a, b] : backward > forward ? [b, a] : [quote, base];
 
             const minRate = Math.min(...rates);
             const maxRate = Math.max(...rates);
@@ -858,11 +853,10 @@ export function buildAIExportPayload(input: AIExportInput) {
         })
         .sort((a, b) => b.count - a.count);
 
-    const pairByKey = new Map(fxPairs.map(p => [`${p.base}|${p.quote}`, p]));
+    const pairByKey = new Map(fxPairs.map(p => [`${p.spends}|${p.receives}`, p]));
     const conversions = crossTransfers
         .map(t => {
-            const [a, b] = [t.fromCurrency!, t.toCurrency!].sort();
-            const p = pairByKey.get(`${a}|${b}`) ?? pairByKey.get(`${b}|${a}`);
+            const p = pairByKey.get(`${t.fromCurrency}|${t.toCurrency}`);
             const rate = p
                 ? t.fromCurrency === p.base
                     ? t.toAmount! / t.fromAmount!

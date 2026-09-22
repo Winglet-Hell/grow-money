@@ -53,7 +53,7 @@ interface Observation {
 }
 
 interface PairStat {
-    key: string;           // "USDT/RUB"
+    key: string;           // "RUB>USDT": source > destination, one row per direction
     // Rate quotation direction (kept readable: 1 base = rate quote, rate >= 1).
     base: string;
     quote: string;
@@ -176,11 +176,13 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
 
         const cross = allTransfers.filter(isCrossCurrencyTransfer);
 
-        // Group by unordered currency pair.
+        // Group by direction — the actual money flow (source -> destination), so a pair reads
+        // "I spend RUB to buy USDT". Buying a currency and selling the leftover back are two
+        // deals on opposite sides of the market rate; averaged together they land in between,
+        // looking better than either deal was, so the way back gets a row of its own.
         const groups = new Map<string, Transaction[]>();
         for (const t of cross) {
-            const [a, b] = [t.fromCurrency!, t.toCurrency!].sort();
-            const key = `${a}|${b}`;
+            const key = `${t.fromCurrency}|${t.toCurrency}`;
             const list = groups.get(key) || [];
             list.push(t);
             groups.set(key, list);
@@ -190,16 +192,14 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
         const currencySet = new Set<string>();
 
         for (const [key, list] of groups) {
-            const [a, b] = key.split('|');
-            currencySet.add(a);
-            currencySet.add(b);
+            const [from, to] = key.split('|');
+            currencySet.add(from);
+            currencySet.add(to);
 
-            // "b per a" for each transfer, regardless of which way it flowed.
-            const bPerA = list.map(t =>
-                t.fromCurrency === a ? t.toAmount! / t.fromAmount! : t.fromAmount! / t.toAmount!
-            );
-            // Pick a display direction so the headline rate reads >= 1 (e.g. "1 USD = 1487 KRW").
-            const [base, quote] = mean(bPerA) >= 1 ? [a, b] : [b, a];
+            // The rate number stays quoted the readable way (strong currency as base, >= 1),
+            // e.g. "1 USD = 1487 KRW".
+            const toPerFrom = list.map(t => t.toAmount! / t.fromAmount!);
+            const [base, quote] = mean(toPerFrom) >= 1 ? [from, to] : [to, from];
 
             const rateOf = (t: Transaction) =>
                 t.fromCurrency === base ? t.toAmount! / t.fromAmount! : t.fromAmount! / t.toAmount!;
@@ -231,18 +231,8 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                 }
             }
 
-            // Orient the pair by the *actual* money flow (source -> destination), so it reflects
-            // "I spend RUB to buy USDT", not the reverse. The rate number stays quoted the readable
-            // way (strong currency as base). Ties fall back to spending the weaker (quote) currency.
-            let forward = 0; // transfers flowing a -> b
-            for (const t of list) if (t.fromCurrency === a) forward++;
-            const backward = list.length - forward;
-            const [from, to] = forward > backward ? [a, b]
-                : backward > forward ? [b, a]
-                : [quote, base];
-
             pairs.push({
-                key: `${base}/${quote}`,
+                key: `${from}>${to}`,
                 base,
                 quote,
                 from,

@@ -601,7 +601,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                     >
                         <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                             {dataPayload.fx.pairs.map(p => (
-                                <div key={p.pair} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm transition-colors hover:bg-gray-100">
+                                <div key={`${p.spends}>${p.receives}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm transition-colors hover:bg-gray-100">
                                     <div className="min-w-0">
                                         <span className="font-medium text-gray-700">{p.spends} → {p.receives}</span>
                                         <span className="block text-xs text-gray-400">
