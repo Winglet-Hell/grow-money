@@ -188,6 +188,55 @@ export function summarizePeriod(transactions: Transaction[], period: DashboardPe
     };
 }
 
+/**
+ * The day of the month `year`/`month` (0-based) has reached when it is the viewer's running
+ * month, else null. Year forecasts add what finished months usually brought after this day,
+ * so a month that is only partly over isn't counted as if it had ended.
+ */
+export function runningMonthDay(year: number, month: number, now = new Date()): number | null {
+    return year === now.getFullYear() && month === now.getMonth() ? now.getDate() : null;
+}
+
+export interface YearOutlook {
+    forecast: number;                // whole year: months so far, the rest of the running month, an average month for each one left
+    lastYearTotal: number;           // last year, as far as the data reaches
+    lastYearFromMonth: number;       // first month (0–11) last year's data covers; 0 when it covers the whole year
+    changeVsLastYear: number | null; // forecast vs last year over the months both cover (0.15 = +15%); null without last-year data
+}
+
+/**
+ * Where one flow (income or expenses) is heading this year, and how that compares with last
+ * year. `monthTotals` is keyed "YYYY-M" with a 0-based month, as the Expenses and Income pages
+ * build it. Last year is compared only over the months its data covers: when the history
+ * starts partway through last year, a whole-year forecast against those few months reads as
+ * a jump that never happened (12 months of this year against 8 of last).
+ */
+export function yearOutlook({ monthTotals, year, month, avgMonthly, restOfRunningMonth }: {
+    monthTotals: Record<string, number>;
+    year: number;
+    month: number;              // the month the page looks at, 0-based
+    avgMonthly: number;         // the page's average complete month
+    restOfRunningMonth: number; // what finished months usually add after today; 0 unless `month` is running
+}): YearOutlook {
+    const totalOf = (y: number, m: number) => monthTotals[`${y}-${m}`] || 0;
+    const sum = (values: number[]) => values.reduce((s, v) => s + v, 0);
+    const thisYear = Array.from({ length: 12 }, (_, m) =>
+        m < month ? totalOf(year, m) : m === month ? totalOf(year, m) + restOfRunningMonth : avgMonthly);
+
+    const lastYear = year - 1;
+    const covered = Object.keys(monthTotals).map(key => key.split('-').map(Number));
+    const lastYearMonths = covered.filter(([y]) => y === lastYear).map(([, m]) => m);
+    const lastYearTotal = sum(lastYearMonths.map(m => totalOf(lastYear, m)));
+    const lastYearFromMonth = covered.some(([y]) => y < lastYear) || lastYearMonths.length === 0 ? 0 : Math.min(...lastYearMonths);
+
+    return {
+        forecast: sum(thisYear),
+        lastYearTotal,
+        lastYearFromMonth,
+        changeVsLastYear: lastYearTotal > 0 ? (sum(thisYear.slice(lastYearFromMonth)) - lastYearTotal) / lastYearTotal : null,
+    };
+}
+
 /** Signed percentage change, e.g. "+8%" / "−12%"; null when there is nothing to compare with. */
 export function formatDelta(current: number, previous: number | undefined): string | null {
     if (previous === undefined || previous <= 0) return null;

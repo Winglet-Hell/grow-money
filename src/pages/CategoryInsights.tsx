@@ -13,6 +13,7 @@ import { cn, stringToColor, getFormattedDateRange } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
 import { getGlobalCategory } from '../lib/categoryGroups';
+import { runningMonthDay, yearOutlook, monthLabel } from '../lib/periods';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { MetricCard } from '../components/MetricCard';
 
@@ -134,6 +135,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         const completedGroups: Record<string, number> = {};
         const currentMonthGroups: Record<string, number> = {};
         const currentYearGroups: Record<string, number> = {};
+        // Spent in completed months after today's date — the rest of a running month (see summaryMetrics)
+        const restOfMonthGroups: Record<string, number> = {};
+        const runningDay = runningMonthDay(currentYear, currentMonth);
 
         // Track which detailed categories belong to which group key (for limit aggregation)
         const groupConstituents: Record<string, Set<string>> = {};
@@ -154,6 +158,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             if (year < currentYear || (year === currentYear && month < currentMonth)) {
                 if (!completedGroups[key]) completedGroups[key] = 0;
                 completedGroups[key] += Math.abs(t.amount);
+                if (runningDay !== null && date.getUTCDate() > runningDay) {
+                    restOfMonthGroups[key] = (restOfMonthGroups[key] || 0) + Math.abs(t.amount);
+                }
             }
             // Check if transaction is in the CURRENT month
             if (year === currentYear && month === currentMonth) {
@@ -180,7 +187,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             const currentMonthSpent = currentMonthGroups[category] || 0;
             const currentYearSpent = currentYearGroups[category] || 0;
             const monthlyAvg = totalSpentCompleted / uniqueMonthsCount;
-            const yearForecast = currentYearSpent + (monthlyAvg * remainingMonths);
+            const restOfMonth = (restOfMonthGroups[category] || 0) / uniqueMonthsCount;
+            const yearForecast = currentYearSpent + restOfMonth + (monthlyAvg * remainingMonths);
             const share = grandTotal > 0 ? (totalSpent / grandTotal) * 100 : 0;
 
             // Calculate Limit
@@ -224,7 +232,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         })
             .sort((a, b) => b.totalSpent - a.totalSpent) // Initial sort to assign rank
             .map((item, index) => ({ ...item, rank: index + 1 })); // Assign static rank
-    }, [transactions, uniqueMonthsCount, viewMode, limits]);
+    }, [transactions, uniqueMonthsCount, viewMode, limits, effectiveDate]);
 
 
 
@@ -249,12 +257,14 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         if (expenses.length === 0) return null;
 
         const monthsMap: Record<string, number> = {};
-        let currentYearTotal = 0;
-        let lastYearTotal = 0;
 
         const currentYear = effectiveDate.getUTCFullYear();
         const currentMonth = effectiveDate.getUTCMonth();
         const lastYear = currentYear - 1;
+        // While the month is still running, what finished months spent after today's date
+        // stands in for the part of it that is still to come.
+        const runningDay = runningMonthDay(currentYear, currentMonth);
+        let restOfMonthTotal = 0;
 
         // Group by month
         expenses.forEach(t => {
@@ -269,9 +279,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             // Only consider data up to the effective date for year totals to prevent future data from skewing historical views
             if (year < currentYear || (year === currentYear && monthIdx <= currentMonth)) {
                 monthsMap[monthKey] = (monthsMap[monthKey] || 0) + amount;
-                
-                if (year === currentYear) currentYearTotal += amount;
-                if (year === lastYear) lastYearTotal += amount;
+
+                const isCompletedMonth = year < currentYear || monthIdx < currentMonth;
+                if (runningDay !== null && isCompletedMonth && date.getUTCDate() > runningDay) restOfMonthTotal += amount;
             }
         });
         
@@ -299,10 +309,19 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         const currentMonthTotal = monthsMap[currentMonthKey] || 0;
         const avgMonthly = countCompleted > 0 ? totalCompleted / countCompleted : 0;
 
-        // Year Forecast
-        // Logic: Already spent this year + (Avg Monthly * Remaining Months in Year)
-        const remainingMonths = 11 - currentMonthEffective;
-        const yearForecast = currentYearTotal + (avgMonthly * remainingMonths);
+        // Year Forecast: spent this year + the rest of the running month + an average month
+        // for each month left; compared with last year over the months last year's data covers.
+        const outlook = yearOutlook({
+            monthTotals: monthsMap,
+            year: currentYearEffective,
+            month: currentMonthEffective,
+            avgMonthly,
+            restOfRunningMonth: countCompleted > 0 ? restOfMonthTotal / countCompleted : 0,
+        });
+        // "May–Dec 2025" when the history starts partway through last year; null for a full year
+        const lastYearSpan = outlook.lastYearFromMonth > 0
+            ? `${monthLabel(`${lastYear}-${String(outlook.lastYearFromMonth + 1).padStart(2, '0')}`, 'month')}–Dec ${lastYear}`
+            : null;
 
         // Calculate previous month (Last Completed Month)
         let prevMonth = currentMonthEffective - 1;
@@ -333,17 +352,17 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
         const trendRatio = avgOthers > 0 ? (lastMonthTotal - avgOthers) / avgOthers : 0;
 
-        const forecastTrend = lastYearTotal > 0 ? (yearForecast - lastYearTotal) / lastYearTotal : 0;
-
         return {
             avgMonthly,
-            yearForecast,
-            lastYearTotal,
+            yearForecast: outlook.forecast,
+            lastYear,
+            lastYearTotal: outlook.lastYearTotal,
+            lastYearSpan,
             trendRatio,
             lastMonthTotal,
             currentMonthTotal,
             countCompleted,
-            forecastTrend
+            forecastTrend: outlook.changeVsLastYear ?? 0
         };
     }, [transactions, effectiveDate]);
 
@@ -408,9 +427,11 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
         const currentMonthGroups: Record<string, number> = {};
         const completedGroups: Record<string, number> = {};
         const currentYearGroups: Record<string, number> = {};
+        const restOfMonthGroups: Record<string, number> = {};
 
         const currentYear = effectiveDate.getUTCFullYear();
         const currentMonthIdx = effectiveDate.getUTCMonth();
+        const runningDay = runningMonthDay(currentYear, currentMonthIdx);
 
         parentTransactions.forEach(t => {
             // If Global Mode -> Breakdown by Category
@@ -433,6 +454,9 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             if (year < currentYear || (year === currentYear && month < currentMonthIdx)) {
                 if (!completedGroups[key]) completedGroups[key] = 0;
                 completedGroups[key] += Math.abs(t.amount);
+                if (runningDay !== null && date.getUTCDate() > runningDay) {
+                    restOfMonthGroups[key] = (restOfMonthGroups[key] || 0) + Math.abs(t.amount);
+                }
             }
 
             // Aggregate Current Month
@@ -459,7 +483,8 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
             const currentMonthSpent = currentMonthGroups[key] || 0;
             const currentYearSpent = currentYearGroups[key] || 0;
             const monthlyAvg = totalSpentCompleted / uniqueMonthsCount;
-            const yearForecast = currentYearSpent + (monthlyAvg * remainingMonths);
+            const restOfMonth = (restOfMonthGroups[key] || 0) / uniqueMonthsCount;
+            const yearForecast = currentYearSpent + restOfMonth + (monthlyAvg * remainingMonths);
             const share = totalParentSpent > 0 ? (totalSpent / totalParentSpent) * 100 : 0;
 
             return {
@@ -740,7 +765,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                         title="Year Forecast"
                         amount={summaryMetrics.yearForecast}
                         icon={<TrendingUp className="w-10 h-10 text-blue-500" strokeWidth={1.5} />}
-                        trend={isPrivacyMode ? '•••' : (summaryMetrics.lastYearTotal > 0 ? `${(summaryMetrics.forecastTrend > 0 ? '+' : '')}${(summaryMetrics.forecastTrend * 100).toFixed(1)}% vs Last Year` : undefined)}
+                        trend={isPrivacyMode ? '•••' : (summaryMetrics.lastYearTotal > 0 ? `${(summaryMetrics.forecastTrend > 0 ? '+' : '')}${(summaryMetrics.forecastTrend * 100).toFixed(1)}% vs ${summaryMetrics.lastYearSpan ?? 'Last Year'}` : undefined)}
                         trendColor={summaryMetrics.forecastTrend > 0 ? "text-red-500" : "text-emerald-600"}
                         isPrivacy={isPrivacyMode}
                     />
@@ -749,7 +774,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                         title="Last Year Spending"
                         amount={summaryMetrics.lastYearTotal}
                         icon={<ArrowDownCircle className="w-10 h-10 text-gray-400" strokeWidth={1.5} />}
-                        description={`${new Date().getFullYear() - 1} Total`}
+                        description={summaryMetrics.lastYearSpan ? `${summaryMetrics.lastYearSpan} only` : `${summaryMetrics.lastYear} Total`}
                         isPrivacy={isPrivacyMode}
                     />
 

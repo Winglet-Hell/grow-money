@@ -12,6 +12,7 @@ import { ArrowUpDown, TrendingUp, Calendar, Search, X, ArrowUpCircle, ChevronDow
 import { cn, stringToColor, getFormattedDateRange } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
+import { runningMonthDay, yearOutlook, monthLabel } from '../lib/periods';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { MetricCard } from '../components/MetricCard';
 
@@ -104,9 +105,12 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         const completedGroups: Record<string, number> = {};
         const currentYearGroups: Record<string, number> = {};
         const currentMonthGroups: Record<string, number> = {};
+        // Earned in completed months after today's date — the rest of a running month (see summaryMetrics)
+        const restOfMonthGroups: Record<string, number> = {};
 
         const currentYear = effectiveDate.getUTCFullYear();
         const currentMonth = effectiveDate.getUTCMonth();
+        const runningDay = runningMonthDay(currentYear, currentMonth);
 
         // Filter for income ONLY
         const incomeTransactions = transactions.filter(t => t.type === 'income');
@@ -131,6 +135,9 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
             if (year < currentYear || (year === currentYear && month < currentMonth)) {
                 completedGroups[t.category] = (completedGroups[t.category] || 0) + amount;
+                if (runningDay !== null && date.getUTCDate() > runningDay) {
+                    restOfMonthGroups[t.category] = (restOfMonthGroups[t.category] || 0) + amount;
+                }
             }
 
             if (year === currentYear && month <= currentMonth) {
@@ -152,7 +159,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             const currentYearEarned = currentYearGroups[category] || 0;
             const totalEarnedCompleted = completedGroups[category] || 0;
             const monthlyAvg = totalEarnedCompleted / uniqueMonthsCount;
-            const yearForecast = currentYearEarned + (monthlyAvg * remainingMonths);
+            const restOfMonth = (restOfMonthGroups[category] || 0) / uniqueMonthsCount;
+            const yearForecast = currentYearEarned + restOfMonth + (monthlyAvg * remainingMonths);
             const share = grandTotal > 0 ? (totalEarned / grandTotal) * 100 : 0;
 
             return {
@@ -169,7 +177,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         })
             .sort((a, b) => b.totalEarned - a.totalEarned)
             .map((item, index) => ({ ...item, rank: index + 1 }));
-    }, [transactions, uniqueMonthsCount]); // Included uniqueMonthsCount in deps
+    }, [transactions, uniqueMonthsCount, effectiveDate]);
 
     // Helper to get breakdown metrics (Tags) for a specific parent row
     const getBreakdownMetrics = (category: string) => {
@@ -181,9 +189,11 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         const completedGroups: Record<string, number> = {};
         const currentYearGroups: Record<string, number> = {};
         const currentMonthGroups: Record<string, number> = {};
+        const restOfMonthGroups: Record<string, number> = {};
 
         const currentYear = effectiveDate.getUTCFullYear();
         const currentMonth = effectiveDate.getUTCMonth();
+        const runningDay = runningMonthDay(currentYear, currentMonth);
 
         categoryTransactions.forEach(t => {
             const date = new Date(t.date);
@@ -204,6 +214,9 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
             if (year < currentYear || (year === currentYear && month < currentMonth)) {
                 completedGroups[tag] = (completedGroups[tag] || 0) + amount;
+                if (runningDay !== null && date.getUTCDate() > runningDay) {
+                    restOfMonthGroups[tag] = (restOfMonthGroups[tag] || 0) + amount;
+                }
             }
 
             if (year === currentYear && month <= currentMonth) {
@@ -225,7 +238,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             const currentYearEarned = currentYearGroups[tag] || 0;
             const totalEarnedCompleted = completedGroups[tag] || 0;
             const monthlyAvg = totalEarnedCompleted / uniqueMonthsCount;
-            const yearForecast = currentYearEarned + (monthlyAvg * remainingMonths);
+            const restOfMonth = (restOfMonthGroups[tag] || 0) / uniqueMonthsCount;
+            const yearForecast = currentYearEarned + restOfMonth + (monthlyAvg * remainingMonths);
             const share = totalEarnedCategory > 0 ? (totalEarned / totalEarnedCategory) * 100 : 0; // Share within category
 
             return {
@@ -300,12 +314,14 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
         if (income.length === 0) return null;
 
         const monthsMap: Record<string, number> = {};
-        let currentYearTotal = 0;
-        let lastYearTotal = 0;
 
         const currentYear = effectiveDate.getUTCFullYear();
         const currentMonth = effectiveDate.getUTCMonth();
         const lastYear = currentYear - 1;
+        // While the month is still running, what finished months earned after today's date
+        // stands in for the part of it that is still to come.
+        const runningDay = runningMonthDay(currentYear, currentMonth);
+        let restOfMonthTotal = 0;
 
         // Group by month
         income.forEach(t => {
@@ -320,8 +336,8 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             if (year < currentYear || (year === currentYear && monthIdx <= currentMonth)) {
                 monthsMap[monthKey] = (monthsMap[monthKey] || 0) + amount;
 
-                if (year === currentYear) currentYearTotal += amount;
-                if (year === lastYear) lastYearTotal += amount;
+                const isCompletedMonth = year < currentYear || monthIdx < currentMonth;
+                if (runningDay !== null && isCompletedMonth && date.getUTCDate() > runningDay) restOfMonthTotal += amount;
             }
         });
 
@@ -342,10 +358,20 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
         const avgMonthly = countCompleted > 0 ? totalCompleted / countCompleted : totalAllTime / (Object.keys(monthsMap).length || 1);
 
-        // Year Forecast
+        // Year Forecast: earned this year + the rest of the running month + an average month
+        // for each month left; compared with last year over the months last year's data covers.
         const currentMonthIndex = effectiveDate.getUTCMonth();
-        const remainingMonths = 11 - currentMonthIndex;
-        const yearForecast = currentYearTotal + (avgMonthly * remainingMonths);
+        const outlook = yearOutlook({
+            monthTotals: monthsMap,
+            year: currentYear,
+            month: currentMonthIndex,
+            avgMonthly,
+            restOfRunningMonth: countCompleted > 0 ? restOfMonthTotal / countCompleted : 0,
+        });
+        // "May–Dec 2025" when the history starts partway through last year; null for a full year
+        const lastYearSpan = outlook.lastYearFromMonth > 0
+            ? `${monthLabel(`${lastYear}-${String(outlook.lastYearFromMonth + 1).padStart(2, '0')}`, 'month')}–Dec ${lastYear}`
+            : null;
 
         // Calculate previous month (Last Completed Month)
         let prevMonth = currentMonthIndex - 1;
@@ -372,17 +398,17 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
         const currentMonthTotal = monthsMap[currentMonthKey] || 0;
 
-        const forecastTrend = lastYearTotal > 0 ? (yearForecast - lastYearTotal) / lastYearTotal : 0;
-
         return {
             avgMonthly,
-            yearForecast,
-            lastYearTotal,
+            yearForecast: outlook.forecast,
+            lastYear,
+            lastYearTotal: outlook.lastYearTotal,
+            lastYearSpan,
             trendRatio,
             lastMonthTotal,
             currentMonthTotal,
             countCompleted,
-            forecastTrend
+            forecastTrend: outlook.changeVsLastYear ?? 0
         };
     }, [transactions, effectiveDate]);
 
@@ -541,7 +567,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                         title="Year Forecast"
                         amount={summaryMetrics.yearForecast}
                         icon={<TrendingUp className="w-10 h-10 text-blue-500" strokeWidth={1.5} />}
-                        trend={isPrivacyMode ? '•••' : (summaryMetrics.lastYearTotal > 0 ? `${(summaryMetrics.forecastTrend > 0 ? '+' : '')}${(summaryMetrics.forecastTrend * 100).toFixed(1)}% vs Last Year` : undefined)}
+                        trend={isPrivacyMode ? '•••' : (summaryMetrics.lastYearTotal > 0 ? `${(summaryMetrics.forecastTrend > 0 ? '+' : '')}${(summaryMetrics.forecastTrend * 100).toFixed(1)}% vs ${summaryMetrics.lastYearSpan ?? 'Last Year'}` : undefined)}
                         trendColor={summaryMetrics.forecastTrend >= 0 ? "text-emerald-600" : "text-red-500"}
                         isPrivacy={isPrivacyMode}
                     />
@@ -550,7 +576,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                         title="Last Year Income"
                         amount={summaryMetrics.lastYearTotal}
                         icon={<ArrowUpCircle className="w-10 h-10 text-gray-400" strokeWidth={1.5} />}
-                        description={`${new Date().getFullYear() - 1} Total`}
+                        description={summaryMetrics.lastYearSpan ? `${summaryMetrics.lastYearSpan} only` : `${summaryMetrics.lastYear} Total`}
                         isPrivacy={isPrivacyMode}
                     />
 
