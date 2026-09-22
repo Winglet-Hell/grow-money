@@ -494,11 +494,14 @@ export function TripAnalyticsPage({ transactions }: TripAnalyticsPageProps) {
     }, [transactions, selectedTrip, tripStats]);
 
 
+    // A spend on a day two trips share (the flight from one into the next) counts in both
+    // trips' own totals, but only once in the grand total.
     const allTripsTotalCost = useMemo(() => {
-        return trips.reduce((acc, trip) => {
-            const activeTxs = resolveTripActiveTransactions(trip, transactions);
-            return acc + activeTxs.reduce((sum, t) => sum + t.amount, 0);
-        }, 0);
+        const amountById: Record<string, number> = {}; // (`Map` is the lucide icon in this file)
+        for (const trip of trips) {
+            for (const t of resolveTripActiveTransactions(trip, transactions)) amountById[t.id] = t.amount;
+        }
+        return Object.values(amountById).reduce((sum, amount) => sum + amount, 0);
     }, [trips, transactions]);
 
     const searchResults = useMemo(() => {
