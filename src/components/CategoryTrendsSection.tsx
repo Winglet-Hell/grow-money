@@ -14,6 +14,7 @@ import {
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { cn, stringToColor } from '../lib/utils';
 import type { Transaction } from '../types';
+import { monthKeyOf, monthKeyFromDate, monthLabel, shiftMonthKey } from '../lib/periods';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { CustomTooltip } from './CustomTooltip';
 
@@ -59,28 +60,32 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
     const { chartData, metrics } = useMemo(() => {
         if (!selectedCategory) return { chartData: [], metrics: null };
 
-        const getMonthKey = (dateStr: string) => {
-            const date = new Date(dateStr);
-            return {
-                key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
-                label: new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date),
-                timestamp: date.getTime()
-            };
-        };
+        // One point per calendar month across the whole history of this type, zeros included.
+        // With only the months the category was used, a month without it vanished: "last
+        // closed" became some earlier month, the average skipped the zeros (an occasional
+        // purchase averaged as if it were monthly), and 3M meant the last three months *with*
+        // spending rather than the last three months.
+        const monthlyAmounts = new Map<string, number>();
+        let firstKey: string | null = null;
+        let lastKey: string | null = null;
 
-        const monthlyData = new Map<string, { label: string; amount: number; timestamp: number }>();
-
-        transactions.forEach(t => {
-            if (t.type === type && t.category === selectedCategory) {
-                const { key, label, timestamp } = getMonthKey(t.date);
-                if (!monthlyData.has(key)) {
-                    monthlyData.set(key, { label, amount: 0, timestamp });
-                }
-                monthlyData.get(key)!.amount += Math.abs(t.amount);
+        for (const t of transactions) {
+            if (t.type !== type) continue;
+            const key = monthKeyOf(t.date);
+            if (!key) continue;
+            if (!firstKey || key < firstKey) firstKey = key;
+            if (!lastKey || key > lastKey) lastKey = key;
+            if (t.category === selectedCategory) {
+                monthlyAmounts.set(key, (monthlyAmounts.get(key) ?? 0) + Math.abs(t.amount));
             }
-        });
+        }
 
-        let data = Array.from(monthlyData.values()).sort((a, b) => a.timestamp - b.timestamp);
+        let data: { key: string; label: string; amount: number }[] = [];
+        if (firstKey && lastKey) {
+            for (let key: string = firstKey; key <= lastKey; key = shiftMonthKey(key, 1)) {
+                data.push({ key, label: monthLabel(key, 'short'), amount: monthlyAmounts.get(key) ?? 0 });
+            }
+        }
 
         // Filter by Period
         if (period === '3M') data = data.slice(-3);
@@ -88,15 +93,10 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
         else if (period === '1Y') data = data.slice(-12);
 
         // --- Metrics Calculation ---
-        const now = new Date();
-        const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const currentMonthKey = monthKeyFromDate(new Date());
 
         // Exclude current month to find "Closed Months"
-        const closedMonthsData = data.filter(d => {
-            const dDate = new Date(d.timestamp);
-            const dKey = `${dDate.getFullYear()}-${String(dDate.getMonth() + 1).padStart(2, '0')}`;
-            return dKey < currentMonthKey;
-        });
+        const closedMonthsData = data.filter(d => d.key < currentMonthKey);
 
         let avg = 0;
         let lastClosedAmount = 0;
@@ -188,7 +188,7 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
                     <h3 className="text-lg font-semibold text-gray-900">Category Trends</h3>
 
                     {/* Metrics Display */}
-                    {metrics && metrics.lastClosedAmount > 0 && (
+                    {metrics && (metrics.lastClosedAmount > 0 || metrics.avg > 0) && (
                         <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm md:border-l md:pl-4 border-gray-200">
 
                             {/* Main Stat: Last Closed */}

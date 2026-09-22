@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { cn, stringToColor } from '../lib/utils';
+import { monthKeyOf, monthKeyFromDate, shiftMonthKey } from '../lib/periods';
 import type { Transaction } from '../types';
 
 interface AnomaliesSectionProps {
@@ -13,19 +14,21 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
     // Calculate anomalies based on "Last Closed Month" vs "Average of Previous Closed Months"
     const anomalies = useMemo(() => {
         const now = new Date();
-        const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const currentMonthKey = monthKeyFromDate(now);
 
         // 1. Group by Category -> Month -> Amount
         const categoryMonthlyData: Record<string, Record<string, number>> = {};
         const allCategories = new Set<string>();
+        const allMonths = new Set<string>(); // closed months with any spending at all
 
         transactions.forEach(t => {
             if (t.type !== 'expense') return; // Focus on EXPENSES for anomalies usually, or user wants both? "My spending" implies expenses. Let's do Expenses for now as it's most critical.
 
-            const dDate = new Date(t.date);
-            const key = `${dDate.getFullYear()}-${String(dDate.getMonth() + 1).padStart(2, '0')}`;
+            const key = monthKeyOf(t.date);
+            if (!key) return;
 
             if (key >= currentMonthKey) return; // Exclude current incomplete month entirely from calculation
+            allMonths.add(key);
 
             if (!categoryMonthlyData[t.category]) {
                 categoryMonthlyData[t.category] = {};
@@ -45,8 +48,13 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
         // Let's determine the "Last Closed Month" relative to NOW.
         // i.e., If now is Jan 2026, Last Closed is Dec 2025.
         // We only care about anomalies in Dec 2025.
-        const lastClosedDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const lastClosedKey = `${lastClosedDate.getFullYear()}-${String(lastClosedDate.getMonth() + 1).padStart(2, '0')}`;
+        const lastClosedKey = shiftMonthKey(currentMonthKey, -1);
+
+        // The average runs over every earlier month in the data, a month without the category
+        // counting as zero — as on the Expenses page. Averaging only the months a category
+        // appeared in made an occasional purchase look monthly and an ordinary month without it
+        // a big drop.
+        const previousMonths = [...allMonths].filter(m => m < lastClosedKey);
 
         const results: {
             category: string;
@@ -58,15 +66,14 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
 
         allCategories.forEach(cat => {
             const monthsData = categoryMonthlyData[cat];
-            const sortedMonths = Object.keys(monthsData).sort();
 
             // Check if this category has data for Last Closed Month
             const lastAmount = monthsData[lastClosedKey] || 0;
 
             // Calculate Average of "Previous" months (excluding Last Closed Month)
-            const previousMonths = sortedMonths.filter(m => m < lastClosedKey);
+            const totalPrev = previousMonths.reduce((sum, m) => sum + (monthsData[m] || 0), 0);
 
-            if (previousMonths.length === 0) {
+            if (totalPrev === 0) {
                 // New category started this month? Comparison hard. Skip or special case.
                 // If vast spending, maybe interesting.
                 if (lastAmount > 0) {
@@ -81,10 +88,7 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
                 return;
             }
 
-            const totalPrev = previousMonths.reduce((sum, m) => sum + monthsData[m], 0);
             const avg = totalPrev / previousMonths.length;
-
-            if (avg === 0 && lastAmount === 0) return;
 
             const diff = lastAmount - avg;
             const percent = avg > 0 ? (diff / avg) * 100 : 100;
