@@ -112,6 +112,8 @@ export function UserSettingsProvider({ children }: { children: React.ReactNode }
             if (session) {
                 fetchSettings();
             } else {
+                // Signed out there is nothing to fetch; without this, "loading" stayed true for good.
+                setLoading(false);
                 setSettings({
                     preferences: {
                         tableCompactMode: false,
