@@ -6,7 +6,7 @@ import {
 import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
-import { cn, stringToColor, formatDate } from '../lib/utils';
+import { cn, stringToColor, formatDate, ordinal } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { formatCurrencyAmount } from '../lib/currencies';
 import { summarizePeriod } from '../lib/periods';
@@ -18,12 +18,6 @@ interface RecurringPageProps {
 
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
 const DAY_MS = 86_400_000;
-
-const ordinal = (n: number) => {
-    const s = ['th', 'st', 'nd', 'rd'];
-    const v = n % 100;
-    return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
-};
 
 export function RecurringPage({ transactions }: RecurringPageProps) {
     const { isPrivacyMode } = usePrivacy();

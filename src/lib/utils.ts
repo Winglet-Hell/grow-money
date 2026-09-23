@@ -93,3 +93,10 @@ export function formatTags(tags: string[] | string | undefined): string {
 export function getTransactionTitle(t: { tags?: string[]; note?: string; category: string }): string {
     return formatTags(t.tags) || t.note || t.category;
 }
+
+/** 1st, 2nd, 3rd, 4th … 11th, 12th, 13th, 21st — for "around the 12th" style labels. */
+export const ordinal = (n: number) => {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+};
