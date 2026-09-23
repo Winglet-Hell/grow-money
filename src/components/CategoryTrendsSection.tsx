@@ -2,12 +2,13 @@ import { useMemo, useState, useEffect } from 'react';
 import { TrendingUp, ChevronDown } from 'lucide-react';
 import {
     ComposedChart,
-    Line,
     Bar,
+    Cell,
     XAxis,
     YAxis,
     CartesianGrid,
     Tooltip,
+    ReferenceLine,
     ResponsiveContainer,
     LabelList
 } from 'recharts';
@@ -15,12 +16,25 @@ import { getCategoryIcon } from '../lib/categoryIcons';
 import { cn, stringToColor } from '../lib/utils';
 import type { Transaction } from '../types';
 import { monthKeyOf, monthKeyFromDate, monthLabel, shiftMonthKey } from '../lib/periods';
+import { niceScale, labelIndices } from '../lib/chartScale';
+import { ScrollableChart, PickedBarLabel } from './ChartParts';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { CustomTooltip } from './CustomTooltip';
 
 interface CategoryTrendsSectionProps {
     transactions: Transaction[];
     period: '3M' | '6M' | '1Y' | 'ALL';
+}
+
+// The average line's label, set just past the line's right end (in the chart's right margin)
+// so it never lands on a bar or a bar's value.
+function AverageLineLabel({ text, viewBox }: { text: string; viewBox?: { x: number; y: number; width: number } }) {
+    if (!viewBox) return null;
+    return (
+        <text x={viewBox.x + viewBox.width + 6} y={viewBox.y} dy={3} textAnchor="start" fill="#6B7280" fontSize={10}>
+            {text}
+        </text>
+    );
 }
 
 export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSectionProps) {
@@ -134,39 +148,10 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
             }
         }
 
-        // Calculate Linear Trend Line (Based on CLOSED months only)
-        // x = index (0, 1, 2...), y = amount
-        const nRel = closedMonthsData.length;
-        let trendData = data;
-
-        if (nRel >= 2) {
-            let sumX = 0;
-            let sumY = 0;
-            let sumXY = 0;
-            let sumXX = 0;
-
-            closedMonthsData.forEach((d, i) => {
-                sumX += i;
-                sumY += d.amount;
-                sumXY += i * d.amount;
-                sumXX += i * i;
-            });
-
-            const slope = (nRel * sumXY - sumX * sumY) / (nRel * sumXX - sumX * sumX);
-            const intercept = (sumY - slope * sumX) / nRel;
-
-            // Apply trend to ALL data (projecting into current month)
-            trendData = data.map((d, i) => ({
-                ...d,
-                trend: Math.max(0, slope * i + intercept) // Ensure trend doesn't go below 0 for visualization
-            }));
-        } else {
-            // Not enough closed data for a trend, just follow amounts or flat line
-            trendData = data.map(d => ({ ...d, trend: d.amount }));
-        }
-
+        // The running month is only partly over: it is drawn lighter and marked "so far", so half
+        // a month of spending doesn't read as a drop.
         return {
-            chartData: trendData,
+            chartData: data.map(d => ({ ...d, inProgress: d.key === currentMonthKey })),
             metrics: { avg, lastClosedAmount, prevClosedAmount, diffAbs, diffPercent, diffPrevAbs, diffPrevPercent }
         };
     }, [transactions, type, selectedCategory, period]);
@@ -180,6 +165,18 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
         if (Math.abs(num) >= 1000) return (num / 1000).toFixed(0) + 'k';
         return Math.round(num).toString();
     };
+
+    // Numbers on the latest month and the peak only; the axis and the tooltip carry the rest.
+    // The scale covers the average line too — Recharts would quietly widen an axis the line sits
+    // above, and the pinned labels would drift off the gridlines.
+    const amounts = chartData.map(d => d.amount);
+    const barLabels = labelIndices(amounts, { includeMin: false, minGap: chartData.length > 12 ? 2 : 1 });
+    const average = metrics?.avg ?? 0;
+    const scale = niceScale(0, Math.max(0, ...amounts, average));
+    // The right margin holds the average line's label, past the end of the line.
+    const chartMargin = { top: 20, right: 52, left: 0, bottom: 0 };
+    const barColor = type === 'income' ? '#10b981' : '#f43f5e';
+    const runningLabel = chartData.find(d => d.inProgress)?.label;
 
     return (
         <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm h-auto md:h-[400px] flex flex-col col-span-1 lg:col-span-2">
@@ -287,48 +284,66 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
                 </div>
             </div>
 
+            {/* Bars keep a readable width; once the months stop fitting, the plot scrolls
+                (opening on the latest ones) under a fixed axis. */}
             <div className="h-[300px] md:h-auto md:flex-1 w-full min-h-0">
-                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                    <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                        <XAxis
-                            dataKey="label"
-                            axisLine={false}
-                            tickLine={false}
-                            tick={{ fontSize: 12, fill: '#6B7280', fontFamily: 'Inter, sans-serif' }}
-                            dy={10}
-                            height={60}
-                        />
-                        <YAxis
-                            axisLine={false}
-                            tickLine={false}
-                            tick={{ fontSize: 12, fill: '#6B7280', fontFamily: 'Inter, sans-serif' }}
-                            tickFormatter={formatShortValue}
-                        />
-                        <Tooltip
-                            content={<CustomTooltip isPrivacy={isPrivacyMode} />}
-                            cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }}
-                        />
-                        <Bar
-                            dataKey="amount"
-                            name={selectedCategory}
-                            fill={type === 'income' ? '#10b981' : '#f43f5e'}
-                            radius={[4, 4, 0, 0]}
-                            maxBarSize={50}
-                        >
-                            <LabelList dataKey="amount" position="top" formatter={formatShortValue} style={{ fontSize: '10px', fill: '#6B7280' }} />
-                        </Bar>
-                        <Line
-                            type="monotone"
-                            dataKey="trend"
-                            stroke="#9CA3AF"
-                            strokeWidth={2}
-                            strokeDasharray="5 5"
-                            dot={false}
-                            activeDot={false}
-                        />
-                    </ComposedChart>
-                </ResponsiveContainer>
+                <ScrollableChart
+                    points={chartData.length}
+                    margin={chartMargin}
+                    xAxisHeight={60}
+                    yDomain={scale.domain}
+                    yTicks={scale.ticks}
+                    yTickFormatter={value => (isPrivacyMode ? '•••' : formatShortValue(value))}
+                >
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                        <ComposedChart data={chartData} margin={chartMargin}>
+                            <CartesianGrid vertical={false} stroke="#EEF0F3" />
+                            <XAxis
+                                dataKey="label"
+                                axisLine={false}
+                                tickLine={false}
+                                tick={{ fontSize: 12, fill: '#6B7280', fontFamily: 'Inter, sans-serif' }}
+                                dy={10}
+                                height={60}
+                                minTickGap={16}
+                            />
+                            <YAxis hide domain={scale.domain} ticks={scale.ticks} />
+                            <Tooltip
+                                content={
+                                    <CustomTooltip
+                                        isPrivacy={isPrivacyMode}
+                                        labelFormatter={label => (label === runningLabel ? `${label} · so far` : label)}
+                                    />
+                                }
+                                cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }}
+                            />
+                            {/* The average the header compares last month with. It replaces a straight
+                                regression line, which read a one-off change (rent after moving) as a
+                                steady slide and meant nothing for occasional purchases. */}
+                            {average > 0 && (
+                                <ReferenceLine
+                                    y={average}
+                                    stroke="#9CA3AF"
+                                    strokeDasharray="5 5"
+                                    label={<AverageLineLabel text={isPrivacyMode ? 'avg' : `avg ${formatShortValue(average)}`} />}
+                                />
+                            )}
+                            <Bar
+                                dataKey="amount"
+                                name={selectedCategory}
+                                fill={barColor}
+                                radius={[4, 4, 0, 0]}
+                                maxBarSize={24}
+                                isAnimationActive={false}
+                            >
+                                {chartData.map(d => (
+                                    <Cell key={d.key} fill={barColor} fillOpacity={d.inProgress ? 0.35 : 1} />
+                                ))}
+                                <LabelList content={<PickedBarLabel picked={barLabels} format={value => (isPrivacyMode ? '' : formatShortValue(value))} />} />
+                            </Bar>
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                </ScrollableChart>
             </div>
         </div>
     );

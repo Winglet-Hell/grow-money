@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-    BarChart,
     Bar,
     XAxis,
     YAxis,
@@ -8,6 +7,7 @@ import {
     Tooltip,
     ResponsiveContainer,
     ComposedChart,
+    LineChart,
     Line,
     AreaChart,
     Area,
@@ -24,6 +24,13 @@ import { SpendingHeatmap } from '../components/SpendingHeatmap';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { CustomTooltip } from '../components/CustomTooltip';
 import { MetricCard } from '../components/MetricCard';
+import { ScrollableChart, ChartLegend, PickedBarLabel, PickedPointLabel } from '../components/ChartParts';
+import { niceScale, labelIndices } from '../lib/chartScale';
+
+// Solid hairline grid and quiet axis text: the data is the only thing allowed to be loud.
+const GRID_COLOR = '#EEF0F3';
+const AXIS_TICK = { fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' };
+const NET_FLOW_MARGIN = { top: 20, right: 16, left: 0, bottom: 0 };
 
 interface TrendsPageProps {
     transactions: Transaction[];
@@ -148,6 +155,24 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
         if (Math.abs(num) >= 1000) return (num / 1000).toFixed(0) + 'k';
         return Math.round(num).toString();
     };
+    const formatRubAxis = (value: number) => (isPrivacyMode ? '•••' : `₽${(value / 1000).toFixed(0)}k`);
+
+    // Numbers only where they tell something: the latest month and the extremes. Past a dozen
+    // months, labels also keep a point apart so neighbours can't overlap.
+    const labelGap = chartData.length > 12 ? 2 : 1;
+    const showDots = chartData.length <= 12;
+    const lastIndex = chartData.length - 1;
+    const incomeOnTop = lastIndex >= 0 && chartData[lastIndex].income >= chartData[lastIndex].expenses;
+    const netFlows = chartData.map(d => d.netFlow);
+    const netFlowLabels = labelIndices(netFlows, { minGap: labelGap });
+    const netFlowScale = niceScale(
+        Math.min(...netFlows, ...chartData.map(d => d.avgNetFlow)),
+        Math.max(...netFlows, ...chartData.map(d => d.avgNetFlow)),
+    );
+    const savingsLabels = labelIndices(
+        chartData.map(d => (savingsViewMode === 'percent' ? d.savingsRate : d.netFlow)),
+        { minGap: labelGap },
+    );
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -200,80 +225,116 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
             <SpendingHeatmap transactions={transactions} />
 
             {/* Charts Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 gap-8">
 
-                {/* Chart 1: Income vs Expenses */}
+                {/* Chart 1: Income vs Expenses — two lines stay readable however many months pile up,
+                    and the gap between them is what was saved. */}
                 <ChartCard title="Income vs Expenses">
                     <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                        <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                        <LineChart data={chartData} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+                            <CartesianGrid vertical={false} stroke={GRID_COLOR} />
                             <XAxis
                                 dataKey="label"
                                 axisLine={false}
                                 tickLine={false}
-                                tick={{ fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' }}
+                                tick={AXIS_TICK}
                                 dy={10}
                                 height={60}
+                                minTickGap={16}
                             />
                             <YAxis
                                 axisLine={false}
                                 tickLine={false}
-                                tick={{ fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' }}
-                                tickFormatter={(value) => isPrivacyMode ? '•••' : `₽${(value / 1000).toFixed(0)}k`}
+                                tick={AXIS_TICK}
+                                tickFormatter={formatRubAxis}
                             />
-                            <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} />
-                            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#6B7280', paddingTop: '10px', fontWeight: 400, fontFamily: 'inherit' }} />
-                            <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={50} isAnimationActive={false}>
-                                <LabelList dataKey="income" position="top" formatter={formatShortValue} style={{ fontSize: '10px', fill: '#6B7280' }} />
-                            </Bar>
-                            <Bar dataKey="expenses" name="Expenses" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={50} isAnimationActive={false}>
-                                <LabelList dataKey="expenses" position="top" formatter={formatShortValue} style={{ fontSize: '10px', fill: '#6B7280' }} />
-                            </Bar>
-                        </BarChart>
+                            <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ stroke: '#D1D5DB', strokeWidth: 1 }} />
+                            <Legend iconType="plainline" wrapperStyle={{ fontSize: '12px', color: '#6B7280', paddingTop: '10px', fontWeight: 400, fontFamily: 'inherit' }} />
+                            <Line
+                                type="monotone"
+                                dataKey="income"
+                                name="Income"
+                                stroke="#10b981"
+                                strokeWidth={2}
+                                dot={showDots ? { r: 4, fill: '#10b981', stroke: '#fff', strokeWidth: 2 } : false}
+                                activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }}
+                                isAnimationActive={false}
+                            >
+                                {/* Latest month only; the higher line is labelled above its point, the lower one below */}
+                                <LabelList content={<PickedPointLabel picked={new Set([lastIndex])} format={formatShortValue} placement={incomeOnTop ? 'above' : 'below'} />} />
+                            </Line>
+                            <Line
+                                type="monotone"
+                                dataKey="expenses"
+                                name="Expenses"
+                                stroke="#f43f5e"
+                                strokeWidth={2}
+                                dot={showDots ? { r: 4, fill: '#f43f5e', stroke: '#fff', strokeWidth: 2 } : false}
+                                activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }}
+                                isAnimationActive={false}
+                            >
+                                <LabelList content={<PickedPointLabel picked={new Set([lastIndex])} format={formatShortValue} placement={incomeOnTop ? 'below' : 'above'} />} />
+                            </Line>
+                        </LineChart>
                     </ResponsiveContainer>
                 </ChartCard>
 
-                {/* Chart 2: Net Flow Dynamics */}
-                <ChartCard title="Net Flow Dynamics">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                        <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                            <XAxis
-                                dataKey="label"
-                                axisLine={false}
-                                tickLine={false}
-                                tick={{ fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' }}
-                                dy={10}
-                                height={60}
-                            />
-                            <YAxis
-                                axisLine={false}
-                                tickLine={false}
-                                tick={{ fill: '#6B7280', fontSize: 12, fontFamily: 'inherit' }}
-                                tickFormatter={(value) => isPrivacyMode ? '•••' : `₽${(value / 1000).toFixed(0)}k`}
-                            />
-                            <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
-                            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#6B7280', paddingTop: '10px', fontWeight: 400, fontFamily: 'inherit' }} />
-                            <Bar dataKey="netFlow" name="Net Flow" radius={[4, 4, 0, 0]} maxBarSize={50} isAnimationActive={false}>
-                                {chartData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.netFlow > 0 ? '#10b981' : '#f43f5e'} />
-                                ))}
-                                <LabelList dataKey="netFlow" position="top" formatter={formatShortValue} style={{ fontSize: '10px', fill: '#6B7280' }} />
-                            </Bar>
-                            <Line
-                                type="monotone"
-                                dataKey="avgNetFlow"
-                                name="Trend (3mo Avg)"
-                                stroke="#6366f1"
-                                strokeWidth={2}
-                                dot={false}
-                            />
-                        </ComposedChart>
-                    </ResponsiveContainer>
+                {/* Chart 2: Net Flow Dynamics — bars keep a readable width; once the months stop
+                    fitting, the plot scrolls (opening on the latest ones) under a fixed axis. */}
+                <ChartCard
+                    title="Net Flow Dynamics"
+                    footer={
+                        <ChartLegend items={[
+                            { label: 'Net Flow', color: '#10b981', mark: 'rect' },
+                            ...(netFlows.some(v => v < 0) ? [{ label: 'Spent more than earned', color: '#f43f5e', mark: 'rect' as const }] : []),
+                            { label: 'Trend (3mo Avg)', color: '#6366f1', mark: 'line' },
+                        ]} />
+                    }
+                >
+                    <ScrollableChart
+                        points={chartData.length}
+                        margin={NET_FLOW_MARGIN}
+                        xAxisHeight={60}
+                        yDomain={netFlowScale.domain}
+                        yTicks={netFlowScale.ticks}
+                        yTickFormatter={formatRubAxis}
+                    >
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                            <ComposedChart data={chartData} margin={NET_FLOW_MARGIN}>
+                                <CartesianGrid vertical={false} stroke={GRID_COLOR} />
+                                <XAxis
+                                    dataKey="label"
+                                    axisLine={false}
+                                    tickLine={false}
+                                    tick={AXIS_TICK}
+                                    dy={10}
+                                    height={60}
+                                    minTickGap={16}
+                                />
+                                <YAxis hide domain={netFlowScale.domain} ticks={netFlowScale.ticks} />
+                                <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
+                                <Bar dataKey="netFlow" name="Net Flow" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={24} isAnimationActive={false}>
+                                    {chartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.netFlow >= 0 ? '#10b981' : '#f43f5e'} />
+                                    ))}
+                                    <LabelList content={<PickedBarLabel picked={netFlowLabels} format={formatShortValue} />} />
+                                </Bar>
+                                <Line
+                                    type="monotone"
+                                    dataKey="avgNetFlow"
+                                    name="Trend (3mo Avg)"
+                                    stroke="#6366f1"
+                                    strokeWidth={2}
+                                    dot={false}
+                                    isAnimationActive={false}
+                                />
+                            </ComposedChart>
+                        </ResponsiveContainer>
+                    </ScrollableChart>
                 </ChartCard>
 
                 {/* Chart 3: Savings Rate - Full Width */}
-                <div className="lg:col-span-2">
+                <div>
                     <ChartCard
                         title={savingsViewMode === 'percent' ? "Savings Rate (%)" : "Savings (Absolute)"}
                         headerRight={
@@ -377,13 +438,14 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                         <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                <CartesianGrid vertical={false} stroke={GRID_COLOR} />
                                 <XAxis
                                     dataKey="label"
                                     axisLine={false}
                                     tickLine={false}
                                     tick={{ fill: '#6B7280', fontSize: 12 }}
                                     dy={10}
+                                    minTickGap={16}
                                 />
                                 <YAxis
                                     axisLine={false}
@@ -406,11 +468,13 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                     fill="url(#colorSavings)"
                                     isAnimationActive={false}
                                 >
-                                    <LabelList 
-                                        dataKey={savingsViewMode === 'percent' ? "savingsRate" : "netFlow"} 
-                                        position="top" 
-                                        formatter={savingsViewMode === 'percent' ? (val: any) => Math.round(Number(val)) + '%' : formatShortValue} 
-                                        style={{ fontSize: '10px', fill: '#6B7280' }} 
+                                    <LabelList
+                                        content={
+                                            <PickedPointLabel
+                                                picked={savingsLabels}
+                                                format={savingsViewMode === 'percent' ? (val: number) => Math.round(val) + '%' : formatShortValue}
+                                            />
+                                        }
                                     />
                                 </Area>
                             </AreaChart>
@@ -419,12 +483,12 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                 </div>
 
                 {/* Category Trends Section - Full Width */}
-                <div className="lg:col-span-2">
+                <div>
                     <CategoryTrendsSection transactions={transactions} period={period} />
                 </div>
 
                 {/* Anomalies Section - Full Width */}
-                <div className="lg:col-span-2">
+                <div>
                     <AnomaliesSection transactions={transactions} />
                 </div>
             </div>
@@ -433,7 +497,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
 }
 
 
-function ChartCard({ title, children, headerRight }: { title: string; children: React.ReactNode; headerRight?: React.ReactNode }) {
+function ChartCard({ title, children, headerRight, footer }: { title: string; children: React.ReactNode; headerRight?: React.ReactNode; footer?: React.ReactNode }) {
     return (
         <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm h-[400px] flex flex-col">
             <div className="flex justify-between items-center mb-6">
@@ -443,6 +507,7 @@ function ChartCard({ title, children, headerRight }: { title: string; children: 
             <div className="flex-1 w-full min-h-0">
                 {children}
             </div>
+            {footer && <div className="pt-3">{footer}</div>}
         </div>
     );
 }

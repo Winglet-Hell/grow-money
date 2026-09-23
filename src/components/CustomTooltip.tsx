@@ -6,6 +6,7 @@ interface CustomTooltipProps {
     valuePrefix?: string;
     valueSuffix?: string;
     formatter?: (value: any) => string;
+    labelFormatter?: (label: string) => string; // e.g. "Sep 2026 · so far" for a month still running
 }
 
 export const CustomTooltip = ({
@@ -15,14 +16,15 @@ export const CustomTooltip = ({
     isPrivacy,
     valuePrefix = '₽',
     valueSuffix = '',
-    formatter
+    formatter,
+    labelFormatter
 }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
         return (
             <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl shadow-xl border border-gray-100 flex flex-col gap-2 min-w-[140px]">
                 {label && (
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-50 pb-1.5 mb-0.5">
-                        {label}
+                        {labelFormatter ? labelFormatter(label) : label}
                     </p>
                 )}
                 <div className="flex flex-col gap-1.5">
