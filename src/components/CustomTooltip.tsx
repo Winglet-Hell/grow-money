@@ -1,3 +1,5 @@
+import type React from 'react';
+
 interface CustomTooltipProps {
     active?: boolean;
     payload?: any[];
@@ -7,6 +9,7 @@ interface CustomTooltipProps {
     valueSuffix?: string;
     formatter?: (value: any) => string;
     labelFormatter?: (label: string) => string; // e.g. "Sep 2026 · so far" for a month still running
+    footer?: (label: string) => React.ReactNode; // extra lines under the values, e.g. the month's milestones
 }
 
 export const CustomTooltip = ({
@@ -17,9 +20,11 @@ export const CustomTooltip = ({
     valuePrefix = '₽',
     valueSuffix = '',
     formatter,
-    labelFormatter
+    labelFormatter,
+    footer
 }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
+        const extra = footer && label ? footer(label) : null;
         return (
             <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl shadow-xl border border-gray-100 flex flex-col gap-2 min-w-[140px]">
                 {label && (
@@ -46,6 +51,7 @@ export const CustomTooltip = ({
                         </div>
                     ))}
                 </div>
+                {extra && <div className="border-t border-gray-50 pt-1.5">{extra}</div>}
             </div>
         );
     }

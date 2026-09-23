@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Info, Milestone as MilestoneIcon, Pencil, Plus } from 'lucide-react';
 import type { Milestone, MilestoneKind, Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -75,7 +76,12 @@ export function MilestonesPage({ transactions }: MilestonesPageProps) {
     const [cutKindChoice, setCutKind] = useState<MilestoneKind | 'all'>('all');
     const [excludePlanned, setExcludePlanned] = useState(false);
     const [compareWindow, setCompareWindow] = useState<CompareWindow>('chapter');
-    const [selection, setSelection] = useState<Selection | null>(null);
+    // A milestone flag on the Trends charts links here with the milestone to open on.
+    const location = useLocation();
+    const [selection, setSelection] = useState<Selection | null>(() => {
+        const focusMilestone = (location.state as { focusMilestone?: string } | null)?.focusMilestone;
+        return focusMilestone ? { type: 'around', cut: focusMilestone } : null;
+    });
     // The milestone being edited, or a new one (optionally starting on a given day).
     const [editing, setEditing] = useState<{ milestone: Milestone | null; initialDate?: string } | null>(null);
     const [detail, setDetail] = useState<{ type: 'expense' | 'income'; category: string } | null>(null);

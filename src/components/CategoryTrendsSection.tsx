@@ -14,16 +14,20 @@ import {
 } from 'recharts';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { cn, stringToColor } from '../lib/utils';
-import type { Transaction } from '../types';
+import type { Milestone, Transaction } from '../types';
 import { monthKeyOf, monthKeyFromDate, monthLabel, shiftMonthKey } from '../lib/periods';
 import { niceScale, labelIndices } from '../lib/chartScale';
 import { ScrollableChart, PickedBarLabel } from './ChartParts';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { CustomTooltip } from './CustomTooltip';
+import { milestoneMarks } from '../lib/milestones';
+import { MilestoneFlag, MilestoneTooltipLines, MILESTONE_LINE_COLOR } from './MilestoneChartMarks';
 
 interface CategoryTrendsSectionProps {
     transactions: Transaction[];
     period: '3M' | '6M' | '1Y' | 'ALL';
+    milestones?: Milestone[];                        // drawn on the chart (empty when turned off)
+    onOpenMilestone?: (milestone: Milestone) => void;
 }
 
 // The average line's label, set just past the line's right end (in the chart's right margin)
@@ -37,7 +41,7 @@ function AverageLineLabel({ text, viewBox }: { text: string; viewBox?: { x: numb
     );
 }
 
-export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSectionProps) {
+export function CategoryTrendsSection({ transactions, period, milestones = [], onOpenMilestone }: CategoryTrendsSectionProps) {
     const { isPrivacyMode } = usePrivacy();
     const [type, setType] = useState<'expense' | 'income'>('expense');
     const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -177,6 +181,9 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
     const chartMargin = { top: 20, right: 52, left: 0, bottom: 0 };
     const barColor = type === 'income' ? '#10b981' : '#f43f5e';
     const runningLabel = chartData.find(d => d.inProgress)?.label;
+    // A rent that jumps after a move reads differently with the move marked on it.
+    const marks = milestoneMarks(milestones, chartData.map(d => ({ month: d.key, label: d.label })));
+    const marksByLabel = new Map(marks.map(mark => [mark.label, mark]));
 
     return (
         <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm h-auto md:h-[400px] flex flex-col col-span-1 lg:col-span-2">
@@ -313,10 +320,24 @@ export function CategoryTrendsSection({ transactions, period }: CategoryTrendsSe
                                     <CustomTooltip
                                         isPrivacy={isPrivacyMode}
                                         labelFormatter={label => (label === runningLabel ? `${label} · so far` : label)}
+                                        footer={label => {
+                                            const mark = marksByLabel.get(label);
+                                            return mark ? <MilestoneTooltipLines milestones={mark.milestones} /> : null;
+                                        }}
                                     />
                                 }
                                 cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }}
                             />
+                            {marks.map(mark => (
+                                <ReferenceLine
+                                    key={`milestone-${mark.month}`}
+                                    x={mark.label}
+                                    position={mark.position}
+                                    stroke={MILESTONE_LINE_COLOR}
+                                    strokeDasharray="4 3"
+                                    label={<MilestoneFlag mark={mark} onOpen={onOpenMilestone} />}
+                                />
+                            ))}
                             {/* The average the header compares last month with. It replaces a straight
                                 regression line, which read a one-off change (rent after moving) as a
                                 steady slide and meant nothing for occasional purchases. */}

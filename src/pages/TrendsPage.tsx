@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Bar,
     XAxis,
@@ -16,16 +17,19 @@ import {
     Cell,
     LabelList
 } from 'recharts';
-import { Wallet, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
-import type { Transaction } from '../types';
+import { Wallet, ArrowUpCircle, ArrowDownCircle, Milestone as MilestoneIcon } from 'lucide-react';
+import type { Milestone, Transaction } from '../types';
 import { CategoryTrendsSection } from '../components/CategoryTrendsSection';
 import { AnomaliesSection } from '../components/AnomaliesSection';
 import { SpendingHeatmap } from '../components/SpendingHeatmap';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 import { CustomTooltip } from '../components/CustomTooltip';
 import { MetricCard } from '../components/MetricCard';
 import { ScrollableChart, ChartLegend, PickedBarLabel, PickedPointLabel } from '../components/ChartParts';
 import { niceScale, labelIndices } from '../lib/chartScale';
+import { milestoneMarks, normalizeMilestones } from '../lib/milestones';
+import { MilestoneFlag, MilestoneTooltipLines, MILESTONE_LINE_COLOR } from '../components/MilestoneChartMarks';
 
 // Solid hairline grid and quiet axis text: the data is the only thing allowed to be loud.
 const GRID_COLOR = '#EEF0F3';
@@ -38,9 +42,26 @@ interface TrendsPageProps {
 
 type Period = '3M' | '6M' | '1Y' | 'ALL';
 
+// Whether milestones are drawn on the charts: a per-device choice, on unless turned off.
+const SHOW_MILESTONES_KEY = 'trendsShowMilestones';
+const readShowMilestones = () => {
+    try {
+        return localStorage.getItem(SHOW_MILESTONES_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+};
+const storeShowMilestones = (show: boolean) => {
+    try { localStorage.setItem(SHOW_MILESTONES_KEY, String(show)); } catch { /* private mode etc. */ }
+};
+
 export function TrendsPage({ transactions }: TrendsPageProps) {
     const { isPrivacyMode } = usePrivacy();
+    const { settings } = useUserSettings();
+    const navigate = useNavigate();
     const [period, setPeriod] = useState<Period>('ALL');
+    const [showMilestones, setShowMilestones] = useState(readShowMilestones);
+    const milestones = useMemo(() => normalizeMilestones(settings.preferences.milestones), [settings.preferences.milestones]);
     const [savingsViewMode, setSavingsViewMode] = useState<'percent' | 'absolute'>('percent');
 
     // 1. Data Processing
@@ -174,6 +195,30 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
         { minGap: labelGap },
     );
 
+    // Milestones on the charts: a dashed line through the month each one falls in, its flag on
+    // top (which opens it on the Milestones page), and its title in that month's tooltip.
+    const marks = showMilestones ? milestoneMarks(milestones, chartData.map(d => ({ month: d.month, label: d.label }))) : [];
+    const marksByLabel = new Map(marks.map(mark => [mark.label, mark]));
+    const milestoneFooter = (label: string) => {
+        const mark = marksByLabel.get(label);
+        return mark ? <MilestoneTooltipLines milestones={mark.milestones} /> : null;
+    };
+    const openMilestone = (m: Milestone) => navigate('/milestones', { state: { focusMilestone: m.date } });
+    const milestoneLines = marks.map(mark => (
+        <ReferenceLine
+            key={`milestone-${mark.month}`}
+            x={mark.label}
+            position={mark.position}
+            stroke={MILESTONE_LINE_COLOR}
+            strokeDasharray="4 3"
+            label={<MilestoneFlag mark={mark} onOpen={openMilestone} />}
+        />
+    ));
+    const toggleMilestones = () => {
+        setShowMilestones(!showMilestones);
+        storeShowMilestones(!showMilestones);
+    };
+
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Header & Controls */}
@@ -183,19 +228,35 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                     <p className="text-gray-500">Analyze your income, expenses and savings over time</p>
                 </div>
 
-                <div className="flex bg-gray-100 p-1 rounded-lg">
-                    {(['3M', '6M', '1Y', 'ALL'] as Period[]).map((p) => (
+                <div className="flex flex-wrap items-center gap-2">
+                    {milestones.length > 0 && (
                         <button
-                            key={p}
-                            onClick={() => setPeriod(p)}
-                            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${period === p
-                                ? 'bg-white text-gray-900 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-900'
+                            onClick={toggleMilestones}
+                            aria-pressed={showMilestones}
+                            title={showMilestones ? 'Hide milestones on the charts' : 'Show milestones on the charts'}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${showMilestones
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-gray-100 text-gray-500 hover:text-gray-900'
                                 }`}
                         >
-                            {p === '3M' ? '3 Months' : p === '6M' ? '6 Months' : p === '1Y' ? 'Year' : 'All'}
+                            <MilestoneIcon className="w-4 h-4" />
+                            Milestones
                         </button>
-                    ))}
+                    )}
+                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                        {(['3M', '6M', '1Y', 'ALL'] as Period[]).map((p) => (
+                            <button
+                                key={p}
+                                onClick={() => setPeriod(p)}
+                                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${period === p
+                                    ? 'bg-white text-gray-900 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-900'
+                                    }`}
+                            >
+                                {p === '3M' ? '3 Months' : p === '6M' ? '6 Months' : p === '1Y' ? 'Year' : 'All'}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
@@ -248,8 +309,9 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                 tick={AXIS_TICK}
                                 tickFormatter={formatRubAxis}
                             />
-                            <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ stroke: '#D1D5DB', strokeWidth: 1 }} />
+                            <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} footer={milestoneFooter} />} cursor={{ stroke: '#D1D5DB', strokeWidth: 1 }} />
                             <Legend iconType="plainline" wrapperStyle={{ fontSize: '12px', color: '#6B7280', paddingTop: '10px', fontWeight: 400, fontFamily: 'inherit' }} />
+                            {milestoneLines}
                             <Line
                                 type="monotone"
                                 dataKey="income"
@@ -312,7 +374,8 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                     minTickGap={16}
                                 />
                                 <YAxis hide domain={netFlowScale.domain} ticks={netFlowScale.ticks} />
-                                <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
+                                <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} footer={milestoneFooter} />} cursor={{ fill: 'rgba(249, 250, 251, 0.5)' }} />
+                                {milestoneLines}
                                 <Bar dataKey="netFlow" name="Net Flow" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={24} isAnimationActive={false}>
                                     {chartData.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={entry.netFlow >= 0 ? '#10b981' : '#f43f5e'} />
@@ -431,7 +494,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                         }
                     >
                         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                            <AreaChart data={chartData} margin={{ top: marks.length ? 20 : 10, right: 10, left: 0, bottom: 0 }}>
                                 <defs>
                                     <linearGradient id="colorSavings" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
@@ -454,7 +517,8 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
                                     unit={savingsViewMode === 'percent' ? "%" : ""}
                                     tickFormatter={savingsViewMode === 'absolute' ? (value) => isPrivacyMode ? '•••' : `₽${(value / 1000).toFixed(0)}k` : undefined}
                                 />
-                                <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} valuePrefix={savingsViewMode === 'absolute' ? "₽" : ""} valueSuffix={savingsViewMode === 'percent' ? "%" : ""} />} />
+                                <Tooltip content={<CustomTooltip isPrivacy={isPrivacyMode} valuePrefix={savingsViewMode === 'absolute' ? "₽" : ""} valueSuffix={savingsViewMode === 'percent' ? "%" : ""} footer={milestoneFooter} />} />
+                                {milestoneLines}
                                 {savingsViewMode === 'percent' && (
                                     <ReferenceLine y={20} stroke="#10b981" strokeDasharray="3 3" label={{ value: 'Target 20%', fill: '#10b981', fontSize: 12 }} />
                                 )}
@@ -484,7 +548,12 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
 
                 {/* Category Trends Section - Full Width */}
                 <div>
-                    <CategoryTrendsSection transactions={transactions} period={period} />
+                    <CategoryTrendsSection
+                        transactions={transactions}
+                        period={period}
+                        milestones={showMilestones ? milestones : []}
+                        onOpenMilestone={openMilestone}
+                    />
                 </div>
 
                 {/* Anomalies Section - Full Width */}

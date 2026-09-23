@@ -323,6 +323,36 @@ export function monthlySeries(set: FlowSet): MonthPoint[] {
     return points;
 }
 
+// ------------------------------------------------------------------ marks on other charts
+
+export interface MilestoneMark {
+    month: string;           // "YYYY-MM"
+    label: string;           // the chart's own category for that month
+    milestones: Milestone[];
+    // Where the line goes when the month is a bar: on its left edge when the (first) milestone
+    // is in the first half of the month, else on its right edge — a boundary between the
+    // months before and after, which also keeps the flag clear of the bar's value label.
+    position: 'start' | 'end';
+}
+
+/**
+ * Milestones placed on a monthly chart (Trends): grouped by the month they fall in, keeping
+ * only months the chart shows. `points` are the chart's months with their axis labels.
+ */
+export function milestoneMarks(milestones: Milestone[], points: { month: string; label: string }[]): MilestoneMark[] {
+    const labels = new Map(points.map(p => [p.month, p.label]));
+    const marks = new Map<string, MilestoneMark>();
+    for (const m of milestones) {
+        const month = m.date.slice(0, 7);
+        const label = labels.get(month);
+        if (label === undefined) continue;
+        const mark = marks.get(month) ?? { month, label, milestones: [], position: Number(m.date.slice(8, 10)) <= 15 ? 'start' : 'end' };
+        mark.milestones.push(m);
+        marks.set(month, mark);
+    }
+    return [...marks.values()];
+}
+
 /** Where a day sits on the timeline, in months from the start of `firstMonth` (fractions within the month). */
 export function monthOffset(day: string, firstMonth: string): number {
     const months = (Number(day.slice(0, 4)) - Number(firstMonth.slice(0, 4))) * 12
