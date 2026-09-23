@@ -21,7 +21,8 @@ import {
     Banknote,
     ArrowRightLeft,
     Upload,
-    Repeat
+    Repeat,
+    Milestone
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getAvatarIcon } from '../lib/avatarIcons';
@@ -45,6 +46,7 @@ const NAV_CATEGORIES = [
             { path: '/income-insights', label: 'Income', icon: TrendingUp, description: 'Revenue analysis' },
             { path: '/paycheck', label: 'Paycheck', icon: Banknote, description: 'Pay reconciliation' },
             { path: '/trends', label: 'Trends', icon: LineChart, description: 'Historical data' },
+            { path: '/milestones', label: 'Milestones', icon: Milestone, description: 'Life chapters compared' },
             { path: '/recurring', label: 'Recurring', icon: Repeat, description: 'Subscriptions & bills' },
             { path: '/trip-analytics', label: 'Trip Analytics', icon: Map, description: 'Travel spending' },
             { path: '/travel-index', label: 'Travel Index', icon: Globe, description: 'Cost comparison' },

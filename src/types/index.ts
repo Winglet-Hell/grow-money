@@ -52,6 +52,20 @@ export type TransactionSnapshot = {
     originalCurrency?: string;
 };
 
+// What kind of life event a milestone marks. The kind picks its icon and lets the Milestones
+// page cut chapters by one kind only (moves → cities, work → jobs).
+export type MilestoneKind = 'move' | 'work' | 'family' | 'purchase' | 'health' | 'study' | 'money' | 'other';
+
+// A moment worth remembering. Milestones are points in time: each one opens a chapter that
+// lasts until the next, so periods never have to be entered by hand.
+export type Milestone = {
+    id: string;
+    date: string; // "YYYY-MM-DD"
+    title: string;
+    kind: MilestoneKind;
+    note?: string;
+};
+
 // Overtime record: hours worked in a given month, valued at an hourly rate.
 export type OvertimeEntry = {
     id: string;

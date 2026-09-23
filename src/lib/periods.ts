@@ -19,6 +19,17 @@ export function monthKeyOf(dateStr: string): string | null {
     return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
 }
 
+/** "YYYY-MM-DD" for a transaction date, or null when the date can't be read. */
+export function dateKeyOf(dateStr: string): string | null {
+    if (!dateStr) return null;
+    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.slice(0, 10);
+    const ru = dateStr.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+    if (ru) return `${ru[3]}-${pad2(Number(ru[2]))}-${pad2(Number(ru[1]))}`;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
 /** Day of month (1–31) for a transaction date, or null when unreadable. */
 export function dayOfMonthOf(dateStr: string): number | null {
     if (!dateStr) return null;
