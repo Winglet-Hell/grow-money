@@ -70,3 +70,12 @@ export const getGlobalCategory = (category: string): string => {
 
     return 'Other';
 };
+
+// Big planned payments — rent, flights and hotels, electronics, visas, insurance. They land on
+// a few days and dwarf everyday spending, so views of spending habits can leave them out.
+const PLANNED_PAYMENT_CATEGORIES = new Set(
+    ['Rent', 'Hotels & flighsts', 'Hotels & flights', 'Tech', 'Study & visa', 'Insurance', 'Страховка'].map(c => c.toLowerCase())
+);
+
+export const isPlannedPayment = (category: string): boolean =>
+    PLANNED_PAYMENT_CATEGORIES.has((category || '').toLowerCase().trim());

@@ -5,6 +5,7 @@ import { Calendar } from 'lucide-react';
 import { useState } from 'react';
 import { TransactionListModal } from './TransactionListModal';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { isPlannedPayment } from '../lib/categoryGroups';
 
 interface SpendingHeatmapProps {
     transactions: Transaction[];
@@ -16,10 +17,33 @@ interface SpendingHeatmapProps {
 const localDateKey = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+// Colour per tier, shared by the cells and the legend: 0 = no spending, 1–5 = ever larger days.
+const TIER_BG = ['bg-gray-50', 'bg-emerald-100', 'bg-emerald-300', 'bg-emerald-500', 'bg-emerald-700', 'bg-emerald-900'];
+const TIER_HOVER = ['hover:bg-gray-100', 'hover:bg-emerald-200', 'hover:bg-emerald-400', 'hover:bg-emerald-600', 'hover:bg-emerald-800', 'hover:bg-gray-900'];
+
+// "Everyday only" is a per-device convenience; falls back to all spending when storage is unavailable.
+const EVERYDAY_KEY = 'heatmapEverydayOnly';
+const readEverydayOnly = (): boolean => {
+    try {
+        return localStorage.getItem(EVERYDAY_KEY) === '1';
+    } catch {
+        return false;
+    }
+};
+const storeEverydayOnly = (on: boolean) => {
+    try { localStorage.setItem(EVERYDAY_KEY, on ? '1' : '0'); } catch { /* private mode etc. */ }
+};
+
 export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }) => {
     const { isPrivacyMode } = usePrivacy();
     const [selectedDayList, setSelectedDayList] = useState<{ date: Date; transactions: Transaction[] } | null>(null);
     // const [tooltipData, setTooltipData] = useState<{ date: string; amount: number; count: number; x: number; y: number } | null>(null);
+    // Everyday spending only: leaves out rent, flights and hotels, tech, visas and insurance.
+    const [everydayOnly, setEverydayOnly] = useState(readEverydayOnly);
+    const chooseEverydayOnly = (on: boolean) => {
+        setEverydayOnly(on);
+        storeEverydayOnly(on);
+    };
 
     // 1. Prepare Data
     // We want to show the last 365 days (approx 52 weeks)
@@ -38,10 +62,10 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
 
         // Generate Map of Date -> Spend
         const dailySpend = new Map<string, { amount: number; count: number; transactions: Transaction[] }>();
-        let maxSpend = 0;
 
         transactions.forEach(t => {
             if (t.type !== 'expense') return; // Only expenses
+            if (everydayOnly && isPlannedPayment(t.category)) return;
 
             const date = new Date(t.date);
             // Sanity check date
@@ -58,36 +82,26 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
             entry.amount += Math.abs(t.amount);
             entry.count += 1;
             entry.transactions.push(t);
-
-            if (entry.amount > maxSpend) maxSpend = entry.amount;
         });
 
-        // Determine Intensity Tiers
-        // Use a non-linear scale (Square Root) to better differentiate lower spending from massive outliers.
-        // If we use linear, one huge rent payment makes everything else look like zero.
-        const maxSqrt = Math.sqrt(maxSpend);
+        // Intensity tiers come from the year's own spending days, the way GitHub shades its
+        // grid: tiers 1–3 hold a quarter of them each, tier 4 the next 20% and tier 5 the
+        // biggest 5% — rent, flights, a new laptop. Scaled against the single biggest day
+        // instead, nine days in ten shared the palest shade.
+        const startKey = localDateKey(startDate);
+        const endKey = localDateKey(endDate);
+        const yearAmounts = Array.from(dailySpend.entries())
+            .filter(([key, day]) => key >= startKey && key <= endKey && day.amount > 0)
+            .map(([, day]) => day.amount)
+            .sort((a, b) => a - b);
+        const quantile = (p: number) => yearAmounts[Math.min(yearAmounts.length - 1, Math.floor(p * yearAmounts.length))];
+        const thresholds = yearAmounts.length > 0 ? [0.25, 0.5, 0.75, 0.95].map(quantile) : [];
 
-        const getIntensity = (amount: number) => {
-            if (amount === 0) return 0;
-            if (maxSpend === 0) return 0;
+        const getIntensity = (amount: number) =>
+            amount > 0 ? 1 + thresholds.filter(threshold => amount > threshold).length : 0;
 
-            const valSqrt = Math.sqrt(amount);
-            const ratio = valSqrt / maxSqrt;
-
-            if (ratio < 0.25) return 1; // Small
-            if (ratio < 0.50) return 2; // Medium-Low
-            if (ratio < 0.75) return 3; // Medium-High
-            return 4; // High
-        };
-
-        // Calculate Tier Stats
-        const stats = {
-            0: { count: 0, min: Infinity, max: -Infinity, total: 0 },
-            1: { count: 0, min: Infinity, max: -Infinity, total: 0 },
-            2: { count: 0, min: Infinity, max: -Infinity, total: 0 },
-            3: { count: 0, min: Infinity, max: -Infinity, total: 0 },
-            4: { count: 0, min: Infinity, max: -Infinity, total: 0 },
-        };
+        // Calculate Tier Stats (indexed by tier)
+        const stats = TIER_BG.map(() => ({ count: 0, min: Infinity, max: -Infinity, total: 0 }));
 
         // Build Grid
         const weeks: Array<{ days: Array<{ date: Date; dateStr: string; amount: number; count: number; intensity: number; transactions: Transaction[] } | null> }> = [];
@@ -99,6 +113,7 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
         // Safety break to prevent infinite loops locally
         let safeguard = 0;
         let minSpend = Infinity;
+        let maxSpend = 0;
         let totalSpend = 0;
 
         while (iterDate <= endDate || currentWeek.length > 0) { // Continue until we finish the last partial week
@@ -123,22 +138,23 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
             } else {
                 if (amount > 0) {
                     minSpend = Math.min(minSpend, amount);
+                    maxSpend = Math.max(maxSpend, amount);
                     totalSpend += amount;
                 }
 
                 const intensity = getIntensity(amount);
 
                 // Update Stats
-                stats[intensity as keyof typeof stats].count++;
-                stats[intensity as keyof typeof stats].total += amount;
+                stats[intensity].count++;
+                stats[intensity].total += amount;
                 if (amount > 0) {
                     // Only track min/max for non-zero amounts for tiers > 0
                     // But for tier 0 min/max are 0.
-                    stats[intensity as keyof typeof stats].min = Math.min(stats[intensity as keyof typeof stats].min, amount);
-                    stats[intensity as keyof typeof stats].max = Math.max(stats[intensity as keyof typeof stats].max, amount);
+                    stats[intensity].min = Math.min(stats[intensity].min, amount);
+                    stats[intensity].max = Math.max(stats[intensity].max, amount);
                 } else if (intensity === 0) { // For tier 0, min/max are 0
-                    stats[intensity as keyof typeof stats].min = 0;
-                    stats[intensity as keyof typeof stats].max = 0;
+                    stats[intensity].min = 0;
+                    stats[intensity].max = 0;
                 }
 
                 const dayData = {
@@ -163,7 +179,7 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
         }
 
         return { weeks, maxSpend, stats, minSpend: minSpend === Infinity ? 0 : minSpend, totalSpend };
-    }, [transactions]);
+    }, [transactions, everydayOnly]);
 
     const formatCurrency = (val: number) => {
         return new Intl.NumberFormat('ru-RU', {
@@ -173,9 +189,11 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
         }).format(val);
     };
 
+    // "1.2k" below ten thousand: the legend's lower tiers sit a few hundred roubles apart.
     const formatCompact = (val: number) => {
         if (val >= 1000000) return (val / 1000000).toFixed(0) + 'M';
-        if (val >= 1000) return (val / 1000).toFixed(0) + 'k';
+        if (val >= 10000) return (val / 1000).toFixed(0) + 'k';
+        if (val >= 1000) return (val / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
         return Math.round(val).toString();
     };
 
@@ -197,18 +215,44 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
         return labels;
     }, [calendarData]);
 
-    const spendingDays = calendarData.stats[1].count + calendarData.stats[2].count + calendarData.stats[3].count + calendarData.stats[4].count;
+    const spendingDays = calendarData.stats.slice(1).reduce((sum, tier) => sum + tier.count, 0);
     const avgDailySpend = spendingDays > 0 ? calendarData.totalSpend / spendingDays : 0;
 
     return (
         <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm w-full overflow-hidden">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div>
                     <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                         <Calendar className="w-5 h-5 text-gray-500" />
                         Spending Activity
                     </h3>
-                    <p className="text-sm text-gray-500">Daily spending intensity over the last year</p>
+                    <p className="text-sm text-gray-500">
+                        {everydayOnly
+                            ? 'Everyday spending over the last year, without rent, flights & hotels, tech, visas and insurance'
+                            : 'Daily spending intensity over the last year'}
+                    </p>
+                </div>
+
+                {/* All spending vs everyday only */}
+                <div className="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto flex-shrink-0">
+                    <button
+                        onClick={() => chooseEverydayOnly(false)}
+                        className={cn(
+                            "flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap",
+                            !everydayOnly ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                        )}
+                    >
+                        All spending
+                    </button>
+                    <button
+                        onClick={() => chooseEverydayOnly(true)}
+                        className={cn(
+                            "flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap",
+                            everydayOnly ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                        )}
+                    >
+                        Everyday
+                    </button>
                 </div>
             </div>
 
@@ -237,13 +281,7 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
                                         key={dIndex}
                                         className={cn(
                                             "w-full aspect-square rounded-[2px] transition-colors relative group",
-                                            day ? (
-                                                day.intensity === 0 ? "bg-gray-50 hover:bg-gray-100" :
-                                                    day.intensity === 1 ? "bg-emerald-100 hover:bg-emerald-200" : // Tiny
-                                                        day.intensity === 2 ? "bg-emerald-300 hover:bg-emerald-400" : // Small
-                                                            day.intensity === 3 ? "bg-emerald-500 hover:bg-emerald-600" : // Medium
-                                                                "bg-emerald-900 hover:bg-gray-900" // High
-                                            ) : "bg-transparent",
+                                            day ? cn(TIER_BG[day.intensity], TIER_HOVER[day.intensity]) : "bg-transparent",
                                             day ? "cursor-pointer" : ""
                                         )}
                                         onClick={() => {
@@ -325,20 +363,15 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
 
                 {/* Legend */}
                 <div className="flex flex-wrap gap-4">
-                    {[0, 1, 2, 3, 4].map((tier) => {
-                        const s = calendarData.stats[tier as keyof typeof calendarData.stats];
-
+                    {calendarData.stats.map((s, tier) => {
                         // Hide empty tiers
                         if (s.count === 0) return null;
 
-                        const bgClass = tier === 0 ? "bg-gray-50" :
-                            tier === 1 ? "bg-emerald-100" :
-                                tier === 2 ? "bg-emerald-300" :
-                                    tier === 3 ? "bg-emerald-500" :
-                                        "bg-emerald-900";
+                        const bgClass = TIER_BG[tier];
 
                         const label = tier === 0 ? "No Spend" :
-                            (s.min !== Infinity && s.max !== -Infinity ? `${formatCompact(s.min)} - ${formatCompact(s.max)}` : "—");
+                            isPrivacyMode ? '•••' :
+                                (s.min !== Infinity && s.max !== -Infinity ? `${formatCompact(s.min)} - ${formatCompact(s.max)}` : "—");
 
                         return (
                             <div key={tier} className="flex items-center gap-2">
