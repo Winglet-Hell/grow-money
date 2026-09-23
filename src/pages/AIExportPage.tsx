@@ -14,6 +14,7 @@ import {
     TrendingUp,
     CalendarDays,
     Target,
+    Milestone as MilestoneIcon,
 } from 'lucide-react';
 import type { Transaction, Trip } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -22,6 +23,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useCategoryLimits } from '../hooks/useCategoryLimits';
 import { useHistoricalRates } from '../hooks/useHistoricalRates';
 import { buildAIExportPayload, toPrettyJson } from '../lib/aiExport';
+import { formatDayKey, normalizeMilestones } from '../lib/milestones';
 import { formatCurrencyAmount } from '../lib/currencies';
 import { referenceCoverage } from '../lib/fxBenchmark';
 import { db } from '../lib/db';
@@ -80,6 +82,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
     const { accounts, totalNetWorth, rates, isLiveRates } = useAccounts(transactions);
     const { limits: categoryLimits } = useCategoryLimits();
     const recurringHiddenIds = settings.preferences.recurring?.hiddenIds;
+    const milestones = useMemo(() => normalizeMilestones(settings.preferences.milestones), [settings.preferences.milestones]);
     const trips = useTrips();
 
     // Market rates for the day of every conversion, so the export can say what each
@@ -112,8 +115,9 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                 paycheck: settings.preferences.paycheck,
                 categoryLimits,
                 recurringHiddenIds,
+                milestones,
             }),
-        [transactions, accounts, totalNetWorth, rates, isLiveRates, referenceRates, trips, settings.preferences.paycheck, categoryLimits, recurringHiddenIds]
+        [transactions, accounts, totalNetWorth, rates, isLiveRates, referenceRates, trips, settings.preferences.paycheck, categoryLimits, recurringHiddenIds, milestones]
     );
 
     const json = useMemo(() => toPrettyJson(dataPayload), [dataPayload]);
@@ -167,7 +171,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
 4. Каждая рекомендация = конкретное действие + эффект в рублях в месяц + на чём основана. Общих советов не надо.
 5. Не пересказывай мне мои данные — мне нужны выводы.
 6. Не считай одну и ту же трату дважды: категория (expenses.byCategory), магазин (payees.rows) и регулярный платёж (recurring.detected, recurring.rows) — это разные срезы одних и тех же денег.
-7. Поездки (trips.rows) и переезд из Паттайи в Бангкок (profile.residence) объясняют всплески расходов — это не утечки.
+7. Поездки (trips.rows), переезд из Паттайи в Бангкок (profile.residence) и другие вехи жизни с датами (milestones.rows) объясняют всплески расходов — это не утечки. Периоды жизни сравнивай по milestones.chapters (там средние за месяц, посчитанные по дням), а не месяц к месяцу через границу вехи.
 8. Текущий месяц (currentMonth) не закончен: сравнивай его только с прошлым месяцем на ту же дату (expensesPrevMonthSameDay) или через прогноз (projectedMonthEndExpenses), а не с полными месяцами.
 
 Структура ответа:
@@ -176,7 +180,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
 
 2. УТЕЧКИ. Таблица топ-10 по потерям в рублях в год: что | ₽/мес | ₽/год | % от расходов | почему это утечка | что делать. Источники: expenses.byCategory, payees.rows, recurring.detected, recurring.rows, expenses.largest. Подписки, аренда и счета — из recurring.detected (это тот же список, что я вижу в приложении, суммы в валюте платежа + в рублях): кандидаты на отмену — только status "active"; "missed" — платёж ожидался и не пришёл, возможно уже отменено; "ended" и hiddenByUser в текущие расходы не включай. recurring.rows — более широкий срез привычек (такси, продукты), там status "lapsed" тоже значит «уже не платится». Лимиты: budget.rows — мои месячные лимиты по категориям; где monthsOverLimit велик, лимит стабильно не выдерживается — скажи, лимит нереалистичный или трата раздута.
 
-3. СБЕРЕЖЕНИЯ И УСТОЙЧИВОСТЬ. Норма сбережений (savingsRatePct — какая часть дохода остаётся): последние 3 месяца против 6 против всего периода (monthly.averages) и динамика по месяцам (monthly.rows). Зависимость от одного источника дохода (income.concentrationTopSourcePct): что будет, если он пропадёт, и на сколько месяцев хватит остатков на счетах (accounts.rows) при текущих расходах. Фактический доход по работам (income.bySource) против плановой зарплаты (profile.jobs). Валютные риски — expenses.byCurrency, expenses.monthlyByCurrency.
+3. СБЕРЕЖЕНИЯ И УСТОЙЧИВОСТЬ. Норма сбережений (savingsRatePct — какая часть дохода остаётся): последние 3 месяца против 6 против всего периода (monthly.averages) и динамика по месяцам (monthly.rows). Если есть вехи — как изменились доходы, траты и норма сбережений после каждой (milestones.chapters[].vsPreviousChapter) и какие категории это сделали; разовые крупные траты отличай от новых привычек по expensesExcludingPlanned. Зависимость от одного источника дохода (income.concentrationTopSourcePct): что будет, если он пропадёт, и на сколько месяцев хватит остатков на счетах (accounts.rows) при текущих расходах. Фактический доход по работам (income.bySource) против плановой зарплаты (profile.jobs). Валютные риски — expenses.byCurrency, expenses.monthlyByCurrency.
 
 4. КОНВЕРТАЦИИ. Сначала прочитай fx.marketBenchmark.note. Главная цифра — сколько рублей забрали обменники относительно рыночного курса дня: fx.marketBenchmark.totalLostToExchangersInBase и weightedVsMarketPct. По парам — fx.pairs[].lostToExchangerInBase, по площадкам — fx.byRoute (маршрут «счёт → счёт» = где я менял): где теряю больше всего, где выгоднее. Дай правила: что менять через что, какими суммами и сколько это сэкономит в год. Про тайминг (pairs[].spreadPct, conversions[].vsYourAvgPct) — отдельно и коротко: это сравнение меня с самим собой, а не с рынком.
 
@@ -690,6 +694,54 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
                             )}
                         </div>
                     </Card>
+
+                    {/* Milestones and the chapters between them */}
+                    <div className="lg:col-span-2">
+                        <Card
+                            icon={<MilestoneIcon className="w-4 h-4" />}
+                            title="Milestones"
+                            hint={dataPayload.milestones.count
+                                ? `${dataPayload.milestones.count} milestone${dataPayload.milestones.count === 1 ? '' : 's'} · ${dataPayload.milestones.chapters.length} chapters · per month`
+                                : 'none marked'}
+                        >
+                            {dataPayload.milestones.chapters.length > 0 && dataPayload.milestones.count > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                                    {dataPayload.milestones.chapters.map(c => (
+                                        <div key={`${c.startDate ?? 'start'}-${c.title}`} className="p-3 bg-gray-50 rounded-lg text-sm">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <span className="font-medium text-gray-700 truncate">{c.title}</span>
+                                                {c.isOngoing && <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-emerald-100 text-emerald-700 uppercase tracking-wide shrink-0">so far</span>}
+                                                {c.isShort && <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-700 uppercase tracking-wide shrink-0">short</span>}
+                                            </div>
+                                            <span className="block text-xs text-gray-400">
+                                                {c.measuredFrom && c.measuredTo
+                                                    ? `${formatDayKey(c.measuredFrom)} – ${formatDayKey(c.measuredTo)} · ${c.daysMeasured} days`
+                                                    : 'not covered by the data'}
+                                            </span>
+                                            {c.perMonth && (
+                                                <div className="flex items-baseline justify-between gap-3 mt-2">
+                                                    <div>
+                                                        <div className="text-emerald-600 font-medium">{money(c.perMonth.income, '+')}</div>
+                                                        <div className="text-red-500 text-xs">{money(c.perMonth.expenses, '-')}</div>
+                                                    </div>
+                                                    <div className="text-right text-xs text-gray-500">
+                                                        {c.perMonth.savingsRatePct !== null && <div>saves {c.perMonth.savingsRatePct}%</div>}
+                                                        {c.vsPreviousChapter?.expensesChangePct != null && (
+                                                            <div className={c.vsPreviousChapter.expensesChangePct > 0 ? 'text-rose-500' : 'text-emerald-600'}>
+                                                                spending {c.vsPreviousChapter.expensesChangePct > 0 ? '+' : ''}{c.vsPreviousChapter.expensesChangePct}%
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-gray-400 text-sm italic">Mark life events on the Milestones page and they will be exported here.</p>
+                            )}
+                        </Card>
+                    </div>
 
                 </div>
             </div>

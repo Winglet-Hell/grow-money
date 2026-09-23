@@ -4,11 +4,15 @@
 // Every amount is labelled with its currency, every aggregate says what it covers,
 // and anything the model could reasonably misread (partial months, manually kept
 // balances, transfer legs that are NOT in the base currency) is flagged explicitly.
-import type { Transaction, Trip, PaycheckConfig } from '../types';
+import type { Transaction, Trip, PaycheckConfig, Milestone } from '../types';
 import { getGlobalCategory } from './categoryGroups';
 import { detectRecurring, typicalDayOfMonth } from './recurring';
 import { summarizePeriod, monthKeyFromDate } from './periods';
 import { resolveTripActiveTransactions } from './tripUtils';
+import {
+    SHORT_CHAPTER_DAYS, addDays, buildChapters, categoryChanges, chapterTitle, monthlyFigures, perMonth,
+    prepareFlows, rangeStats,
+} from './milestones';
 import { activeLimits } from './budget';
 import { getCurrencyMeta } from './currencies';
 import {
@@ -151,6 +155,7 @@ export interface AIExportInput {
     paycheck?: PaycheckConfig;
     categoryLimits?: Record<string, number>; // monthly budget per category, in the base currency
     recurringHiddenIds?: string[];           // series the user marked "not recurring" on the Recurring page
+    milestones?: Milestone[];                // life events from the Milestones page
     now?: Date;                              // wall clock for the "current month" view; defaults to new Date()
 }
 
@@ -161,7 +166,7 @@ export interface AIExportInput {
 export function buildAIExportPayload(input: AIExportInput) {
     const {
         transactions, accounts = [], netWorth, liveRates, referenceRates, trips = [], paycheck,
-        categoryLimits = {}, recurringHiddenIds = [], now = new Date(),
+        categoryLimits = {}, recurringHiddenIds = [], milestones = [], now = new Date(),
     } = input;
 
     const expenses = transactions.filter(t => t.type === 'expense');
@@ -1037,6 +1042,67 @@ export function buildAIExportPayload(input: AIExportInput) {
         })
         .sort((a, b) => (a.startDate < b.startDate ? 1 : -1));
 
+    // ------------------------------------------------------------ milestones
+    // The user's own life events and the chapters they cut the history into, measured the way
+    // the Milestones page measures them (per average month, counted by days), so the model
+    // reads the same numbers the user sees there.
+    const milestoneRows = [...milestones]
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(m => ({ date: m.date, title: m.title, kind: m.kind, note: m.note ?? null }));
+    const chapterFlows = prepareFlows(transactions);
+    const everydayFlows = prepareFlows(transactions, { excludePlanned: true });
+    const chapters = buildChapters(milestones, chapterFlows);
+    const pctChange = (after: number, before: number) => (before > 0 ? round(((after - before) / before) * 100, 1) : null);
+    const chapterRows = chapters
+        .filter(c => c.stats || c.opener.length > 0) // nothing is known from before the first milestone
+        .map(c => {
+            const stats = c.stats;
+            const figures = stats ? monthlyFigures(stats) : null;
+            const prev = c.index > 0 ? chapters[c.index - 1].stats : null;
+            const prevFigures = prev ? monthlyFigures(prev) : null;
+            const changes = (pick: 'expenseByCategory' | 'incomeByCategory', limit: number) =>
+                stats && prev
+                    ? categoryChanges(prev[pick], prev.days, stats[pick], stats.days).slice(0, limit).map(r => ({
+                        category: r.category,
+                        before: round(r.a),
+                        after: round(r.b),
+                        change: round(r.delta),
+                    }))
+                    : [];
+            return {
+                title: chapterTitle(c),
+                openedBy: c.opener.map(m => m.title),
+                startDate: c.start,
+                endDate: c.end ? addDays(c.end, -1) : null,
+                measuredFrom: stats?.from ?? null,
+                measuredTo: stats?.to ?? null,
+                daysMeasured: stats?.days ?? 0,
+                isOngoing: c.ongoing,
+                isShort: !!stats && stats.days < SHORT_CHAPTER_DAYS,
+                startedBeforeData: c.clippedStart,
+                perMonth: stats && figures
+                    ? {
+                        income: round(figures.income),
+                        expenses: round(figures.expenses),
+                        net: round(figures.saved),
+                        savingsRatePct: figures.savingsRate === null ? null : round(figures.savingsRate * 100, 1),
+                        expensesExcludingPlanned: round(perMonth(rangeStats(everydayFlows, stats.from, stats.to).expenses, stats.days)),
+                    }
+                    : null,
+                vsPreviousChapter: figures && prevFigures
+                    ? {
+                        incomeChangePct: pctChange(figures.income, prevFigures.income),
+                        expensesChangePct: pctChange(figures.expenses, prevFigures.expenses),
+                        savingsRateChangePts: figures.savingsRate !== null && prevFigures.savingsRate !== null
+                            ? round((figures.savingsRate - prevFigures.savingsRate) * 100, 1)
+                            : null,
+                        biggestExpenseChanges: changes('expenseByCategory', 8),
+                        biggestIncomeChanges: changes('incomeByCategory', 5),
+                    }
+                    : null,
+            };
+        });
+
     // ---------------------------------------------------------- data quality
     const taggedExpenses = expenses.length - untaggedExpenses;
     const notedRows = flows.filter(t => (t.note || '').trim().length > 0).length;
@@ -1161,6 +1227,7 @@ export function buildAIExportPayload(input: AIExportInput) {
                 'Percentages are already percentages (12.5 means 12.5%), not fractions.',
                 'Aggregates cover the FULL history. The ledger at the end is also complete — nothing is truncated.',
                 'currentMonth and budget describe the running month and the user\'s own limits; recurring.detected is the app\'s own list of fixed recurring charges.',
+                'milestones holds the user\'s own dated life events (a move, a new job…) and the chapters between them — compare periods of life through milestones.chapters.',
             ],
             coverage: {
                 firstDate,
@@ -1228,6 +1295,20 @@ export function buildAIExportPayload(input: AIExportInput) {
                 : paycheck?.plannedSalary ?? null,
             plannedSalaryNote:
                 'Sum of the fixed net salary of every tracked job. Sales commission and overtime sit on top of it and vary month to month.',
+        },
+
+        milestones: {
+            note: [
+                'Life events the user marked in the app (moves, work, family, big purchases…) with the day each happened. A milestone opens a chapter that lasts until the next one; chapters are the periods of the user\'s life.',
+                `chapters[].perMonth is per average month counted by days (total ÷ days × 30.44), in ${baseCurrency}, so chapters of different length, and chapters that start mid-month, compare fairly. Transfers are excluded.`,
+                'Compare periods of life through chapters, not month to month across a milestone: a month that straddles a move mixes two lives.',
+                'vsPreviousChapter is the before-and-after of the milestone that opened the chapter; biggestExpenseChanges and biggestIncomeChanges are per month, largest moves first.',
+                'expensesExcludingPlanned leaves out big planned payments (rent, flights and hotels, tech, study and visa, insurance). When expenses jump but expensesExcludingPlanned does not, the change is in those big payments (a new rent, a laptop, flights) rather than in day-to-day habits.',
+                'isShort (under 60 days): monthly figures are rough, one big payment moves them a lot. isOngoing: runs to the end of the data, figures so far. startedBeforeData: only the part inside the data is measured. perMonth null: the data does not cover that chapter.',
+            ].join(' '),
+            count: milestoneRows.length,
+            rows: milestoneRows,
+            chapters: chapterRows,
         },
 
         dataQuality,
