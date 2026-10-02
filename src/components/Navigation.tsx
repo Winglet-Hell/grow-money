@@ -116,11 +116,9 @@ export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLog
                 <div className="flex-none flex items-center z-20">
                     {/* The logo only navigates home. It used to also wipe the imported data, which
                         made a stray click cost a full re-upload — "Clear Data" lives in the user menu. */}
-                    <Link to="/" className="flex items-center gap-2 group cursor-pointer">
-                        <div className="bg-white/40 border border-white/60 p-2 rounded-xl backdrop-blur-md shadow-sm group-hover:bg-white/60 transition-colors">
-                            <LayoutDashboard className="w-5 h-5 text-emerald-600" />
-                        </div>
-                        <h1 className="text-xl font-bold tracking-tight text-emerald-950 hidden sm:block">
+                    {/* Letters only, on every screen — on phones the name used to hide behind an icon. */}
+                    <Link to="/" className="flex items-center cursor-pointer">
+                        <h1 className="text-xl font-bold tracking-tight text-emerald-950">
                             Grow <span className="text-emerald-600">money</span>
                         </h1>
                     </Link>
