@@ -8,7 +8,7 @@ import { formatTags } from './utils';
 // weeks ahead). Transaction ids are content hashes, so editing a note in the source app gives a
 // transaction a new id; every listed id therefore also keeps a snapshot to find it again.
 
-export type TripLists = Pick<Trip, 'excludedTransactionIds' | 'additionalTransactionIds' | 'transactionSnapshots'>;
+export type TripLists = Pick<Trip, 'excludedTransactionIds' | 'additionalTransactionIds' | 'transactionSnapshots' | 'transactionShares'>;
 
 export const createSnapshot = (t: Transaction): TransactionSnapshot => ({
     date: t.date,
@@ -126,13 +126,24 @@ export interface TripEntry {
     state: TripEntryState;
     added: boolean;      // brought in by hand
     beforeTrip: boolean; // paid before the first day — a booking
+    share: number;       // the part of the payment this trip counts: 1, or less when it's split
 }
 
 export interface ResolvedTrip {
     entries: TripEntry[];     // everything the trip lists, newest first
-    counted: Transaction[];   // what its numbers are made of
+    // What the trip's numbers are made of. A payment split between trips appears here at this
+    // trip's part of it (amount scaled down), so every sum over `counted` is already right.
+    counted: Transaction[];
     excludedIds: Set<string>; // switched off, or dismissed as a suggestion
 }
+
+// A payment at the part a trip counts of it — the same object when it counts whole.
+const atShare = (tx: Transaction, share: number): Transaction =>
+    share >= 1 ? tx : {
+        ...tx,
+        amount: tx.amount * share,
+        originalAmount: tx.originalAmount !== undefined ? tx.originalAmount * share : undefined,
+    };
 
 const resolverFor = (trip: Trip, index: TxIndex) => {
     const snapshots = trip.transactionSnapshots || {};
@@ -160,6 +171,11 @@ export function resolveTrip(trip: Trip, txs: Transaction[]): ResolvedTrip {
         const tx = resolve(id);
         if (tx) added.set(tx.id, tx);
     }
+    const shares = new Map<string, number>();
+    for (const [id, share] of Object.entries(trip.transactionShares || {})) {
+        const tx = resolve(id);
+        if (tx && share > 0 && share < 1) shares.set(tx.id, share);
+    }
 
     const entries: TripEntry[] = [];
     const listed = new Set<string>();
@@ -168,7 +184,7 @@ export function resolveTrip(trip: Trip, txs: Transaction[]): ResolvedTrip {
             listed.add(tx.id);
             const isAdded = added.has(tx.id);
             const state: TripEntryState = excludedIds.has(tx.id) ? 'excluded' : isHomeBill(tx.category) && !isAdded ? 'home-bill' : 'counted';
-            entries.push({ tx, state, added: isAdded, beforeTrip: false });
+            entries.push({ tx, state, added: isAdded, beforeTrip: false, share: shares.get(tx.id) ?? 1 });
         }
     });
     for (const tx of added.values()) {
@@ -178,10 +194,15 @@ export function resolveTrip(trip: Trip, txs: Transaction[]): ResolvedTrip {
             state: excludedIds.has(tx.id) ? 'excluded' : 'counted',
             added: true,
             beforeTrip: (dateKeyOf(tx.date) ?? '') < trip.startDate,
+            share: shares.get(tx.id) ?? 1,
         });
     }
     entries.sort(byNewest);
-    return { entries, counted: entries.filter(e => e.state === 'counted').map(e => e.tx), excludedIds };
+    return {
+        entries,
+        counted: entries.filter(e => e.state === 'counted').map(e => atShare(e.tx, e.share)),
+        excludedIds,
+    };
 }
 
 export const resolveTripActiveTransactions = (trip: Trip, allTxs: Transaction[]): Transaction[] =>
@@ -199,8 +220,16 @@ const sameLists = (a: TripLists, b: TripLists) => {
     const sa = a.transactionSnapshots || {};
     const sb = b.transactionSnapshots || {};
     const keys = Object.keys(sa);
-    return keys.length === Object.keys(sb).length && keys.every(k => snapshotKey(sa[k]) === snapshotKey(sb[k]));
+    if (keys.length !== Object.keys(sb).length || !keys.every(k => snapshotKey(sa[k]) === snapshotKey(sb[k]))) return false;
+    const pa = a.transactionShares || {};
+    const pb = b.transactionShares || {};
+    return Object.keys(pa).length === Object.keys(pb).length && Object.keys(pa).every(k => pa[k] === pb[k]);
 };
+
+// Shares go out only when the trip has some or had the field already: until the shares column
+// exists (supabase_migration_trip_shares.sql), sending it would fail every save of the trip.
+const sharesField = (trip: Trip, shares: Record<string, number>): Pick<TripLists, 'transactionShares'> =>
+    trip.transactionShares !== undefined || Object.keys(shares).length > 0 ? { transactionShares: shares } : {};
 
 /**
  * The trip's lists pointed at today's ids, each with a fresh snapshot and no leftovers — or
@@ -223,39 +252,54 @@ export function healTripLists(trip: Trip, txs: Transaction[]): TripLists | null 
         }
         return out;
     };
+    const shares: Record<string, number> = {};
+    for (const [id, share] of Object.entries(trip.transactionShares || {})) {
+        const tx = resolve(id);
+        const current = tx ? tx.id : id;
+        shares[current] = share;
+        if (tx) snapshots[current] = createSnapshot(tx);
+        else if (old[id]) snapshots[current] = old[id];
+    }
     const healed: TripLists = {
         excludedTransactionIds: heal(trip.excludedTransactionIds || []),
         additionalTransactionIds: heal(trip.additionalTransactionIds || []),
         transactionSnapshots: snapshots,
+        ...sharesField(trip, shares),
     };
     return sameLists(trip, healed) ? null : healed;
 }
 
-// Rebuilds the snapshot map for the given lists: a fresh one for the transaction just touched,
-// the stored ones for the rest, nothing for ids that left the lists.
-function withSnapshots(trip: Trip, excluded: string[], additional: string[], touched: Transaction): TripLists {
+// Rebuilds the snapshot map for the given lists and shares: a fresh one for the transaction just
+// touched, the stored ones for the rest, nothing for ids that left them.
+function withSnapshots(trip: Trip, excluded: string[], additional: string[], touched: Transaction, shares: Record<string, number>): TripLists {
     const old = trip.transactionSnapshots || {};
     const snapshots: Record<string, TransactionSnapshot> = {};
-    for (const id of [...excluded, ...additional]) {
+    for (const id of [...excluded, ...additional, ...Object.keys(shares)]) {
         if (id === touched.id) snapshots[id] = createSnapshot(touched);
         else if (old[id]) snapshots[id] = old[id];
     }
-    return { excludedTransactionIds: excluded, additionalTransactionIds: additional, transactionSnapshots: snapshots };
+    return {
+        excludedTransactionIds: excluded,
+        additionalTransactionIds: additional,
+        transactionSnapshots: snapshots,
+        ...sharesField(trip, shares),
+    };
 }
 
-// The lists without any entry that points at this transaction, under its current or an old id.
+// The lists and shares without any entry that points at this transaction, under its current or an old id.
 function listsWithout(trip: Trip, tx: Transaction, txs: Transaction[]) {
     const resolve = resolverFor(trip, indexTransactions(txs));
     const pointsAt = (id: string) => id === tx.id || resolve(id)?.id === tx.id;
     return {
         excluded: (trip.excludedTransactionIds || []).filter(id => !pointsAt(id)),
         additional: (trip.additionalTransactionIds || []).filter(id => !pointsAt(id)),
+        shares: Object.fromEntries(Object.entries(trip.transactionShares || {}).filter(([id]) => !pointsAt(id))),
     };
 }
 
-/** The trip's lists after switching one transaction on (counted) or off. */
+/** The trip's lists after switching one transaction on (counted, whole) or off. */
 export function setTransactionCounted(trip: Trip, tx: Transaction, counted: boolean, txs: Transaction[]): TripLists {
-    const { excluded, additional } = listsWithout(trip, tx, txs);
+    const { excluded, additional, shares } = listsWithout(trip, tx, txs);
     const day = dateKeyOf(tx.date) ?? '';
     const inDates = tx.type === 'expense' && day >= trip.startDate && day <= trip.endDate;
     const countsByItself = inDates && !isHomeBill(tx.category);
@@ -268,13 +312,25 @@ export function setTransactionCounted(trip: Trip, tx: Transaction, counted: bool
         additional.push(tx.id);
         excluded.push(tx.id);
     }
-    return withSnapshots(trip, excluded, additional, tx);
+    return withSnapshots(trip, excluded, additional, tx, shares);
+}
+
+/**
+ * The trip's lists after making it count `share` of a payment (0–1): whole at 1, switched off at 0,
+ * a part in between — how one payment for a flight and a hotel is split between two trips.
+ */
+export function setTransactionShare(trip: Trip, tx: Transaction, share: number, txs: Transaction[]): TripLists {
+    if (share <= 0) return setTransactionCounted(trip, tx, false, txs);
+    const on = setTransactionCounted(trip, tx, true, txs);
+    const shares = { ...(on.transactionShares ?? {}) };
+    if (share < 0.9999) shares[tx.id] = Math.round(share * 1e6) / 1e6;
+    return withSnapshots({ ...trip, ...on }, on.excludedTransactionIds, on.additionalTransactionIds || [], tx, shares);
 }
 
 /** A suggestion the user says doesn't belong — remembered, so it isn't offered again. */
 export function dismissSuggestion(trip: Trip, tx: Transaction, txs: Transaction[]): TripLists {
-    const { excluded, additional } = listsWithout(trip, tx, txs);
-    return withSnapshots(trip, [...excluded, tx.id], additional, tx);
+    const { excluded, additional, shares } = listsWithout(trip, tx, txs);
+    return withSnapshots(trip, [...excluded, tx.id], additional, tx, shares);
 }
 
 // ------------------------------------------------------------- suggestions

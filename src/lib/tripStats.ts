@@ -161,19 +161,36 @@ export interface TripYear {
     total: number;    // a payment two trips share counts once
 }
 
+// What a set of trips spent between them. A payment in several trips counts once: split ones add
+// up their parts, and one counted whole twice (the flight from one trip into the next) isn't doubled.
+function spentAcross(trips: Trip[], txs: Transaction[]): number {
+    const index = indexTransactions(txs);
+    const amounts = new Map<string, number>();
+    for (const trip of trips) {
+        for (const t of resolveTrip(trip, txs).counted) {
+            const whole = Math.abs(index.byId.get(t.id)?.amount ?? t.amount);
+            amounts.set(t.id, Math.min(whole, (amounts.get(t.id) ?? 0) + Math.abs(t.amount)));
+        }
+    }
+    return [...amounts.values()].reduce((sum, a) => sum + a, 0);
+}
+
+/** Everything all the trips cost, each payment once. */
+export const spentOnAllTrips = (trips: Trip[], txs: Transaction[]) => spentAcross(trips, txs);
+
 /** Trips grouped by the year they started in, newest year first. */
 export function tripYears(trips: Trip[], txs: Transaction[]): TripYear[] {
-    const byYear = new Map<string, { trips: number; days: Set<string>; amounts: Map<string, number> }>();
+    const byYear = new Map<string, Trip[]>();
     for (const trip of trips) {
         const year = trip.startDate.slice(0, 4);
-        const entry = byYear.get(year) ?? { trips: 0, days: new Set<string>(), amounts: new Map<string, number>() };
-        entry.trips++;
-        eachDay(trip.startDate, trip.endDate, day => entry.days.add(day));
-        for (const t of resolveTrip(trip, txs).counted) entry.amounts.set(t.id, Math.abs(t.amount));
-        byYear.set(year, entry);
+        byYear.set(year, [...(byYear.get(year) ?? []), trip]);
     }
     return [...byYear.entries()]
-        .map(([year, e]) => ({ year, trips: e.trips, daysAway: e.days.size, total: [...e.amounts.values()].reduce((s, a) => s + a, 0) }))
+        .map(([year, inYear]) => {
+            const days = new Set<string>();
+            for (const trip of inYear) eachDay(trip.startDate, trip.endDate, day => days.add(day));
+            return { year, trips: inYear.length, daysAway: days.size, total: spentAcross(inYear, txs) };
+        })
         .sort((a, b) => b.year.localeCompare(a.year));
 }
 

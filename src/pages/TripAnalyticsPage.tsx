@@ -6,8 +6,8 @@ import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useTrips } from '../hooks/useTrips';
 import { clearTripsSaveError, createTrip, deleteTrip, loadTrips } from '../lib/tripsStore';
-import { localDayKey, resolveTrip, tripStatus } from '../lib/tripUtils';
-import { tripMetrics, tripYears, type TripMetrics } from '../lib/tripStats';
+import { localDayKey, tripStatus } from '../lib/tripUtils';
+import { spentOnAllTrips, tripMetrics, tripYears, type TripMetrics } from '../lib/tripStats';
 import { autoTripIcon, tripIcon } from '../lib/tripIcons';
 import { detectUntrackedTrips, type DetectedTrip } from '../lib/tripDetection';
 import { formatRub, formatRubSigned, formatTripRange, pluralDays } from '../lib/tripFormat';
@@ -154,10 +154,7 @@ function TripList({ trips, loading, transactions, onOpen }: {
             covered += m.daysCovered;
             if (m.extraVsHome !== null) { extra += m.extraVsHome; compared++; }
         }
-        // A payment two trips share counts once in the all-time figure too.
-        const amounts = new Map<string, number>();
-        for (const trip of trips) for (const t of resolveTrip(trip, transactions).counted) amounts.set(t.id, Math.abs(t.amount));
-        const allTime = [...amounts.values()].reduce((s, a) => s + a, 0);
+        const allTime = spentOnAllTrips(trips, transactions);
         return { year: focus, perDayThere: covered > 0 ? onTrip / covered : null, extra: compared > 0 ? extra : null, tripsInYear: inYear.length, allTime };
     }, [years, trips, transactions, metricsById]);
 

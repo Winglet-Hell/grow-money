@@ -44,6 +44,7 @@ export type Trip = {
     transactionSnapshots?: Record<string, TransactionSnapshot>; // Map of ID -> Snapshot for recovery
     icon?: string | null; // an emoji the user picked; without one the app chooses (lib/tripIcons)
     budget?: number | null; // what the whole trip may cost, RUB, bookings made ahead included
+    transactionShares?: Record<string, number>; // id -> the part (0–1) of a payment split with other trips
 };
 
 export type TransactionSnapshot = {

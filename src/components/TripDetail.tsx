@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ArrowDownUp, ArrowLeft, Calendar, CalendarClock, Check, ChevronDown, House, Lightbulb, MapPin, Pencil, Plane, Plus, Search,
-    Sparkles, Target, Wallet, X,
+    ArrowDownUp, ArrowLeft, Calendar, CalendarClock, Check, ChevronDown, House, Lightbulb, MapPin, Pencil, Plane, Plus, Scissors,
+    Search, Sparkles, Target, Wallet, X,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList } from 'recharts';
 import type { Transaction, Trip } from '../types';
@@ -9,7 +9,8 @@ import { usePrivacy } from '../contexts/PrivacyContext';
 import { getCategoryIcon } from '../lib/categoryIcons';
 import { cn, formatDate, getTransactionNote, getTransactionTitle, stringToColor } from '../lib/utils';
 import {
-    daysBetween, dismissSuggestion, healTripLists, localDayKey, resolveTrip, setTransactionCounted, suggestTripTransactions, tripStatus,
+    daysBetween, dismissSuggestion, healTripLists, localDayKey, resolveTrip, setTransactionCounted, setTransactionShare, suggestTripTransactions,
+    tripStatus,
     type TripEntry, type TripLists, type TripSuggestion,
 } from '../lib/tripUtils';
 import { budgetStatus, compareWithHome, dailySpending, tripMetrics, type BudgetStatus } from '../lib/tripStats';
@@ -21,6 +22,7 @@ import {
 } from '../lib/tripFormat';
 import { TripFormModal, type TripFormValues } from './TripFormModal';
 import { TripTransactionPicker } from './TripTransactionPicker';
+import { TripSplitModal, type SplitPart } from './TripSplitModal';
 import { ConfirmDialog } from './ConfirmDialog';
 
 interface TripDetailProps {
@@ -69,6 +71,7 @@ export function TripDetail({ trip, trips, transactions, onBack, onDeleted }: Tri
     const [latestFirst, setLatestFirst] = useState(() => tripStatus(trip) === 'ongoing');
     const [showSwitchedOff, setShowSwitchedOff] = useState(false);
     const [showAllCategories, setShowAllCategories] = useState(false);
+    const [splitting, setSplitting] = useState<Transaction | null>(null);
 
     const resolved = useMemo(() => resolveTrip(trip, transactions), [trip, transactions]);
     const metrics = useMemo(() => tripMetrics(trip, trips, transactions, resolved), [trip, trips, transactions, resolved]);
@@ -130,7 +133,7 @@ export function TripDetail({ trip, trips, transactions, onBack, onDeleted }: Tri
         if (latestFirst) keys.reverse();
         const list: ListSection[] = keys.map(key => {
             const entries = byKey.get(key)!.sort((a, b) => (a.tx.index ?? 0) - (b.tx.index ?? 0));
-            const total = entries.reduce((sum, e) => sum + Math.abs(e.tx.amount), 0);
+            const total = entries.reduce((sum, e) => sum + Math.abs(e.tx.amount) * e.share, 0);
             if (key === BEFORE) return { key, title: 'Booked ahead', note: 'paid before the first day', total, entries };
             if (key === 'after') return { key, title: 'After the trip', total, entries };
             return { key, title: `Day ${daysBetween(trip.startDate, key) + 1}`, note: formatDayWithWeekday(key), total, entries };
@@ -154,6 +157,16 @@ export function TripDetail({ trip, trips, transactions, onBack, onDeleted }: Tri
     const toggle = (entry: TripEntry) => save(setTransactionCounted(trip, entry.tx, entry.state !== 'counted', transactions));
     const add = (tx: Transaction) => save(setTransactionCounted(trip, tx, true, transactions));
     const dismiss = (tx: Transaction) => save(dismissSuggestion(trip, tx, transactions));
+
+    // Every trip in the split stores its own part; the window shows the error if one can't be saved.
+    const saveSplit = async (parts: SplitPart[]) => {
+        if (!splitting) return;
+        await Promise.all(parts.map(part => {
+            const latest = trips.find(t => t.id === part.trip.id) ?? part.trip;
+            return updateTrip(latest.id, setTransactionShare(latest, splitting, part.share, transactions), { quiet: true });
+        }));
+        setSplitting(null);
+    };
 
     const saveDetails = async ({ icon: chosen, budget: plan, ...details }: TripFormValues) => {
         // Icon and budget are only sent when they changed: storing them needs new columns (see tripsStore).
@@ -629,6 +642,7 @@ ${JSON.stringify(data, null, 2)}`;
                                         isPrivacyMode={isPrivacyMode}
                                         money={money}
                                         onToggle={toggle}
+                                        onSplit={setSplitting}
                                         showDate={section.key === BEFORE || section.key === 'after'}
                                         inBookedGroup={section.key === BEFORE}
                                     />
@@ -669,6 +683,18 @@ ${JSON.stringify(data, null, 2)}`;
                     )}
                 </div>
             </div>
+
+            {splitting && (
+                <TripSplitModal
+                    tx={splitting}
+                    trip={trip}
+                    trips={trips}
+                    transactions={transactions}
+                    iconFor={t => tripIcon(t, transactions)}
+                    onSave={saveSplit}
+                    onClose={() => setSplitting(null)}
+                />
+            )}
 
             {isPickerOpen && (
                 <TripTransactionPicker
@@ -807,15 +833,17 @@ function SuggestionRow({ suggestion, money, onAdd, onDismiss }: {
     );
 }
 
-function EntryRow({ entry, isPrivacyMode, money, onToggle, showDate = false, inBookedGroup = false }: {
+function EntryRow({ entry, isPrivacyMode, money, onToggle, onSplit, showDate = false, inBookedGroup = false }: {
     entry: TripEntry;
     isPrivacyMode: boolean;
     money: (n: number) => string;
     onToggle: (entry: TripEntry) => void;
+    onSplit?: (tx: Transaction) => void;
     showDate?: boolean;       // inside a day's group the day is already in its heading
     inBookedGroup?: boolean;  // …and in the "Booked ahead" group so is the badge
 }) {
-    const { tx, state, added, beforeTrip } = entry;
+    const { tx, state, added, beforeTrip, share } = entry;
+    const split = share < 1;
     const counted = state === 'counted';
     const color = stringToColor(tx.category);
     const note = getTransactionNote(tx);
@@ -840,6 +868,7 @@ function EntryRow({ entry, isPrivacyMode, money, onToggle, showDate = false, inB
                     {beforeTrip && !inBookedGroup && <Badge className="bg-blue-50 text-blue-700 border-blue-100">booked ahead</Badge>}
                     {added && !beforeTrip && <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">added</Badge>}
                     {state === 'home-bill' && <Badge className="bg-gray-100 text-gray-500 border-gray-200">home bill</Badge>}
+                    {split && counted && <Badge className="bg-violet-50 text-violet-700 border-violet-100">split · {Math.round(share * 100)}%</Badge>}
                 </div>
                 {note && (
                     <div className={cn("text-xs line-clamp-2 sm:line-clamp-1", counted ? "text-gray-600" : "text-gray-400")} title={note}>{note}</div>
@@ -849,13 +878,30 @@ function EntryRow({ entry, isPrivacyMode, money, onToggle, showDate = false, inB
                 </div>
             </div>
             <div className="text-right whitespace-nowrap">
-                <div className={cn("font-bold tabular-nums", counted ? "text-gray-900" : "text-gray-400 line-through")}>{money(Math.abs(tx.amount))}</div>
-                {tx.originalCurrency && tx.originalAmount !== undefined && (
+                <div className={cn("font-bold tabular-nums", counted ? "text-gray-900" : "text-gray-400 line-through")}>
+                    {money(Math.abs(tx.amount) * (counted ? share : 1))}
+                </div>
+                {split && counted ? (
+                    <div className="text-xs tabular-nums mt-0.5 text-violet-600">of {money(Math.abs(tx.amount))}</div>
+                ) : tx.originalCurrency && tx.originalAmount !== undefined && (
                     <div className={cn("text-xs tabular-nums mt-0.5", counted ? "text-gray-500" : "text-gray-300")}>
                         {isPrivacyMode ? '••••' : formatNative(Math.abs(tx.originalAmount), tx.originalCurrency)}
                     </div>
                 )}
             </div>
+            {onSplit && (
+                counted ? (
+                    <button
+                        onClick={e => { e.stopPropagation(); onSplit(tx); }}
+                        onKeyDown={e => e.stopPropagation()}
+                        className={cn("p-1.5 -mr-1.5 rounded-md transition-colors flex-shrink-0", split ? "text-violet-600 hover:bg-violet-50" : "text-gray-300 hover:text-gray-600 hover:bg-gray-100")}
+                        title="Split between trips"
+                        aria-label={`Split ${getTransactionTitle(tx)} between trips`}
+                    >
+                        <Scissors className="w-4 h-4" />
+                    </button>
+                ) : <span className="w-7 -mr-1.5 flex-shrink-0" />
+            )}
         </div>
     );
 }

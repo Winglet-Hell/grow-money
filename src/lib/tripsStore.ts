@@ -32,6 +32,9 @@ const notify = () => {
 
 const messageOf = (e: unknown) => {
     const message = e instanceof Error ? e.message : String(e);
+    if (/'transaction_shares' column|column .*transaction_shares/i.test(message)) {
+        return 'splitting a payment needs one more column in the database: run supabase_migration_trip_shares.sql in the Supabase SQL editor';
+    }
     return /'(icon|budget)' column|column .*(icon|budget)/i.test(message)
         ? 'icons and budgets need two more columns in the database: run supabase_migration_trip_icon_budget.sql in the Supabase SQL editor'
         : message;
@@ -48,6 +51,7 @@ type TripRow = {
     transaction_snapshots: Record<string, TransactionSnapshot> | null;
     icon?: string | null;   // both absent until supabase_migration_trip_icon_budget.sql has run
     budget?: number | string | null;
+    transaction_shares?: Record<string, number> | null; // absent until supabase_migration_trip_shares.sql has run
 };
 
 const fromRow = (t: TripRow): Trip => ({
@@ -60,9 +64,10 @@ const fromRow = (t: TripRow): Trip => ({
     transactionSnapshots: t.transaction_snapshots || {},
     ...(t.icon !== undefined ? { icon: t.icon } : {}),
     ...(t.budget !== undefined ? { budget: t.budget === null ? null : Number(t.budget) } : {}),
+    ...(t.transaction_shares !== undefined ? { transactionShares: t.transaction_shares || {} } : {}),
 });
 
-// Icon and budget go out only once a trip has them, so trips keep saving before the columns exist.
+// Icon, budget and shares go out only once a trip has them, so trips keep saving before the columns exist.
 const toRow = (t: Trip) => ({
     name: t.name,
     start_date: t.startDate,
@@ -72,6 +77,7 @@ const toRow = (t: Trip) => ({
     transaction_snapshots: t.transactionSnapshots || {},
     ...(t.icon !== undefined ? { icon: t.icon } : {}),
     ...(t.budget !== undefined ? { budget: t.budget } : {}),
+    ...(t.transactionShares !== undefined ? { transaction_shares: t.transactionShares } : {}),
 });
 
 const byStartDesc = (a: Trip, b: Trip) => b.startDate.localeCompare(a.startDate) || a.name.localeCompare(b.name);
