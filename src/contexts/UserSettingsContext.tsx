@@ -8,6 +8,7 @@ export interface UserPreferences {
     tableShowAccount?: boolean;
     tableShowCategory?: boolean;
     customSearchTags?: string[]; // quick-filter chips on the Trip Analytics page
+    hiddenTripSuggestions?: string[]; // detected trips the user dismissed ("JP:2026-09-02:2026-09-30")
     paycheck?: PaycheckConfig;
     recurring?: { hiddenIds?: string[] }; // detected series the user marked "not recurring"
     milestones?: Milestone[]; // life events on the Milestones page, kept sorted by date

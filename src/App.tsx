@@ -418,6 +418,7 @@ function AppContent() {
                 <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} onTransactionsChanged={reloadFromDb} />} />
                 <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
                 <Route path="/trip-analytics" element={<TripAnalyticsPage transactions={transactions} />} />
+                <Route path="/trip-analytics/:tripId" element={<TripAnalyticsPage transactions={transactions} />} />
                 <Route path="/travel-index" element={<TravelIndexPage transactions={transactions} />} />
                 <Route path="/currency-rates" element={<CurrencyRatesPage transactions={transactions} />} />
                 <Route path="/recurring" element={<RecurringPage transactions={transactions} />} />

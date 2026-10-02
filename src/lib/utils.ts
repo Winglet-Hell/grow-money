@@ -94,9 +94,19 @@ export function getTransactionTitle(t: { tags?: string[]; note?: string; categor
     return formatTags(t.tags) || t.note || t.category;
 }
 
+/** The note, when the title (built from tags) doesn't already show it — "Tokyo" says less than its note. */
+export function getTransactionNote(t: { tags?: string[]; note?: string; category: string }): string {
+    const note = (t.note || '').trim();
+    return note && note !== getTransactionTitle(t) ? note : '';
+}
+
 /** 1st, 2nd, 3rd, 4th … 11th, 12th, 13th, 21st — for "around the 12th" style labels. */
 export const ordinal = (n: number) => {
     const s = ['th', 'st', 'nd', 'rd'];
     const v = n % 100;
     return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
 };
+
+/** Whether a menu item's page is open: its own path, or a page under it (/trip-analytics/<id>). */
+export const isOnPath = (pathname: string, path: string) =>
+    pathname === path || (path !== '/' && pathname.startsWith(`${path}/`));

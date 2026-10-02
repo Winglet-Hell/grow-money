@@ -30,7 +30,12 @@ const notify = () => {
     listeners.forEach(fn => fn());
 };
 
-const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const messageOf = (e: unknown) => {
+    const message = e instanceof Error ? e.message : String(e);
+    return /'(icon|budget)' column|column .*(icon|budget)/i.test(message)
+        ? 'icons and budgets need two more columns in the database: run supabase_migration_trip_icon_budget.sql in the Supabase SQL editor'
+        : message;
+};
 
 // A row of the Supabase `trips` table.
 type TripRow = {
@@ -41,6 +46,8 @@ type TripRow = {
     excluded_transaction_ids: string[] | null;
     additional_transaction_ids: string[] | null;
     transaction_snapshots: Record<string, TransactionSnapshot> | null;
+    icon?: string | null;   // both absent until supabase_migration_trip_icon_budget.sql has run
+    budget?: number | string | null;
 };
 
 const fromRow = (t: TripRow): Trip => ({
@@ -51,8 +58,11 @@ const fromRow = (t: TripRow): Trip => ({
     excludedTransactionIds: t.excluded_transaction_ids || [],
     additionalTransactionIds: t.additional_transaction_ids || [],
     transactionSnapshots: t.transaction_snapshots || {},
+    ...(t.icon !== undefined ? { icon: t.icon } : {}),
+    ...(t.budget !== undefined ? { budget: t.budget === null ? null : Number(t.budget) } : {}),
 });
 
+// Icon and budget go out only once a trip has them, so trips keep saving before the columns exist.
 const toRow = (t: Trip) => ({
     name: t.name,
     start_date: t.startDate,
@@ -60,6 +70,8 @@ const toRow = (t: Trip) => ({
     excluded_transaction_ids: t.excludedTransactionIds,
     additional_transaction_ids: t.additionalTransactionIds || [],
     transaction_snapshots: t.transactionSnapshots || {},
+    ...(t.icon !== undefined ? { icon: t.icon } : {}),
+    ...(t.budget !== undefined ? { budget: t.budget } : {}),
 });
 
 const byStartDesc = (a: Trip, b: Trip) => b.startDate.localeCompare(a.startDate) || a.name.localeCompare(b.name);
@@ -181,11 +193,13 @@ export function updateTrip(id: string, patch: Partial<Omit<Trip, 'id'>>, { quiet
     return run;
 }
 
-export async function createTrip(input: { name: string; startDate: string; endDate: string }): Promise<Trip> {
+export async function createTrip(input: { name: string; startDate: string; endDate: string; icon?: string | null; budget?: number | null }): Promise<Trip> {
     const userKey = cache?.userKey ?? (await currentUserKey());
     let trip: Trip;
     if (userKey === 'anon') {
         trip = { id: crypto.randomUUID(), ...input, excludedTransactionIds: [], additionalTransactionIds: [], transactionSnapshots: {} };
+        if (!trip.icon) delete trip.icon;
+        if (trip.budget == null) delete trip.budget;
         await db.trips.add(trip);
     } else {
         const { data, error } = await supabase
@@ -198,6 +212,8 @@ export async function createTrip(input: { name: string; startDate: string; endDa
                 excluded_transaction_ids: [],
                 additional_transaction_ids: [],
                 transaction_snapshots: {},
+                ...(input.icon ? { icon: input.icon } : {}),
+                ...(input.budget != null ? { budget: input.budget } : {}),
             })
             .select()
             .single();

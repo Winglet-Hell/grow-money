@@ -1033,6 +1033,7 @@ export function buildAIExportPayload(input: AIExportInput) {
                 days,
                 total: round(total),
                 perDay: round(total / days),
+                budget: trip.budget ? round(trip.budget) : null,
                 transactionCount: txs.length,
                 topCategories: [...cats.entries()]
                     .sort((a, b) => b[1] - a[1])

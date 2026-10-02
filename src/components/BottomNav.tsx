@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart, LineChart, Map, Banknote, ArrowRightLeft, Globe, Settings, Eye, EyeOff, Upload, Repeat, Milestone } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, isOnPath } from '../lib/utils';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import menuIllustration from '../assets/menu-illustration.png';
 
@@ -64,7 +64,7 @@ export function BottomNav({ onReset, onImport }: { onReset: () => void; onImport
                 <div className="flex justify-around items-center h-16">
                     {navItems.map((item) => {
                         const Icon = item.icon;
-                        const isActive = location.pathname === item.path;
+                        const isActive = isOnPath(location.pathname, item.path);
                         return (
                             <Link
                                 key={item.path}
@@ -125,7 +125,7 @@ export function BottomNav({ onReset, onImport }: { onReset: () => void; onImport
                                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">{section.title}</h3>
                                     {section.items.map((item) => {
                                         const Icon = item.icon;
-                                        const isActive = location.pathname === item.path;
+                                        const isActive = isOnPath(location.pathname, item.path);
                                         return (
                                             <Link
                                                 key={item.path}

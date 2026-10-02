@@ -42,6 +42,8 @@ export type Trip = {
     excludedTransactionIds: string[]; // List of transaction IDs to exclude
     additionalTransactionIds?: string[]; // List of transaction IDs to manually include (e.g. outside date range)
     transactionSnapshots?: Record<string, TransactionSnapshot>; // Map of ID -> Snapshot for recovery
+    icon?: string | null; // an emoji the user picked; without one the app chooses (lib/tripIcons)
+    budget?: number | null; // what the whole trip may cost, RUB, bookings made ahead included
 };
 
 export type TransactionSnapshot = {

@@ -24,7 +24,7 @@ import {
     Repeat,
     Milestone
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, isOnPath } from '../lib/utils';
 import { getAvatarIcon } from '../lib/avatarIcons';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -130,7 +130,7 @@ export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLog
                         <ul className="flex items-center gap-1 h-full">
                             {NAV_CATEGORIES.map((category) => {
                                 const isActive = activeCategory === category.title;
-                                const isCurrentRoute = category.items.some(item => item.path === location.pathname);
+                                const isCurrentRoute = category.items.some(item => isOnPath(location.pathname, item.path));
 
                                 return (
                                     <li
@@ -174,14 +174,14 @@ export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLog
                                                                 to={item.path}
                                                                 className={cn(
                                                                     "group flex items-start gap-3 p-3 rounded-lg transition-colors",
-                                                                    location.pathname === item.path
+                                                                    isOnPath(location.pathname, item.path)
                                                                         ? "bg-emerald-50"
                                                                         : "hover:bg-gray-50"
                                                                 )}
                                                             >
                                                                 <div className={cn(
                                                                     "p-2 rounded-lg transition-colors",
-                                                                    location.pathname === item.path
+                                                                    isOnPath(location.pathname, item.path)
                                                                         ? "bg-emerald-100 text-emerald-600"
                                                                         : "bg-gray-100 text-gray-500 group-hover:bg-white group-hover:shadow-sm group-hover:text-emerald-600"
                                                                 )}>
@@ -190,7 +190,7 @@ export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLog
                                                                 <div>
                                                                     <div className={cn(
                                                                         "text-sm font-medium",
-                                                                        location.pathname === item.path ? "text-emerald-900" : "text-gray-900"
+                                                                        isOnPath(location.pathname, item.path) ? "text-emerald-900" : "text-gray-900"
                                                                     )}>
                                                                         {item.label}
                                                                     </div>
@@ -331,7 +331,7 @@ export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLog
                                             to={item.path}
                                             className={cn(
                                                 "flex items-center gap-3 px-3 py-3 rounded-lg transition-colors",
-                                                location.pathname === item.path
+                                                isOnPath(location.pathname, item.path)
                                                     ? "bg-emerald-50 text-emerald-700"
                                                     : "text-gray-700 hover:bg-gray-50"
                                             )}
