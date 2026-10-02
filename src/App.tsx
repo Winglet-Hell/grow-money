@@ -9,6 +9,7 @@ import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
 import { syncAccountsWithSupabase } from './lib/accountUtils';
 import { invalidateAccounts, clearAccountsCache } from './lib/accountsStore';
+import { clearTripsCache } from './lib/tripsStore';
 import { parseFile } from './lib/parser';
 import { readImportMeta, writeImportMeta, clearImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
 import { ImportStatementDialog, type ImportState } from './components/ImportStatementDialog';
@@ -123,10 +124,11 @@ function AppContent() {
       setUserEmail(session?.user?.email);
       setAuthReady(true);
       // On sign-out, allow local data to load again on the next sign-in, and drop the
-      // cached wallet list so the next account never sees the previous one's.
+      // cached wallets and trips so the next account never sees the previous one's.
       if (!session) {
         dataLoadedRef.current = false;
         clearAccountsCache();
+        clearTripsCache();
       }
     });
 

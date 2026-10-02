@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, type ReactNode } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import {
     Download,
     Copy,
@@ -16,64 +16,21 @@ import {
     Target,
     Milestone as MilestoneIcon,
 } from 'lucide-react';
-import type { Transaction, Trip } from '../types';
+import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useAccounts } from '../hooks/useAccounts';
 import { useCategoryLimits } from '../hooks/useCategoryLimits';
 import { useHistoricalRates } from '../hooks/useHistoricalRates';
+import { useTrips } from '../hooks/useTrips';
 import { buildAIExportPayload, toPrettyJson } from '../lib/aiExport';
 import { formatDayKey, normalizeMilestones } from '../lib/milestones';
 import { formatCurrencyAmount } from '../lib/currencies';
 import { referenceCoverage } from '../lib/fxBenchmark';
-import { db } from '../lib/db';
-import { supabase } from '../lib/supabase';
 import { ordinal } from '../lib/utils';
 
 interface AIExportPageProps {
     transactions: Transaction[];
-}
-
-// Trips live in Dexie when signed out and in Supabase when signed in — same
-// resolution order the Travel pages use.
-function useTrips() {
-    const [trips, setTrips] = useState<Trip[]>([]);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        const loadLocal = async () => {
-            const local = await db.trips.toArray();
-            if (!cancelled) setTrips(local);
-        };
-
-        const loadCloud = async (userId: string) => {
-            const { data } = await supabase.from('trips').select('*').eq('user_id', userId);
-            if (cancelled || !data) return;
-            setTrips(
-                data.map(t => ({
-                    id: t.id,
-                    name: t.name,
-                    startDate: t.start_date,
-                    endDate: t.end_date,
-                    excludedTransactionIds: t.excluded_transaction_ids || [],
-                    additionalTransactionIds: t.additional_transaction_ids || [],
-                    transactionSnapshots: t.transaction_snapshots || {},
-                }))
-            );
-        };
-
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session?.user) loadCloud(session.user.id);
-            else loadLocal();
-        });
-
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    return trips;
 }
 
 export function AIExportPage({ transactions }: AIExportPageProps) {
@@ -83,7 +40,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
     const { limits: categoryLimits } = useCategoryLimits();
     const recurringHiddenIds = settings.preferences.recurring?.hiddenIds;
     const milestones = useMemo(() => normalizeMilestones(settings.preferences.milestones), [settings.preferences.milestones]);
-    const trips = useTrips();
+    const { trips } = useTrips();
 
     // Market rates for the day of every conversion, so the export can say what each
     // exchange cost against the market (fx.marketBenchmark). Cached after the first load.

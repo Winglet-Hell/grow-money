@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { db } from '../lib/db';
-import { supabase } from '../lib/supabase';
+import { useState, useMemo } from 'react';
+import { useTrips } from '../hooks/useTrips';
 import { resolveTripActiveTransactions } from '../lib/tripUtils';
 import { cn, stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
@@ -112,7 +111,7 @@ const buildLeaderboard = (
 };
 
 export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
-    const [trips, setTrips] = useState<Trip[]>([]);
+    const { trips } = useTrips();
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [selectedItem, setSelectedItem] = useState<{ type: 'tag' | 'category', value: string } | null>(null);
@@ -126,46 +125,6 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
         title: '',
         subtitle: ''
     });
-
-    useEffect(() => {
-        const loadLocalTrips = async () => {
-            const loadedTrips = await db.trips.toArray();
-            setTrips(loadedTrips);
-        };
-
-        const loadCloudTrips = async (userId: string) => {
-            const { data } = await supabase.from('trips').select('*').eq('user_id', userId);
-            if (data) {
-                const mappedTrips: Trip[] = data.map(t => ({
-                    id: t.id,
-                    name: t.name,
-                    startDate: t.start_date,
-                    endDate: t.end_date,
-                    excludedTransactionIds: t.excluded_transaction_ids || [],
-                    additionalTransactionIds: t.additional_transaction_ids || [],
-                    transactionSnapshots: t.transaction_snapshots || {}
-                }));
-                // Sort by start date DESC
-                mappedTrips.sort((a, b) => b.startDate.localeCompare(a.startDate));
-                setTrips(mappedTrips);
-            }
-        };
-
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session?.user) loadCloudTrips(session.user.id);
-            else loadLocalTrips();
-        });
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (session?.user) loadCloudTrips(session.user.id);
-            else {
-                setTrips([]);
-                loadLocalTrips();
-            }
-        });
-
-        return () => subscription.unsubscribe();
-    }, []);
 
     const aggregatedData = useMemo(() => {
         const tagsMap: Record<string, { count: number, total: number, catCounts: Record<string, number> }> = {};
