@@ -1,8 +1,8 @@
 import type { Transaction, Trip } from '../types';
-import { getGlobalCategory, isPlannedPayment } from './categoryGroups';
+import { getGlobalCategory, isHomeBill, isPlannedPayment } from './categoryGroups';
 import { dateKeyOf } from './periods';
 import {
-    daysBetween, eachDay, indexTransactions, isHomeBill, localDayKey, resolveTrip, shiftDay, tripDayCount, tripStatus,
+    daysBetween, eachDay, indexTransactions, localDayKey, resolveTrip, shiftDay, tripDayCount, tripStatus,
     type ResolvedTrip, type TripStatus,
 } from './tripUtils';
 

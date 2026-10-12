@@ -1,5 +1,5 @@
 import type { Transaction, Trip, TransactionSnapshot } from '../types';
-import { getGlobalCategory } from './categoryGroups';
+import { getGlobalCategory, isHomeBill, isTravelBooking, isTravelSim } from './categoryGroups';
 import { dateKeyOf } from './periods';
 import { formatTags } from './utils';
 
@@ -114,11 +114,6 @@ export function indexTransactions(txs: Transaction[]): TxIndex {
 
 // ------------------------------------------------------------- membership
 
-// Bills that keep running at home while you're away. A trip is what the journey cost, so these
-// stay out of it unless switched back on by hand.
-const HOME_BILLS = new Set(['rent', 'utility bills', 'subscriptions', 'insurance', 'страховка']);
-export const isHomeBill = (category: string) => HOME_BILLS.has((category || '').toLowerCase().trim());
-
 export type TripEntryState = 'counted' | 'excluded' | 'home-bill';
 
 export interface TripEntry {
@@ -183,7 +178,7 @@ export function resolveTrip(trip: Trip, txs: Transaction[]): ResolvedTrip {
         for (const tx of index.expensesByDay.get(day) ?? []) {
             listed.add(tx.id);
             const isAdded = added.has(tx.id);
-            const state: TripEntryState = excludedIds.has(tx.id) ? 'excluded' : isHomeBill(tx.category) && !isAdded ? 'home-bill' : 'counted';
+            const state: TripEntryState = excludedIds.has(tx.id) ? 'excluded' : isHomeBill(tx.category, tx.tags) && !isAdded ? 'home-bill' : 'counted';
             entries.push({ tx, state, added: isAdded, beforeTrip: false, share: shares.get(tx.id) ?? 1 });
         }
     });
@@ -302,7 +297,7 @@ export function setTransactionCounted(trip: Trip, tx: Transaction, counted: bool
     const { excluded, additional, shares } = listsWithout(trip, tx, txs);
     const day = dateKeyOf(tx.date) ?? '';
     const inDates = tx.type === 'expense' && day >= trip.startDate && day <= trip.endDate;
-    const countsByItself = inDates && !isHomeBill(tx.category);
+    const countsByItself = inDates && !isHomeBill(tx.category, tx.tags);
     if (counted) {
         if (!countsByItself) additional.push(tx.id);
     } else if (countsByItself) {
@@ -346,7 +341,6 @@ const NAME_NOISE = new Set(['trip', 'first', 'second', 'third', 'the', 'and']);
 const nameWords = (name: string) =>
     [...new Set(name.toLowerCase().split(/[^\p{L}\p{N}]+/u))].filter(w => w.length >= 3 && !NAME_NOISE.has(w));
 
-const isLodgingOrFlight = (category: string) => /hotel|flight|flighst/i.test(category);
 const isPaperwork = (category: string) => /visa|study/i.test(category);
 
 /**
@@ -375,12 +369,12 @@ export function suggestTripTransactions(trip: Trip, trips: Trip[], txs: Transact
     const consider = (day: string, daysBefore: number) => {
         for (const tx of index.expensesByDay.get(day) ?? []) {
             if (listed.has(tx.id) || own.excludedIds.has(tx.id) || countedElsewhere.has(tx.id)) continue;
-            if (getGlobalCategory(tx.category) !== 'Travel') continue;
+            if (getGlobalCategory(tx.category) !== 'Travel' && !isTravelSim(tx.category, tx.tags)) continue;
             const nameMatch = namesTrip(tx);
             const fits = nameMatch
                 || (!isPaperwork(tx.category) && (
                     daysBefore < 0
-                    || (isLodgingOrFlight(tx.category) ? daysBefore <= 60 : daysBefore <= 21)
+                    || (isTravelBooking(tx.category) ? daysBefore <= 60 : daysBefore <= 21)
                 ));
             if (fits) out.push({ tx, daysBefore, nameMatch });
         }

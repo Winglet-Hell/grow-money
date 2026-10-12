@@ -3,6 +3,7 @@ import { useTrips } from '../hooks/useTrips';
 import { resolveTripActiveTransactions } from '../lib/tripUtils';
 import { cn, stringToColor } from '../lib/utils';
 import { getCategoryIcon } from '../lib/categoryIcons';
+import { isTravelBooking } from '../lib/categoryGroups';
 import type { Transaction, Trip } from '../types';
 import { Search, Globe, X, Tag as TagIcon, LayoutGrid, Plane } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList, CartesianGrid } from 'recharts';
@@ -32,10 +33,6 @@ const getTripCity = (name: string) => {
     const city = (idx >= 0 ? name.slice(0, idx) : name).trim();
     return city || name.trim();
 };
-
-// Big-ticket lodging/airfare dominates a trip's totals; the Cost Index can
-// optionally drop it. Matches the (typo'd) "Hotels & flighsts" category too.
-const isHotelOrFlight = (category: string) => /hotel|flight|flighst/i.test(category || '');
 
 const getMedian = (arr: number[]) => {
     if (arr.length === 0) return 0;
@@ -211,7 +208,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
     const overallResults = useMemo(() => {
         const perTrip = trips.map(trip => {
             let matchedTxs = resolveTripActiveTransactions(trip, transactions);
-            if (excludeHotels) matchedTxs = matchedTxs.filter(tx => !isHotelOrFlight(tx.category));
+            if (excludeHotels) matchedTxs = matchedTxs.filter(tx => !isTravelBooking(tx.category)); // lodging and tickets dominate a trip's totals
             return matchedTxs.length > 0 ? { trip, matchedTxs } : null;
         }).filter(Boolean) as { trip: Trip; matchedTxs: Transaction[] }[];
 
@@ -512,7 +509,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                 type="button"
                                 aria-pressed={excludeHotels}
                                 onClick={() => setExcludeHotels(v => !v)}
-                                title="Exclude the Hotels & flights category from the stats"
+                                title="Leave Accommodation, Intercity transport and Travel packages out of the stats"
                                 className={cn(
                                     "flex items-center gap-2 px-4 py-1.5 rounded-xl text-sm font-bold border transition-all shadow-sm",
                                     excludeHotels
@@ -521,7 +518,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                 )}
                             >
                                 <Plane className="w-4 h-4" />
-                                {excludeHotels ? 'Hotels & flights hidden' : 'Exclude hotels & flights'}
+                                {excludeHotels ? 'Hotels & tickets hidden' : 'Exclude hotels & tickets'}
                             </button>
                         )}
                         <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200">

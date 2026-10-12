@@ -308,7 +308,7 @@ export function MilestonesPage({ transactions }: MilestonesPageProps) {
                 ) : <span className="hidden md:block" />}
                 <label
                     className="inline-flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none"
-                    title="Rent, flights and hotels, tech, visas and insurance — big payments that land on a few days"
+                    title="Rent, hotels and tickets, electronics, visas and insurance — big payments that land on a few days"
                 >
                     <input
                         type="checkbox"
@@ -610,7 +610,7 @@ function ComparisonView({ a, b, comparison, flows, compareWindow, onWindowChange
     if (b.ongoing && flows.last && comparison.b.to === flows.last) {
         notes.push(`${quoted(titleB)} is still going: figures so far, through ${formatDay(flows.last)}.`);
     }
-    if (excludePlanned) notes.push('Rent, flights and hotels, tech, visas and insurance are left out.');
+    if (excludePlanned) notes.push('Rent, hotels and tickets, electronics, visas and insurance are left out.');
 
     return (
         <div className="space-y-5">

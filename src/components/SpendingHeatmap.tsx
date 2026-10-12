@@ -38,7 +38,7 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
     const { isPrivacyMode } = usePrivacy();
     const [selectedDayList, setSelectedDayList] = useState<{ date: Date; transactions: Transaction[] } | null>(null);
     // const [tooltipData, setTooltipData] = useState<{ date: string; amount: number; count: number; x: number; y: number } | null>(null);
-    // Everyday spending only: leaves out rent, flights and hotels, tech, visas and insurance.
+    // Everyday spending only: leaves out rent, hotels and tickets, electronics, visas and insurance.
     const [everydayOnly, setEverydayOnly] = useState(readEverydayOnly);
     const chooseEverydayOnly = (on: boolean) => {
         setEverydayOnly(on);
@@ -228,7 +228,7 @@ export const SpendingHeatmap: React.FC<SpendingHeatmapProps> = ({ transactions }
                     </h3>
                     <p className="text-sm text-gray-500">
                         {everydayOnly
-                            ? 'Everyday spending over the last year, without rent, flights & hotels, tech, visas and insurance'
+                            ? 'Everyday spending over the last year, without rent, hotels & tickets, electronics, visas and insurance'
                             : 'Daily spending intensity over the last year'}
                     </p>
                 </div>

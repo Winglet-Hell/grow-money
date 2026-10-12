@@ -1,4 +1,5 @@
 import type { Transaction } from '../types';
+import { isSubscriptionCategory } from './categoryGroups';
 import { dayOfMonthOf, daysInMonth, monthKeyOf, monthKeyFromDate } from './periods';
 
 // ---------------------------------------------------------------------------
@@ -41,7 +42,7 @@ export interface RecurringSeries {
     status: SeriesStatus;
     regularity: number;         // share of gaps within tolerance (0–1)
     isNew: boolean;             // first seen within the last two cycles
-    fromCategoryHint: boolean;  // sits in the user's own "Subscriptions" category
+    fromCategoryHint: boolean;  // sits in the user's own subscriptions category (Digital services)
     priceChange?: { from: number; to: number }; // last charge vs the ones before, in `currency`
 }
 
@@ -89,8 +90,6 @@ const localIso = (d: Date) =>
 
 const normalize = (s: string) =>
     (s || '').toLowerCase().replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
-
-const isSubscriptionCategory = (category: string) => /subscri|подпис/i.test(category);
 
 // Dollar stablecoins are dollars for the purpose of "is this the same 62 bucks every month".
 const currencyFamily = (code: string) => (code === 'USDT' || code === 'USDC' ? 'USD' : code);

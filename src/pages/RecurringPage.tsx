@@ -290,7 +290,7 @@ export function RecurringPage({ transactions }: RecurringPageProps) {
                 <span>
                     Found by rhythm, not by a flag in the export: the same tag or note in the same category, charged at a
                     steady interval for a steady amount (compared in its own currency). Everything in your
-                    <em> Subscriptions</em> category is kept even when the rhythm is loose. Groceries and cafés drop out on
+                    <em> Digital services</em> category is kept even when the rhythm is loose. Groceries and cafés drop out on
                     purpose — their amounts wander.
                 </span>
             </p>

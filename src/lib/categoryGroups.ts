@@ -1,38 +1,46 @@
+// Everything the app knows about category names lives here: the group each one rolls up to,
+// and which are planned payments, home bills, travel bookings or subscriptions. Rename a
+// category in the source app and this file (plus the icons) is what needs to follow.
+// Names are compared case-insensitively; the parser stores them in sentence case.
+import { formatTags } from './utils';
+
 // Maps specific categories to Global Groups
 export const GLOBAL_CATEGORY_MAP: Record<string, string> = {
     // Housing
     'Rent': 'Housing',
-    'Utility bills': 'Housing',
+    'Utilities': 'Housing',
+    'Phone & internet': 'Housing',
     'Services': 'Housing', // Often household services
 
     // Food & Dining
-    'Cafe': 'Food & Dining',
+    'Eating out': 'Food & Dining',
     'Groceries': 'Food & Dining',
     'Food delivery': 'Food & Dining',
-    'Market delivery': 'Food & Dining',
+    'Grocery delivery': 'Food & Dining',
 
     // Travel
-    'Hotels & flighsts': 'Travel', // sic: user typo
-    'Hotels & flights': 'Travel',
-    'Excursions': 'Travel',
-    'Trip expenses': 'Travel',
-    'Study & visa': 'Travel', // Context implies relocation/travel docs
+    'Accommodation': 'Travel',
+    'Intercity transport': 'Travel',
+    'Travel packages': 'Travel',
+    'Sightseeing': 'Travel',
+    'Visas & documents': 'Travel', // Context implies relocation/travel docs
 
     // Shopping & Lifestyle
-    'Tech': 'Shopping',
-    'Marketplace': 'Shopping',
+    'Electronics': 'Shopping',
+    'Household': 'Shopping',
+    'Other goods': 'Shopping',
     'Clothing & shoes': 'Shopping',
-    'Retail': 'Shopping',
-    'Beauty': 'Shopping',
-    'Gifts': 'Shopping',
+    'Personal care': 'Shopping',
+    'Gifts & donations': 'Shopping',
     'Leisure': 'Entertainment',
-    'Subscriptions': 'Entertainment',
+    'Digital services': 'Entertainment',
 
     // Transport
-    'Transport': 'Transport',
+    'Local transport': 'Transport',
 
     // Obligations
     'Taxes': 'Obligations',
+    'Fees': 'Obligations',
 
     // Health & Insurance
     'Health': 'Health',
@@ -40,7 +48,25 @@ export const GLOBAL_CATEGORY_MAP: Record<string, string> = {
     'Страховка': 'Health',
 
     // Other
-    'Other': 'Other'
+    'Other': 'Other',
+
+    // Names from before the categories were reorganised in October 2026. A device keeps the
+    // statement it last imported, so these stay until every device has imported a newer one.
+    'Utility bills': 'Housing',
+    'Cafe': 'Food & Dining',
+    'Market delivery': 'Food & Dining',
+    'Hotels & flighsts': 'Travel', // sic: user typo
+    'Hotels & flights': 'Travel',
+    'Excursions': 'Travel',
+    'Trip expenses': 'Travel',
+    'Study & visa': 'Travel',
+    'Tech': 'Shopping',
+    'Marketplace': 'Shopping',
+    'Retail': 'Shopping',
+    'Beauty': 'Shopping',
+    'Gifts': 'Shopping',
+    'Subscriptions': 'Entertainment',
+    'Transport': 'Transport',
 };
 
 // Helper for case-insensitive lookup
@@ -71,11 +97,37 @@ export const getGlobalCategory = (category: string): string => {
     return 'Other';
 };
 
+const nameSet = (names: string[]) => new Set(names.map(c => c.toLowerCase()));
+const inSet = (set: Set<string>, category: string) => set.has((category || '').toLowerCase().trim());
+
 // Big planned payments — rent, flights and hotels, electronics, visas, insurance. They land on
 // a few days and dwarf everyday spending, so views of spending habits can leave them out.
-const PLANNED_PAYMENT_CATEGORIES = new Set(
-    ['Rent', 'Hotels & flighsts', 'Hotels & flights', 'Tech', 'Study & visa', 'Insurance', 'Страховка'].map(c => c.toLowerCase())
-);
+const PLANNED_PAYMENT_CATEGORIES = nameSet([
+    'Rent', 'Accommodation', 'Intercity transport', 'Travel packages', 'Electronics', 'Visas & documents', 'Insurance', 'Страховка',
+    'Hotels & flighsts', 'Hotels & flights', 'Tech', 'Study & visa', // before October 2026
+]);
 
-export const isPlannedPayment = (category: string): boolean =>
-    PLANNED_PAYMENT_CATEGORIES.has((category || '').toLowerCase().trim());
+export const isPlannedPayment = (category: string): boolean => inSet(PLANNED_PAYMENT_CATEGORIES, category);
+
+// Phone & internet holds the plan at home and the SIM cards bought for trips. The cards are
+// tagged "Travel internet" or "eSIM" and belong to the journey, as they did under Trip expenses.
+export const isTravelSim = (category: string, tags?: string[] | string): boolean =>
+    (category || '').toLowerCase().trim() === 'phone & internet' && /travel|e-?sim/i.test(formatTags(tags));
+
+// Bills that keep running at home while you're away. A trip is what the journey cost, so these
+// stay out of it unless switched back on by hand.
+const HOME_BILL_CATEGORIES = nameSet([
+    'Rent', 'Utilities', 'Phone & internet', 'Digital services', 'Insurance', 'Страховка',
+    'Utility bills', 'Subscriptions', // before October 2026
+]);
+
+export const isHomeBill = (category: string, tags?: string[] | string): boolean =>
+    inSet(HOME_BILL_CATEGORIES, category) && !isTravelSim(category, tags);
+
+// Where a trip sleeps and how it gets there: big payments, often made weeks ahead.
+export const isTravelBooking = (category: string): boolean =>
+    /accommodation|intercity|travel package|hotel|flight|flighst/i.test(category || '');
+
+// What the user files as subscriptions — kept on the Recurring page even on a loose rhythm.
+export const isSubscriptionCategory = (category: string): boolean =>
+    /digital services|subscri|подпис/i.test(category || '');

@@ -19,7 +19,7 @@ interface TripTransactionPickerProps {
     onClose: () => void;
 }
 
-const DEFAULT_CHIPS = ['Travel', 'Hotels', 'Flights'];
+const DEFAULT_CHIPS = ['Accommodation', 'Intercity', 'Travel'];
 const AROUND_BEFORE = 30; // days before the trip shown with an empty search
 const AROUND_AFTER = 7;
 

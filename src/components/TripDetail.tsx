@@ -215,7 +215,7 @@ export function TripDetail({ trip, trips, transactions, onBack, onDeleted }: Tri
                 .map(t => ({ item: getTransactionTitle(t), category: t.category, amount: Math.round(Math.abs(t.amount)), date: t.date })),
         };
         const prompt = `I am providing JSON data on my expenses for a trip called "${trip.name.trim()}" (amounts in RUB, positive = spent).
-"booked_ahead" is what I paid before the first day (flights, hotels, visas). Rent, utility bills, subscriptions and insurance at home are left out.
+"booked_ahead" is what I paid before the first day (flights, hotels, visas). Rent, utilities, the phone and internet plan, digital services and insurance at home are left out.
 "everyday_spending_per_day_at_home" is my usual daily spending at home (90 days before the trip, without travel, rent, bills and big purchases), and "extra_cost_vs_staying_home" is the trip's total minus that amount for the same number of days.
 Please analyse it and give me:
 1. A summary of what the trip cost and what drove the cost.
@@ -579,7 +579,7 @@ ${JSON.stringify(data, null, 2)}`;
                             {' · '}tap one to switch it on or off
                         </p>
                         {listCounts.homeBills > 0 && (
-                            <p className="text-xs text-gray-400">Rent, utility bills, subscriptions and insurance stay out of trips by themselves — tick one to count it.</p>
+                            <p className="text-xs text-gray-400">Rent, utilities, the phone and internet plan at home, digital services and insurance stay out of trips by themselves — tick one to count it.</p>
                         )}
                         {(filterDay || filterCategory) && (
                             <div className="flex flex-wrap items-center gap-2 mt-1">

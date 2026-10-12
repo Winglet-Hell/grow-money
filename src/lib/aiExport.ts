@@ -5,7 +5,7 @@
 // and anything the model could reasonably misread (partial months, manually kept
 // balances, transfer legs that are NOT in the base currency) is flagged explicitly.
 import type { Transaction, Trip, PaycheckConfig, Milestone } from '../types';
-import { getGlobalCategory } from './categoryGroups';
+import { getGlobalCategory, isSubscriptionCategory } from './categoryGroups';
 import { detectRecurring, typicalDayOfMonth } from './recurring';
 import { summarizePeriod, monthKeyFromDate } from './periods';
 import { resolveTripActiveTransactions } from './tripUtils';
@@ -572,7 +572,7 @@ export function buildAIExportPayload(input: AIExportInput) {
         .slice(0, 60);
 
     // Anything the source data itself labels a subscription, whatever its cadence.
-    const subscriptionTxs = expenses.filter(t => /subscription|подпис/i.test(t.category));
+    const subscriptionTxs = expenses.filter(t => isSubscriptionCategory(t.category));
     const subsMap = new Map<
         string,
         { name: string; amount: number; count: number; months: Set<string>; dates: string[]; tickets: number[] }
@@ -1304,7 +1304,7 @@ export function buildAIExportPayload(input: AIExportInput) {
                 `chapters[].perMonth is per average month counted by days (total ÷ days × 30.44), in ${baseCurrency}, so chapters of different length, and chapters that start mid-month, compare fairly. Transfers are excluded.`,
                 'Compare periods of life through chapters, not month to month across a milestone: a month that straddles a move mixes two lives.',
                 'vsPreviousChapter is the before-and-after of the milestone that opened the chapter; biggestExpenseChanges and biggestIncomeChanges are per month, largest moves first.',
-                'expensesExcludingPlanned leaves out big planned payments (rent, flights and hotels, tech, study and visa, insurance). When expenses jump but expensesExcludingPlanned does not, the change is in those big payments (a new rent, a laptop, flights) rather than in day-to-day habits.',
+                'expensesExcludingPlanned leaves out big planned payments (the categories Rent, Accommodation, Intercity transport, Travel packages, Electronics, Visas & documents and Insurance). When expenses jump but expensesExcludingPlanned does not, the change is in those big payments (a new rent, a laptop, flights) rather than in day-to-day habits.',
                 'isShort (under 60 days): monthly figures are rough, one big payment moves them a lot. isOngoing: runs to the end of the data, figures so far. startedBeforeData: only the part inside the data is measured. perMonth null: the data does not cover that chapter.',
             ].join(' '),
             count: milestoneRows.length,
