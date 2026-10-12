@@ -1,6 +1,7 @@
 import type { Transaction, Trip, TransactionSnapshot } from '../types';
 import { getGlobalCategory, isHomeBill, isTravelBooking, isTravelSim } from './categoryGroups';
 import { dateKeyOf } from './periods';
+import { contentId } from './transactionId';
 import { formatTags } from './utils';
 
 // A trip is a date range plus two hand-kept lists: transactions switched off inside the range
@@ -20,24 +21,66 @@ export const createSnapshot = (t: Transaction): TransactionSnapshot => ({
 
 const sameAmount = (a: number, b: number) => Math.abs(a - b) < 0.005;
 
-export const findTransactionWithSnapshot = (snapshot: TransactionSnapshot, candidates: Transaction[]): Transaction | undefined => {
-    const exact = candidates.find(t =>
+// Identical rows — two metro rides at one fare on one day — share a content hash, and the parser
+// numbers the repeats: "k3x9", "k3x9_1", "k3x9_2". The number says which of the twins an id meant.
+const occurrenceOf = (id: string) => Number(/_(\d+)$/.exec(id)?.[1] ?? 0);
+
+// Rows alike in everything the export carries; any one of them stands for another.
+const areTwins = (rows: Transaction[]) => rows.every(t =>
+    t.category === rows[0].category &&
+    t.account === rows[0].account &&
+    (t.note || '') === (rows[0].note || '') &&
+    t.originalAmount === rows[0].originalAmount &&
+    formatTags(t.tags) === formatTags(rows[0].tags)
+);
+
+// "Market delivery" → {mark, deli}: enough to see that "Grocery delivery" took over from it.
+const stemsOf = (name: string) =>
+    new Set(name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 4).map(w => w.slice(0, 4)));
+
+/** The transaction a stored snapshot points at; `id` is the id it was stored under. */
+export const findTransactionWithSnapshot = (snapshot: TransactionSnapshot, candidates: Transaction[], id = ''): Transaction | undefined => {
+    const nth = (rows: Transaction[]) => rows[Math.min(occurrenceOf(id), rows.length - 1)];
+    const exact = candidates.filter(t =>
         t.date === snapshot.date &&
         t.amount === snapshot.amount &&
         t.category === snapshot.category &&
         (t.note || '') === snapshot.note &&
         (t.originalCurrency || '') === (snapshot.originalCurrency || '')
     );
-    if (exact) return exact;
+    if (exact.length > 0) return nth(exact);
     // A note or category edited in the source app breaks the exact match — that is how an
-    // excluded phone purchase slid back into a trip. The day, the amount and the currency
-    // survive such edits, so trust them when exactly one transaction fits.
+    // excluded phone purchase slid back into a trip, and how renaming the categories would have
+    // let go of hundreds. Given the category it had then, the row the id was made from hashes to
+    // that id again; failing that, given its old note as well (the note goes back only second:
+    // it is what tells the train there from the train back). Rows that differ only in category
+    // all hash back alike, though; then the one whose category kept a word of the old name
+    // ("Transport" → "Local transport") is the heir, or none is.
+    const base = id.replace(/_\d+$/, '');
+    const oldStems = stemsOf(snapshot.category);
+    const hashesBack = (withNote: boolean) => candidates.filter(t =>
+        contentId({ ...t, category: snapshot.category, note: withNote ? snapshot.note : t.note || '' }) === base);
+    for (const withNote of [false, true]) {
+        const rebuilt = base ? hashesBack(withNote) : [];
+        const heirs = rebuilt.filter(t => [...stemsOf(t.category)].some(stem => oldStems.has(stem)));
+        for (const rows of [rebuilt, heirs]) {
+            if (rows.length > 0 && rows.every(t => t.category === rows[0].category)) return nth(rows);
+        }
+    }
+    // Other edits (a renamed wallet) change the id beyond that. The day, the amount and the
+    // currency survive them, so trust those when exactly one transaction fits; when several do,
+    // the note tells them apart, and rows alike in everything are twins.
     const loose = candidates.filter(t =>
         t.date === snapshot.date &&
         sameAmount(t.amount, snapshot.amount) &&
         (t.originalCurrency || '') === (snapshot.originalCurrency || '')
     );
-    return loose.length === 1 ? loose[0] : undefined;
+    const sameNote = loose.filter(t => (t.note || '') === snapshot.note);
+    for (const rows of [loose, sameNote]) {
+        if (rows.length === 1) return rows[0];
+        if (rows.length > 1 && areTwins(rows)) return nth(rows);
+    }
+    return undefined;
 };
 
 // ------------------------------------------------------------------ days
@@ -146,7 +189,7 @@ const resolverFor = (trip: Trip, index: TxIndex) => {
         const direct = index.byId.get(id);
         if (direct) return direct;
         const snapshot = snapshots[id];
-        return snapshot ? findTransactionWithSnapshot(snapshot, index.byDate.get(snapshot.date) ?? []) : undefined;
+        return snapshot ? findTransactionWithSnapshot(snapshot, index.byDate.get(snapshot.date) ?? [], id) : undefined;
     };
 };
 

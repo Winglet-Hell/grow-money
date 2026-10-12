@@ -1,6 +1,7 @@
 
 import Papa from 'papaparse';
 import type { Transaction } from '../types';
+import { contentId } from './transactionId';
 
 // ==========================================
 // SHARED CONSTANTS & HELPERS
@@ -73,17 +74,6 @@ function parseDateString(value: string): string | null {
     return null;
 }
 
-
-// Simple hash function for deterministic IDs
-function generateHash(str: string): string {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32bit integer
-    }
-    return Math.abs(hash).toString(36);
-}
 
 // Read a cell by header name, tolerating leading/trailing whitespace in the sheet header.
 function readCell(row: any, headers: string[], name: string): any {
@@ -210,8 +200,14 @@ function mapRow(row: any, type: Transaction['type'], index: number, date1904 = f
     // We intentionally OMIT the 'index' from the signature to ensure IDs match across file versions
     // regardless of row position.
     // Collisions (duplicates) will be handled in a post-processing step.
-    const signature = `${String(mapped.date)}|${Number(mapped.amount)}|${String(mapped.account || 'Unknown')}|${toSentenceCase(String(mapped.category || 'Uncategorized'))}|${String(mapped.note || '')}|${Number(mapped.originalAmount || 0)}`;
-    const id = generateHash(signature);
+    const id = contentId({
+        date: String(mapped.date),
+        amount: Number(mapped.amount),
+        account: String(mapped.account || 'Unknown'),
+        category: toSentenceCase(String(mapped.category || 'Uncategorized')),
+        note: String(mapped.note || ''),
+        originalAmount: mapped.originalAmount,
+    });
 
     const t: Transaction = {
         id,
