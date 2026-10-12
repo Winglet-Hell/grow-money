@@ -6,8 +6,8 @@ import {
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList } from 'recharts';
 import type { Transaction, Trip } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
-import { getCategoryIcon } from '../lib/categoryIcons';
-import { cn, formatDate, getTransactionNote, getTransactionTitle, stringToColor } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
+import { cn, formatDate, getTransactionNote, getTransactionTitle } from '../lib/utils';
 import {
     daysBetween, dismissSuggestion, healTripLists, localDayKey, resolveTrip, setTransactionCounted, setTransactionShare, suggestTripTransactions,
     tripStatus,
@@ -381,7 +381,7 @@ ${JSON.stringify(data, null, 2)}`;
                     <div className="space-y-3">
                         {biggest.map(t => {
                             const Icon = getCategoryIcon(t.category);
-                            const color = stringToColor(t.category);
+                            const color = getCategoryColor(t.category);
                             return (
                                 <div key={t.id} className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 border border-gray-100">
                                     <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0", color.bg, color.text)}>
@@ -409,7 +409,7 @@ ${JSON.stringify(data, null, 2)}`;
                     <div className="space-y-3">
                         {(showAllCategories ? breakdown : breakdown.slice(0, CATEGORIES_SHOWN)).map(item => {
                             const Icon = getCategoryIcon(item.name);
-                            const color = stringToColor(item.name);
+                            const color = getCategoryColor(item.name);
                             const active = filterCategory === item.name;
                             return (
                                 <button
@@ -795,7 +795,7 @@ function SuggestionRow({ suggestion, money, onAdd, onDismiss }: {
     onDismiss: (tx: Transaction) => void;
 }) {
     const { tx, daysBefore } = suggestion;
-    const color = stringToColor(tx.category);
+    const color = getCategoryColor(tx.category);
     const n = Math.abs(daysBefore);
     const when = `${n} day${n === 1 ? '' : 's'} ${daysBefore > 0 ? 'before' : 'after'}`;
     return (
@@ -845,7 +845,7 @@ function EntryRow({ entry, isPrivacyMode, money, onToggle, onSplit, showDate = f
     const { tx, state, added, beforeTrip, share } = entry;
     const split = share < 1;
     const counted = state === 'counted';
-    const color = stringToColor(tx.category);
+    const color = getCategoryColor(tx.category);
     const note = getTransactionNote(tx);
     return (
         <div

@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useTrips } from '../hooks/useTrips';
 import { resolveTripActiveTransactions } from '../lib/tripUtils';
-import { cn, stringToColor } from '../lib/utils';
-import { getCategoryIcon } from '../lib/categoryIcons';
+import { cn } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 import { isTravelBooking } from '../lib/categoryGroups';
 import type { Transaction, Trip } from '../types';
 import { Search, Globe, X, Tag as TagIcon, LayoutGrid, Plane } from 'lucide-react';
@@ -449,7 +449,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
                                 <div className="flex flex-wrap gap-2">
                                     {topCats.map(cat => {
                                         const Icon = getCategoryIcon(cat);
-                                        const colors = stringToColor(cat);
+                                        const colors = getCategoryColor(cat);
                                         return (
                                             <button
                                                 key={cat}

@@ -9,8 +9,8 @@ import {
     TableRow,
 } from "../components/ui/table"
 import { ArrowUpDown, TrendingUp, Wallet, AlertCircle, Calendar, Search, X, ArrowDownCircle, ChevronDown, Eye, EyeOff } from 'lucide-react';
-import { cn, stringToColor, getFormattedDateRange } from '../lib/utils';
-import { getCategoryIcon } from '../lib/categoryIcons';
+import { cn, getFormattedDateRange } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
 import { getGlobalCategory } from '../lib/categoryGroups';
 import { runningMonthDay, yearOutlook, monthLabel } from '../lib/periods';
@@ -625,7 +625,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
 
     // Mobile Card Component for Category Insights
     const CategoryMobileCard = ({ row }: { row: CategoryData }) => {
-        const color = stringToColor(row.category);
+        const color = getCategoryColor(row.category);
         const Icon = getCategoryIcon(row.category);
         const [isExpanded, setIsExpanded] = useState(false);
         const subMetrics = isExpanded ? getBreakdownMetrics(row.category) : [];
@@ -911,7 +911,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                 </div>
                                 <div className="mt-1">
                                     {(() => {
-                                        const color = stringToColor(infographics.topCategory.category);
+                                        const color = getCategoryColor(infographics.topCategory.category);
                                         const Icon = getCategoryIcon(infographics.topCategory.category);
                                         return (
                                             <span className={cn(
@@ -1113,7 +1113,7 @@ export const CategoryInsights: React.FC<CategoryInsightsProps> = ({ transactions
                                                     {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) ? '▼' : '▶'}
                                                 </span>
                                                 {(() => {
-                                                    const color = stringToColor(row.category);
+                                                    const color = getCategoryColor(row.category);
                                                     const Icon = getCategoryIcon(row.category);
                                                     return (
                                                         <span className={cn(

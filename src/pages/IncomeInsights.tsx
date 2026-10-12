@@ -9,8 +9,8 @@ import {
     TableRow,
 } from "../components/ui/table"
 import { ArrowUpDown, TrendingUp, Calendar, Search, X, ArrowUpCircle, ChevronDown, Eye, EyeOff } from 'lucide-react';
-import { cn, stringToColor, getFormattedDateRange } from '../lib/utils';
-import { getCategoryIcon } from '../lib/categoryIcons';
+import { cn, getFormattedDateRange } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 import { TransactionListModal } from '../components/TransactionListModal';
 import { runningMonthDay, yearOutlook, monthLabel } from '../lib/periods';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -449,7 +449,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
 
     // Mobile Card Component for Income Insights
     const IncomeMobileCard = ({ row }: { row: CategoryData }) => {
-        const color = stringToColor(row.category);
+        const color = getCategoryColor(row.category, 'income');
         const Icon = getCategoryIcon(row.category);
         const [isExpanded, setIsExpanded] = useState(false);
         const subMetrics = isExpanded ? getBreakdownMetrics(row.category) : [];
@@ -716,7 +716,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                                                     {(expandedCategories.has(row.category) || (searchQuery && getBreakdownMetrics(row.category).some(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())))) ? '▼' : '▶'}
                                                 </span>
                                                 {(() => {
-                                                    const color = stringToColor(row.category);
+                                                    const color = getCategoryColor(row.category, 'income');
                                                     const Icon = getCategoryIcon(row.category);
                                                     return (
                                                         <span className={cn(

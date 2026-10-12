@@ -6,8 +6,8 @@ import {
 import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
-import { cn, stringToColor, formatDate, ordinal } from '../lib/utils';
-import { getCategoryIcon } from '../lib/categoryIcons';
+import { cn, formatDate, ordinal } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 import { formatCurrencyAmount } from '../lib/currencies';
 import { summarizePeriod } from '../lib/periods';
 import { detectRecurring, typicalDayOfMonth, CADENCE_LABEL, type RecurringSeries } from '../lib/recurring';
@@ -74,7 +74,7 @@ export function RecurringPage({ transactions }: RecurringPageProps) {
     // new type every time, so React would remount every row (and replay its animations).
     const renderRow = (s: RecurringSeries, tone: 'default' | 'missed' | 'ended' | 'hidden' = 'default') => {
         const Icon = getCategoryIcon(s.category);
-        const color = stringToColor(s.category);
+        const color = getCategoryColor(s.category);
         const isOpen = expanded.has(s.id);
         const dom = typicalDayOfMonth(s);
         const next = daysUntil(s.nextDate);

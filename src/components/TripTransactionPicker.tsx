@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 import { Check, Plus, Search, X } from 'lucide-react';
 import type { Transaction, Trip } from '../types';
 import { useUserSettings } from '../contexts/UserSettingsContext';
-import { getCategoryIcon } from '../lib/categoryIcons';
-import { cn, formatDate, getTransactionNote, getTransactionTitle, stringToColor } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
+import { cn, formatDate, getTransactionNote, getTransactionTitle } from '../lib/utils';
 import { formatRub } from '../lib/tripFormat';
 import { dateKeyOf } from '../lib/periods';
 import { daysBetween, resolveTrip, type TripSuggestion } from '../lib/tripUtils';
@@ -114,7 +114,7 @@ export const TripTransactionPicker: React.FC<TripTransactionPickerProps> = ({
 
     const renderRow = (t: Transaction) => {
         const Icon = getCategoryIcon(t.category);
-        const color = stringToColor(t.category);
+        const color = getCategoryColor(t.category);
         const done = addedNow.has(t.id);
         const elsewhere = otherTrip.get(t.id);
         return (

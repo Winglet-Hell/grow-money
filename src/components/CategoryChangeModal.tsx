@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import type { Transaction } from '../types';
-import { cn, formatDate, getTransactionTitle, stringToColor } from '../lib/utils';
-import { getCategoryIcon } from '../lib/categoryIcons';
+import { cn, formatDate, getTransactionTitle } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 import { formatDelta } from '../lib/periods';
 import { SIDE_COLORS, formatDayKey, perMonth, type RangeStats } from '../lib/milestones';
 
@@ -20,6 +20,7 @@ export interface ChangeSide {
 
 interface CategoryChangeModalProps {
     category: string;
+    type: 'expense' | 'income';
     sides: ChangeSide[]; // in display order
     isPrivacyMode: boolean;
     onClose: () => void;
@@ -28,7 +29,7 @@ interface CategoryChangeModalProps {
 const rub = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
 const original = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
 
-export function CategoryChangeModal({ category, sides, isPrivacyMode, onClose }: CategoryChangeModalProps) {
+export function CategoryChangeModal({ category, type, sides, isPrivacyMode, onClose }: CategoryChangeModalProps) {
     useEffect(() => {
         const previousOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
@@ -50,7 +51,7 @@ export function CategoryChangeModal({ category, sides, isPrivacyMode, onClose }:
 
     const renderIcon = () => {
         const Icon = getCategoryIcon(category);
-        const color = stringToColor(category);
+        const color = getCategoryColor(category, type);
         return (
             <span className={cn("p-2 rounded-lg flex-shrink-0", color.bg, color.text)}>
                 <Icon className="w-4 h-4" />

@@ -12,8 +12,8 @@ import {
     ResponsiveContainer,
     LabelList
 } from 'recharts';
-import { getCategoryIcon } from '../lib/categoryIcons';
-import { cn, stringToColor } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
+import { cn } from '../lib/utils';
 import type { Milestone, Transaction } from '../types';
 import { monthKeyOf, monthKeyFromDate, monthLabel, shiftMonthKey } from '../lib/periods';
 import { niceScale, labelIndices } from '../lib/chartScale';
@@ -264,8 +264,8 @@ export function CategoryTrendsSection({ transactions, period, milestones = [], o
                             <div className="pl-3 flex items-center">
                                 <div className={cn(
                                     "p-1 rounded-md transition-colors",
-                                    stringToColor(selectedCategory).bg,
-                                    stringToColor(selectedCategory).text
+                                    getCategoryColor(selectedCategory, type).bg,
+                                    getCategoryColor(selectedCategory, type).text
                                 )}>
                                     {(() => {
                                         const Icon = getCategoryIcon(selectedCategory);

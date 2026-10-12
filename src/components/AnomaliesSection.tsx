@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react';
-import { getCategoryIcon } from '../lib/categoryIcons';
-import { cn, stringToColor, ordinal } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
+import { cn, ordinal } from '../lib/utils';
 import { monthKeyOf, dayOfMonthOf, monthKeyFromDate, shiftMonthKey, monthLabel } from '../lib/periods';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import type { Transaction } from '../types';
@@ -149,7 +149,7 @@ export function AnomaliesSection({ transactions }: AnomaliesSectionProps) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     {(isExpanded ? anomalies : anomalies.slice(0, 5)).map(item => {
                         const Icon = getCategoryIcon(item.category);
-                        const color = stringToColor(item.category);
+                        const color = getCategoryColor(item.category);
                         const isBad = item.diffAbs > 0; // Spending increased
 
                         return (

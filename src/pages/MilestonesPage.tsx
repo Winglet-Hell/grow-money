@@ -4,8 +4,8 @@ import { Info, Milestone as MilestoneIcon, Pencil, Plus } from 'lucide-react';
 import type { Milestone, MilestoneKind, Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
-import { cn, stringToColor } from '../lib/utils';
-import { getCategoryIcon } from '../lib/categoryIcons';
+import { cn } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 import { dateKeyOf, formatDelta } from '../lib/periods';
 import {
     DAYS_PER_MONTH, KIND_ICONS, MILESTONE_KINDS, SHORT_CHAPTER_DAYS, SIDE_COLORS,
@@ -180,6 +180,7 @@ export function MilestonesPage({ transactions }: MilestonesPageProps) {
             {detail && comparison && pair && (
                 <CategoryChangeModal
                     category={detail.category}
+                    type={detail.type}
                     sides={(['b', 'a'] as const).map(side => {
                         const range = comparison[side];
                         return {
@@ -685,8 +686,8 @@ function ComparisonView({ a, b, comparison, flows, compareWindow, onWindowChange
                 </div>
             )}
 
-            <ChangeList title="What changed in spending" rows={spending} upIsGood={false} initial={8} isPrivacyMode={isPrivacyMode} onOpen={category => onOpenCategory('expense', category)} />
-            <ChangeList title="What changed in income" rows={income} upIsGood initial={4} isPrivacyMode={isPrivacyMode} onOpen={category => onOpenCategory('income', category)} />
+            <ChangeList title="What changed in spending" type="expense" rows={spending} upIsGood={false} initial={8} isPrivacyMode={isPrivacyMode} onOpen={category => onOpenCategory('expense', category)} />
+            <ChangeList title="What changed in income" type="income" rows={income} upIsGood initial={4} isPrivacyMode={isPrivacyMode} onOpen={category => onOpenCategory('income', category)} />
 
             <p className="text-xs text-gray-400">
                 Per average month, counted by days, so chapters of different length compare fairly. Transfers
@@ -732,8 +733,8 @@ function Figure({ label, value, was, delta, good }: {
     );
 }
 
-function ChangeList({ title, rows, upIsGood, initial, isPrivacyMode, onOpen }: {
-    title: string; rows: CategoryChange[]; upIsGood: boolean; initial: number; isPrivacyMode: boolean;
+function ChangeList({ title, type, rows, upIsGood, initial, isPrivacyMode, onOpen }: {
+    title: string; type: 'expense' | 'income'; rows: CategoryChange[]; upIsGood: boolean; initial: number; isPrivacyMode: boolean;
     onOpen: (category: string) => void;
 }) {
     const [expanded, setExpanded] = useState(false);
@@ -769,7 +770,7 @@ function ChangeList({ title, rows, upIsGood, initial, isPrivacyMode, onOpen }: {
                     </div>
                     {shown.map(r => {
                         const Icon = getCategoryIcon(r.category);
-                        const color = stringToColor(r.category);
+                        const color = getCategoryColor(r.category, type);
                         const good = (r.delta > 0) === upIsGood;
                         const width = (Math.abs(r.delta) / maxDelta) * 50;
                         return (

@@ -2,8 +2,8 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Calendar, Banknote } from 'lucide-react';
 import type { Transaction } from '../types';
-import { formatDate, stringToColor, cn, formatTags } from '../lib/utils';
-import { getCategoryIcon } from '../lib/categoryIcons';
+import { formatDate, cn, formatTags } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 
 interface TransactionListModalProps {
     isOpen: boolean;
@@ -148,7 +148,7 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
                                                 <div className="flex items-center gap-1.5">
                                                     {(() => {
                                                         const Icon = getCategoryIcon(t.category);
-                                                        const color = stringToColor(t.category);
+                                                        const color = getCategoryColor(t.category, t.type);
                                                         return (
                                                             <div className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shadow-sm", color.bg, color.text)}>
                                                                 <Icon className="w-2.5 h-2.5" />

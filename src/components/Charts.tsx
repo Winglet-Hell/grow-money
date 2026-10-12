@@ -4,8 +4,7 @@ import {
 } from 'recharts';
 import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
-import { stringToColor } from '../lib/utils';
-import { getCategoryIcon } from '../lib/categoryIcons';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 import { CustomTooltip } from './CustomTooltip';
 import { filterByPeriod, monthKeyOf, monthKeyFromDate, monthLabel, type DashboardPeriod } from '../lib/periods';
 
@@ -136,7 +135,7 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ transactions, period,
                                             style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 500 }}
                                         />
                                         {expensesByCategory.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={stringToColor(entry.name).hex} />
+                                            <Cell key={`cell-${index}`} fill={getCategoryColor(entry.name).hex} />
                                         ))}
                                     </Bar>
                                 </BarChart>

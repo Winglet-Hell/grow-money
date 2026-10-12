@@ -4,8 +4,8 @@ import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useAccounts } from '../hooks/useAccounts';
-import { cn, stringToColor, formatDate, formatTags, getTransactionTitle } from '../lib/utils';
-import { getCategoryIcon } from '../lib/categoryIcons';
+import { cn, formatDate, formatTags, getTransactionTitle } from '../lib/utils';
+import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown } from 'lucide-react';
 
 interface TransactionTableProps {
@@ -233,7 +233,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
     };
 
     const MobileCard = ({ transaction: t }: { transaction: Transaction }) => {
-        const color = stringToColor(t.category);
+        const color = getCategoryColor(t.category, t.type);
         const Icon = getCategoryIcon(t.category);
 
         // t.amount is always in RUB (converted)
@@ -387,7 +387,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
                                         {showCategory && (
                                             <td className={`px-6 ${py} whitespace-nowrap`}>
                                                 {(() => {
-                                                    const color = stringToColor(t.category);
+                                                    const color = getCategoryColor(t.category, t.type);
                                                     const Icon = getCategoryIcon(t.category);
                                                     return (
                                                         <span className={cn(
