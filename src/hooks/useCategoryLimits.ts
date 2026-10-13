@@ -1,9 +1,30 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+// The limits outlive the page that loaded them: coming back to the dashboard, it is drawn once
+// with them instead of once without and again a second later, when they arrive.
+let cachedLimits: Record<string, number> | null = null;
+
+/** Forget them on sign-out, so the next account never sees the previous one's. */
+export const clearCategoryLimitsCache = () => { cachedLimits = null; };
+
+const sameLimits = (a: Record<string, number>, b: Record<string, number>) => {
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every(k => a[k] === b[k]);
+};
+
 export const useCategoryLimits = () => {
-    const [limits, setLimitsState] = useState<Record<string, number>>({});
-    const [loading, setLoading] = useState(true);
+    const [limits, setLimits] = useState<Record<string, number>>(() => cachedLimits ?? {});
+    const [loading, setLoading] = useState(cachedLimits === null);
+
+    // Every change goes to the shared copy too.
+    const setLimitsState = (update: (prev: Record<string, number>) => Record<string, number>) => {
+        setLimits(prev => {
+            const next = update(prev);
+            cachedLimits = next;
+            return next;
+        });
+    };
 
     const fetchLimits = async () => {
         try {
@@ -21,7 +42,11 @@ export const useCategoryLimits = () => {
                 data.forEach((row: any) => {
                     limitMap[row.category] = row.amount;
                 });
-                setLimitsState(limitMap);
+                // Unchanged since the cached copy: no state change, so nothing redraws.
+                if (!cachedLimits || !sameLimits(cachedLimits, limitMap)) {
+                    cachedLimits = limitMap;
+                    setLimits(limitMap);
+                }
             }
         } catch (error) {
             console.error('Unexpected error fetching limits:', error);

@@ -4,6 +4,7 @@ import { X, Calendar, Banknote } from 'lucide-react';
 import type { Transaction } from '../types';
 import { formatDate, cn, formatTags } from '../lib/utils';
 import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 interface TransactionListModalProps {
     isOpen: boolean;
@@ -24,6 +25,8 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
     subtitle,
     transactions
 }) => {
+    const { isPrivacyMode } = usePrivacy();
+
     // Prevent body scroll when modal is open
     useEffect(() => {
         if (isOpen) {
@@ -36,9 +39,20 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
         };
     }, [isOpen]);
 
+    // Escape closes it, as it does the app's other dialogs.
+    useEffect(() => {
+        if (!isOpen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     const formatCurrency = (val: number) => {
+        if (isPrivacyMode) return '•••• ₽';
         const formatted = new Intl.NumberFormat('en-US', {
             style: 'decimal',
             maximumFractionDigits: 0
@@ -118,7 +132,7 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
                                                 <span className="text-[15px] font-black text-gray-900 whitespace-nowrap tracking-tight">
                                                     {formatCurrency(t.amount)}
                                                 </span>
-                                                {t.originalAmount && t.originalCurrency && (
+                                                {t.originalAmount && t.originalCurrency && !isPrivacyMode && (
                                                     <span className="text-[10px] font-medium text-gray-400 whitespace-nowrap -mt-1 uppercase tracking-wider">
                                                         {(() => {
                                                             try {

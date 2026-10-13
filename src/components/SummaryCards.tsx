@@ -75,6 +75,14 @@ export const SummaryCards: React.FC<SummaryCardsProps> = React.memo(({ transacti
                     title="Avg. Monthly Spend"
                     amount={s.avgMonthlyExpenses}
                     icon={<Gauge className="w-10 h-10 text-violet-500" strokeWidth={1.5} />}
+                    // Everyday life apart from the big planned payments (rent, trips, electronics…),
+                    // the same split as the bars of the monthly trend.
+                    trend={s.completedMonths > 0 && (
+                        <span title="Planned: rent, stays and tickets, travel packages, electronics, visas, insurance and taxes">
+                            Everyday {money(s.avgMonthlyExpenses - s.avgMonthlyPlanned)} · planned {money(s.avgMonthlyPlanned)}
+                        </span>
+                    )}
+                    trendColor="text-gray-500"
                     description={budget > 0
                         ? `Budget ${money(budget)}/mo · avg uses ${pct(s.avgMonthlyExpenses / budget)}`
                         : 'The running month is left out'}

@@ -10,6 +10,7 @@ import { FileUploader } from './components/FileUploader';
 import { syncAccountsWithSupabase } from './lib/accountUtils';
 import { invalidateAccounts, clearAccountsCache } from './lib/accountsStore';
 import { clearTripsCache } from './lib/tripsStore';
+import { clearCategoryLimitsCache } from './hooks/useCategoryLimits';
 import { parseFile } from './lib/parser';
 import { readImportMeta, writeImportMeta, clearImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
 import { ImportStatementDialog, type ImportState } from './components/ImportStatementDialog';
@@ -130,6 +131,7 @@ function AppContent() {
         dataLoadedRef.current = false;
         clearAccountsCache();
         clearTripsCache();
+        clearCategoryLimitsCache();
       }
     });
 

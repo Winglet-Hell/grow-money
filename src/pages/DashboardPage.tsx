@@ -7,7 +7,7 @@ import { Charts } from '../components/Charts';
 import { TransactionTable } from '../components/TransactionTable';
 import { RecurringStrip } from '../components/RecurringStrip';
 import { useCategoryLimits } from '../hooks/useCategoryLimits';
-import { monthlyBudget } from '../lib/budget';
+import { activeLimits, monthlyBudget } from '../lib/budget';
 import { cn, getFormattedDateRange, formatDate } from '../lib/utils';
 import {
     filterByPeriod, monthKeyFromDate, shiftMonthKey, monthLabel, daysInMonth,
@@ -71,8 +71,9 @@ export function DashboardPage({ transactions, importMeta, onImport }: DashboardP
     const [period, setPeriod] = useState<DashboardPeriod>(() => presetToPeriod(readStoredPreset(), thisKey));
 
     // Category limits double as the monthly budget for the pace card and the target line.
-    const { limits } = useCategoryLimits();
+    const { limits, loading: limitsLoading } = useCategoryLimits();
     const budget = useMemo(() => monthlyBudget(limits, transactions), [limits, transactions]);
+    const categoryLimits = useMemo(() => activeLimits(limits, transactions), [limits, transactions]);
 
     const periodTransactions = useMemo(() => filterByPeriod(transactions, period), [transactions, period]);
 
@@ -254,7 +255,7 @@ export function DashboardPage({ transactions, importMeta, onImport }: DashboardP
 
             <SummaryCards transactions={transactions} period={period} budget={budget} />
             <RecurringStrip transactions={transactions} />
-            <Charts transactions={transactions} period={period} budget={budget} onSelectMonth={chooseMonth} />
+            <Charts transactions={transactions} period={period} budget={budget} budgetReady={!limitsLoading} limits={categoryLimits} onSelectMonth={chooseMonth} />
             <TransactionTable
                 transactions={periodTransactions}
                 title={period.kind === 'all' ? 'Recent Transactions' : 'Transactions'}

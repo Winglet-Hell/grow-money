@@ -1,4 +1,5 @@
 import type { Transaction } from '../types';
+import { isPlannedPayment } from './categoryGroups';
 
 // The dashboard is scoped to one calendar month or to everything ever imported.
 export type DashboardPeriod = { kind: 'all' } | { kind: 'month'; key: string }; // key: "YYYY-MM"
@@ -94,6 +95,7 @@ export interface PeriodSummary {
     completedMonths: number;
     avgMonthlyIncome: number;
     avgMonthlyExpenses: number;
+    avgMonthlyPlanned: number;     // the part of avgMonthlyExpenses that is big planned payments
     lastDataDate: string | null;   // latest transaction date in the whole dataset
 }
 
@@ -106,14 +108,17 @@ export function summarizePeriod(transactions: Transaction[], period: DashboardPe
 
     // Per-month totals across the whole dataset — needed for averages and comparisons
     // regardless of which period is selected.
-    const byMonth = new Map<string, { income: number; expenses: number }>();
+    const byMonth = new Map<string, { income: number; expenses: number; planned: number }>();
     let lastDataDate: string | null = null;
     for (const t of flows) {
         const key = monthKeyOf(t.date);
         if (!key) continue;
-        const bucket = byMonth.get(key) ?? { income: 0, expenses: 0 };
+        const bucket = byMonth.get(key) ?? { income: 0, expenses: 0, planned: 0 };
         if (t.type === 'income') bucket.income += Math.abs(t.amount);
-        else bucket.expenses += Math.abs(t.amount);
+        else {
+            bucket.expenses += Math.abs(t.amount);
+            if (isPlannedPayment(t.category)) bucket.planned += Math.abs(t.amount);
+        }
         byMonth.set(key, bucket);
         if (!lastDataDate || t.date > lastDataDate) lastDataDate = t.date;
     }
@@ -123,8 +128,9 @@ export function summarizePeriod(transactions: Transaction[], period: DashboardPe
     const completedMonths = completed.length;
     const avgMonthlyIncome = completedMonths ? completed.reduce((s, [, m]) => s + m.income, 0) / completedMonths : 0;
     const avgMonthlyExpenses = completedMonths ? completed.reduce((s, [, m]) => s + m.expenses, 0) / completedMonths : 0;
+    const avgMonthlyPlanned = completedMonths ? completed.reduce((s, [, m]) => s + m.planned, 0) / completedMonths : 0;
 
-    const base = { completedMonths, avgMonthlyIncome, avgMonthlyExpenses, lastDataDate };
+    const base = { completedMonths, avgMonthlyIncome, avgMonthlyExpenses, avgMonthlyPlanned, lastDataDate };
 
     if (period.kind === 'all') {
         let income = 0, expenses = 0;
@@ -139,7 +145,7 @@ export function summarizePeriod(transactions: Transaction[], period: DashboardPe
     }
 
     const key = period.key;
-    const month = byMonth.get(key) ?? { income: 0, expenses: 0 };
+    const month = byMonth.get(key) ?? { income: 0, expenses: 0, planned: 0 };
     const isCurrentMonth = key === currentKey;
     const totalDays = daysInMonth(key);
     const dayOfMonth = isCurrentMonth ? Math.min(now.getDate(), totalDays) : totalDays;
