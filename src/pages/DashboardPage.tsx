@@ -120,7 +120,9 @@ export function DashboardPage({ transactions, onImport }: DashboardPageProps) {
             : periodLabel;
 
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
+        // Enters from the top down: the header, the four cards one after another, then the rest
+        // (enter-cascade and enter-row, tailwind.config.js).
+        <div className="space-y-8 enter-cascade">
             {/* Dashboard Header */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4">
                 <div>
@@ -222,13 +224,16 @@ export function DashboardPage({ transactions, onImport }: DashboardPageProps) {
             )}
 
             <SummaryCards transactions={transactions} period={period} budget={budget} />
-            <RecurringStrip transactions={transactions} />
-            <Charts transactions={transactions} period={period} budget={budget} budgetReady={!limitsLoading} limits={categoryLimits} onSelectMonth={chooseMonth} />
-            <TransactionTable
-                transactions={periodTransactions}
-                title={period.kind === 'all' ? 'Recent Transactions' : 'Transactions'}
-                subtitle={period.kind === 'all' ? undefined : periodLabel}
-            />
+            {/* Below the cards: one block, which enters after them. */}
+            <div className="space-y-8">
+                <RecurringStrip transactions={transactions} />
+                <Charts transactions={transactions} period={period} budget={budget} budgetReady={!limitsLoading} limits={categoryLimits} onSelectMonth={chooseMonth} />
+                <TransactionTable
+                    transactions={periodTransactions}
+                    title={period.kind === 'all' ? 'Recent Transactions' : 'Transactions'}
+                    subtitle={period.kind === 'all' ? undefined : periodLabel}
+                />
+            </div>
         </div>
     );
 }

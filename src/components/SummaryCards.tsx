@@ -45,7 +45,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = React.memo(({ transacti
 
     if (period.kind === 'all') {
         return (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6 mb-8 enter-row">
                 <MetricCard
                     title="Total Income"
                     amount={s.income}
@@ -140,7 +140,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = React.memo(({ transacti
     }
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6 mb-8 enter-row">
             <MetricCard
                 title="Income"
                 amount={s.income}

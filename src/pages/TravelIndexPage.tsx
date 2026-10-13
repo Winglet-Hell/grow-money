@@ -325,7 +325,7 @@ export function TravelIndexPage({ transactions }: TravelIndexPageProps) {
     }, [indexResults.length]);
 
     return (
-        <div className="max-w-7xl mx-auto space-y-8 pb-12 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="max-w-7xl mx-auto space-y-8 pb-12 animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">

@@ -212,7 +212,7 @@ export function MilestonesPage({ transactions }: MilestonesPageProps) {
 
     if (milestones.length === 0) {
         return (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
                 {header}
                 {loading ? (
                     <div className="py-24 flex justify-center">
@@ -284,7 +284,7 @@ export function MilestonesPage({ transactions }: MilestonesPageProps) {
     }
 
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
             {header}
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">

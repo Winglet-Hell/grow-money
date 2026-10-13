@@ -250,14 +250,14 @@ export function ResalePage({ transactions }: ResalePageProps) {
     const nothingSold = sold.length === 0 && unmatched.length === 0;
 
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="space-y-6 enter-cascade">
             <div>
                 <h2 className="text-2xl font-bold text-gray-900">Resale</h2>
                 <p className="text-gray-500">What your things cost to own: the price you paid against the price they sold for</p>
             </div>
 
             {/* Summary */}
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4 enter-row">
                 <SummaryCard
                     title="Paid"
                     value={sold.length ? money(totals.paid) : '—'}

@@ -220,7 +220,7 @@ export function TrendsPage({ transactions }: TrendsPageProps) {
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
             {/* Header & Controls */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>

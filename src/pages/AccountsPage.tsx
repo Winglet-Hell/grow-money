@@ -215,7 +215,7 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
     );
 
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
+        <div className="enter-cascade space-y-6">
             {/* Header */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4">
                 <div>
@@ -250,7 +250,7 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
             </div>
 
             {/* Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 enter-row">
                 <SummaryTile
                     title="Net worth"
                     value={money(totalNetWorth)}

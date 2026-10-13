@@ -222,7 +222,7 @@ function TripList({ trips, loading, transactions, onOpen }: {
 
     const today = localDayKey();
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
+        <div className="enter-cascade space-y-6">
             {/* Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
                 <div>
@@ -291,7 +291,7 @@ function TripList({ trips, loading, transactions, onOpen }: {
 
             {/* Summary */}
             {summary && (
-                <div className="grid grid-cols-3 gap-2 md:gap-4">
+                <div className="grid grid-cols-3 gap-2 md:gap-4 enter-row">
                     <SummaryTile
                         title={`Trips in ${summary.year.year}`}
                         value={money(summary.year.total)}
