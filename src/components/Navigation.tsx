@@ -21,12 +21,16 @@ import {
     Banknote,
     ArrowRightLeft,
     Upload,
+    Settings,
+    Trash2,
+    LogOut,
     Repeat,
     Milestone,
     Handshake
 } from 'lucide-react';
 import { cn, isOnPath } from '../lib/utils';
 import { getAvatarIcon } from '../lib/avatarIcons';
+import { describeLastImport, type ImportMeta } from '../lib/importing';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { usePrivacy } from '../contexts/PrivacyContext';
 
@@ -75,6 +79,7 @@ const NAV_CATEGORIES = [
 interface NavigationProps {
     onReset?: () => void;
     onImport?: () => void; // present only while data is loaded
+    importMeta?: ImportMeta | null; // when the data on this device was last replaced
     isAuthenticated?: boolean;
     onSignIn?: () => void;
     onLogout?: () => void;
@@ -82,7 +87,7 @@ interface NavigationProps {
     isLandingPage?: boolean;
 }
 
-export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLogout, userEmail, isLandingPage = false }: NavigationProps) {
+export function Navigation({ onReset, onImport, importMeta, isAuthenticated, onSignIn, onLogout, userEmail, isLandingPage = false }: NavigationProps) {
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const location = useLocation();
@@ -269,12 +274,13 @@ export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLog
                             {isUserMenuOpen && (
                                 <>
                                     <div className="fixed inset-0 z-30" onClick={() => setIsUserMenuOpen(false)} />
-                                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-40 animate-in fade-in zoom-in-95 duration-200">
+                                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-40 animate-in fade-in zoom-in-95 duration-200">
                                         <Link
                                             to="/settings"
-                                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                             onClick={() => setIsUserMenuOpen(false)}
                                         >
+                                            <Settings className="w-4 h-4 text-gray-400 shrink-0" />
                                             Settings
                                         </Link>
                                         {onImport && (
@@ -284,9 +290,13 @@ export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLog
                                                     onImport();
                                                 }}
                                                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                                title={importMeta?.fileName}
                                             >
-                                                <Upload className="w-4 h-4 text-emerald-600" />
-                                                Import statement
+                                                <Upload className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                <span className="min-w-0">
+                                                    Import statement
+                                                    {importMeta && <span className="block text-xs text-gray-400 tabular-nums whitespace-nowrap">{describeLastImport(importMeta)}</span>}
+                                                </span>
                                             </button>
                                         )}
                                         <button
@@ -296,6 +306,7 @@ export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLog
                                             }}
                                             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                                         >
+                                            <Trash2 className="w-4 h-4 text-gray-400 shrink-0" />
                                             Clear Data
                                         </button>
                                         <div className="h-px bg-gray-100 my-1" />
@@ -304,8 +315,9 @@ export function Navigation({ onReset, onImport, isAuthenticated, onSignIn, onLog
                                                 setIsUserMenuOpen(false);
                                                 onLogout?.();
                                             }}
-                                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                                         >
+                                            <LogOut className="w-4 h-4 shrink-0" />
                                             Sign Out
                                         </button>
                                     </div>

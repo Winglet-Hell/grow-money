@@ -1,7 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { CalendarClock, Upload, FileSpreadsheet } from 'lucide-react';
+import { CalendarClock, Upload } from 'lucide-react';
 import type { Transaction } from '../types';
-import type { ImportMeta } from '../lib/importing';
 import { SummaryCards } from '../components/SummaryCards';
 import { Charts } from '../components/Charts';
 import { TransactionTable } from '../components/TransactionTable';
@@ -16,7 +15,6 @@ import {
 
 interface DashboardPageProps {
     transactions: Transaction[];
-    importMeta: ImportMeta | null;
     onImport: () => void;
 }
 
@@ -49,21 +47,8 @@ const storePreset = (preset: Preset) => {
 const localDateKey = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-// "today 14:32", "yesterday 09:10", "12 Sep 14:32", "12 Sep 2025"
-function formatImportTime(iso: string, now: Date): string {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(d);
-    const dayKey = localDateKey(d);
-    if (dayKey === localDateKey(now)) return `today ${time}`;
-    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-    if (dayKey === localDateKey(yesterday)) return `yesterday ${time}`;
-    const sameYear = d.getFullYear() === now.getFullYear();
-    const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) }).format(d);
-    return sameYear ? `${day} ${time}` : day;
-}
 
-export function DashboardPage({ transactions, importMeta, onImport }: DashboardPageProps) {
+export function DashboardPage({ transactions, onImport }: DashboardPageProps) {
     const today = new Date();
     const thisKey = monthKeyFromDate(today);
     const lastKey = shiftMonthKey(thisKey, -1);
@@ -191,23 +176,6 @@ export function DashboardPage({ transactions, importMeta, onImport }: DashboardP
                         {badge}
                     </div>
                 </div>
-            </div>
-
-            {/* Freshness line: when the data on this device was last replaced, and the way to do it again. */}
-            <div className="-mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
-                <span className="flex items-center gap-1.5">
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    {importMeta
-                        ? <>Imported {formatImportTime(importMeta.at, today)} · {importMeta.count.toLocaleString('en-US')} rows{importMeta.fileName ? <span className="hidden sm:inline"> · {importMeta.fileName}</span> : null}</>
-                        : 'Import time unknown'}
-                </span>
-                <button
-                    onClick={onImport}
-                    className="inline-flex items-center gap-1 font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
-                >
-                    <Upload className="w-3.5 h-3.5" />
-                    Import new statement
-                </button>
             </div>
 
             {periodIsEmpty && (

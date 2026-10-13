@@ -330,6 +330,7 @@ function AppContent() {
       <Navigation
         onReset={requestReset}
         onImport={transactions.length > 0 ? requestImport : undefined}
+        importMeta={importMeta}
         isAuthenticated={!!session}
         onSignIn={() => setShowAuth(true)}
         onLogout={handleLogout}
@@ -413,7 +414,7 @@ function AppContent() {
             <div>
               <Routes>
                 {/* ... existing routes ... */}
-                <Route path="/" element={<DashboardPage transactions={transactions} importMeta={importMeta} onImport={requestImport} />} />
+                <Route path="/" element={<DashboardPage transactions={transactions} onImport={requestImport} />} />
                 <Route path="/category-insights" element={<CategoryInsights transactions={transactions} />} />
                 <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
                 <Route path="/paycheck" element={<PaycheckPage transactions={transactions} />} />
@@ -434,7 +435,7 @@ function AppContent() {
           )
         }
       </main >
-      {transactions.length > 0 && <BottomNav onReset={requestReset} onImport={requestImport} />}
+      {transactions.length > 0 && <BottomNav onReset={requestReset} onImport={requestImport} importMeta={importMeta} />}
 
       {/* Shared picker for every "Import statement" entry point. Resetting value lets the
           same file be chosen twice in a row (e.g. after fixing an export). */}

@@ -33,6 +33,27 @@ export function clearImportMeta(): void {
     try { localStorage.removeItem(META_KEY); } catch { /* storage blocked */ }
 }
 
+const localDateKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** "today 14:32", "yesterday 09:10", "12 Sep 14:32", "12 Sep 2025" */
+export function formatImportTime(iso: string, now = new Date()): string {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(d);
+    const dayKey = localDateKey(d);
+    if (dayKey === localDateKey(now)) return `today ${time}`;
+    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+    if (dayKey === localDateKey(yesterday)) return `yesterday ${time}`;
+    const sameYear = d.getFullYear() === now.getFullYear();
+    const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) }).format(d);
+    return sameYear ? `${day} ${time}` : day;
+}
+
+/** The menus' note under "Import statement": "Last: yesterday 07:14 · 4,241 rows". */
+export const describeLastImport = (meta: ImportMeta, now = new Date()) =>
+    `Last: ${formatImportTime(meta.at, now)} · ${meta.count.toLocaleString('en-US')} rows`;
+
 // ---------------------------------------------------------------------------
 // What changed between the data on the device and a freshly parsed file.
 // Transaction ids are content hashes (date|amount|account|category|note|…), so

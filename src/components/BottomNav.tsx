@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart, LineChart, Map, Banknote, ArrowRightLeft, Globe, Settings, Eye, EyeOff, Upload, Repeat, Milestone, Handshake } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, Heart, LineChart, Map, Banknote, ArrowRightLeft, Globe, Settings, Eye, EyeOff, Upload, Repeat, Milestone, Handshake, Trash2 } from 'lucide-react';
 import { cn, isOnPath } from '../lib/utils';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import menuIllustration from '../assets/menu-illustration.png';
+import { describeLastImport, type ImportMeta } from '../lib/importing';
 
 // This component will be used in App.tsx
-export function BottomNav({ onReset, onImport }: { onReset: () => void; onImport: () => void }) {
+export function BottomNav({ onReset, onImport, importMeta }: { onReset: () => void; onImport: () => void; importMeta?: ImportMeta | null }) {
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
@@ -164,7 +165,10 @@ export function BottomNav({ onReset, onImport }: { onReset: () => void; onImport
                                 <div className="p-2 bg-white rounded-lg">
                                     <Upload className="w-5 h-5" />
                                 </div>
-                                Import statement
+                                <span className="text-left min-w-0">
+                                    Import statement
+                                    {importMeta && <span className="block text-xs font-normal text-emerald-700/70 tabular-nums">{describeLastImport(importMeta)}</span>}
+                                </span>
                             </button>
                             <button
                                 onClick={() => {
@@ -174,7 +178,7 @@ export function BottomNav({ onReset, onImport }: { onReset: () => void; onImport
                                 className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-red-50 text-red-600 font-medium hover:bg-red-100 transition-colors"
                             >
                                 <div className="p-2 bg-white rounded-lg">
-                                    <LogOut className="w-5 h-5" />
+                                    <Trash2 className="w-5 h-5" />
                                 </div>
                                 Clear imported data
                             </button>
