@@ -22,7 +22,8 @@ import {
     ArrowRightLeft,
     Upload,
     Repeat,
-    Milestone
+    Milestone,
+    Handshake
 } from 'lucide-react';
 import { cn, isOnPath } from '../lib/utils';
 import { getAvatarIcon } from '../lib/avatarIcons';
@@ -51,6 +52,7 @@ const NAV_CATEGORIES = [
             { path: '/trip-analytics', label: 'Trip Analytics', icon: Map, description: 'Travel spending' },
             { path: '/travel-index', label: 'Travel Index', icon: Globe, description: 'Cost comparison' },
             { path: '/currency-rates', label: 'Currency Rates', icon: ArrowRightLeft, description: 'Avg. transfer FX rates' },
+            { path: '/resale', label: 'Resale', icon: Handshake, description: 'Bought vs. sold' },
         ]
     },
     {

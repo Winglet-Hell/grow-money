@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart, LineChart, Map, Banknote, ArrowRightLeft, Globe, Settings, Eye, EyeOff, Upload, Repeat, Milestone } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Wallet, Menu, X, PieChart, Import, LogOut, Heart, LineChart, Map, Banknote, ArrowRightLeft, Globe, Settings, Eye, EyeOff, Upload, Repeat, Milestone, Handshake } from 'lucide-react';
 import { cn, isOnPath } from '../lib/utils';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import menuIllustration from '../assets/menu-illustration.png';
@@ -42,6 +42,7 @@ export function BottomNav({ onReset, onImport }: { onReset: () => void; onImport
                 { path: '/trip-analytics', label: 'Trips', icon: Map },
                 { path: '/travel-index', label: 'Travel Index', icon: Globe },
                 { path: '/currency-rates', label: 'Currency Rates', icon: ArrowRightLeft },
+                { path: '/resale', label: 'Resale', icon: Handshake },
             ]
         },
         {

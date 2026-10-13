@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Milestone, PaycheckConfig } from '../types';
+import type { Milestone, PaycheckConfig, ResalePurchaseEntry } from '../types';
 
 export interface UserPreferences {
     tableCompactMode?: boolean;
@@ -12,6 +12,7 @@ export interface UserPreferences {
     paycheck?: PaycheckConfig;
     recurring?: { hiddenIds?: string[] }; // detected series the user marked "not recurring"
     milestones?: Milestone[]; // life events on the Milestones page, kept sorted by date
+    resale?: { purchases?: Record<string, ResalePurchaseEntry> }; // Resale page: purchases matched by hand, by sale key
 }
 
 export interface UserProfile {

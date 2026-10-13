@@ -69,6 +69,21 @@ export type Milestone = {
     note?: string;
 };
 
+// Where a sold thing's purchase is, when the Resale page can't find it by the sale's comment.
+// Saved per sale (see lib/resale), in one of two shapes:
+export type ResalePurchaseEntry =
+    // In the statement under another comment: that row, and its comment's key in case the row's
+    // id changes after an edit in the source app.
+    | { purchaseId: string; sameAs?: string }
+    // Bought before the statement starts: typed in by hand.
+    | {
+        date: string;      // "YYYY-MM-DD"
+        amount: number;    // what it cost in rubles, positive
+        price?: number;    // what was paid, when it wasn't rubles…
+        currency?: string; // …and in what
+        place?: string;    // where it was bought
+    };
+
 // Overtime record: hours worked in a given month, valued at an hourly rate.
 export type OvertimeEntry = {
     id: string;

@@ -128,6 +128,20 @@ export const isHomeBill = (category: string, tags?: string[] | string): boolean 
 export const isTravelBooking = (category: string): boolean =>
     /accommodation|intercity|travel package|hotel|flight|flighst/i.test(category || '');
 
+// Income from selling one's own things second-hand. The Resale page pairs each such sale
+// with the purchase whose comment names the same item.
+const RESALE_CATEGORIES = nameSet(['Resale']);
+
+export const isResaleIncome = (category: string): boolean => inSet(RESALE_CATEGORIES, category);
+
+// Gadgets: the Resale page lists them as still in use until a sale of the same item turns up.
+const GADGET_CATEGORIES = nameSet([
+    'Electronics',
+    'Tech', // before October 2026
+]);
+
+export const isGadget = (category: string): boolean => inSet(GADGET_CATEGORIES, category);
+
 // What the user files as subscriptions — kept on the Recurring page even on a loose rhythm.
 export const isSubscriptionCategory = (category: string): boolean =>
     /digital services|subscri|подпис/i.test(category || '');

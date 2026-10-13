@@ -28,6 +28,7 @@ import { TravelIndexPage } from './pages/TravelIndexPage';
 import { CurrencyRatesPage } from './pages/CurrencyRatesPage';
 import { RecurringPage } from './pages/RecurringPage';
 import { MilestonesPage } from './pages/MilestonesPage';
+import { ResalePage } from './pages/ResalePage';
 import { Navigation } from './components/Navigation';
 import { supabase } from './lib/supabase';
 import { Auth } from './components/Auth';
@@ -423,6 +424,7 @@ function AppContent() {
                 <Route path="/currency-rates" element={<CurrencyRatesPage transactions={transactions} />} />
                 <Route path="/recurring" element={<RecurringPage transactions={transactions} />} />
                 <Route path="/milestones" element={<MilestonesPage transactions={transactions} />} />
+                <Route path="/resale" element={<ResalePage transactions={transactions} />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </div>
