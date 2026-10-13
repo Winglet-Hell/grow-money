@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { TableVirtuoso, Virtuoso } from 'react-virtuoso';
+import { TableVirtuoso, Virtuoso, type TableComponents } from 'react-virtuoso';
 import type { Transaction } from '../types';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { useAccounts } from '../hooks/useAccounts';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { cn, formatDate, formatTags, getTransactionTitle } from '../lib/utils';
 import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown } from 'lucide-react';
@@ -25,6 +26,20 @@ interface SortConfig {
 type VirtualItem =
     | { type: 'header'; date: string; stats: Record<string, { income: number; expense: number }> }
     | { type: 'transaction'; data: Transaction; originalIndex: number };
+
+// Up to this many rows the list is plain HTML. A virtual list tied to the window's scroll mounts
+// and drops rows as they pass the screen and measures them again; with rows of different heights
+// the page jittered while it scrolled, and it saves work only on long lists.
+const VIRTUALIZE_FROM = 300;
+
+// Defined once: written inline in render they were new types every time and remounted the table.
+const TABLE_COMPONENTS: TableComponents<VirtualItem> = {
+    Table: (props) => <table {...props} className="w-full border-collapse" />,
+    TableHead: React.forwardRef((props, ref) => <thead {...props} ref={ref} className="bg-gray-50" />),
+    TableRow: (props) => <tr {...props} className="hover:bg-gray-50 transition-colors" />,
+};
+
+const itemKey = (item: VirtualItem) => (item.type === 'header' ? `d:${item.date}` : `t:${item.data.id}`);
 
 export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ transactions, title = 'Recent Transactions', subtitle }) => {
     const { isPrivacyMode } = usePrivacy();
@@ -163,6 +178,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
         setVisibleCount(prev => prev + loadStep);
     };
 
+    // One layout is rendered, not both with one hidden.
+    const isDesktop = useMediaQuery('(min-width: 768px)');
+    const virtualize = virtualItems.length > VIRTUALIZE_FROM;
+
     const formatCurrency = (amount: number, currency: string = 'RUB') => {
         if (isPrivacyMode) return '••••••';
 
@@ -232,7 +251,9 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
         );
     };
 
-    const MobileCard = ({ transaction: t }: { transaction: Transaction }) => {
+    // A render helper rather than a nested component: a component defined inside render is a new
+    // type every time, so React would remount every card.
+    const renderMobileCard = (t: Transaction) => {
         const color = getCategoryColor(t.category, t.type);
         const Icon = getCategoryIcon(t.category);
 
@@ -277,6 +298,143 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
         );
     };
 
+    // The table's parts, shared by the plain table and the virtual one.
+    const renderHeaderRow = () => (
+        <tr>
+            <th className="px-6 py-3 text-left w-12 text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">#</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3 bg-gray-50">Name</th>
+            {showCategory && (
+                <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50"
+                    onClick={() => handleSort('category')}
+                >
+                    <div className="flex items-center gap-1">
+                        Category
+                        <SortIcon columnKey="category" />
+                    </div>
+                </th>
+            )}
+            {showAccount && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[140px] min-w-[140px]">Account</th>
+            )}
+            {showNotes && (
+                <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50 w-[180px] min-w-[180px]"
+                    onClick={() => handleSort('date')}
+                >
+                    <div className="flex items-center gap-1">
+                        Note / Date
+                        <SortIcon columnKey="date" />
+                    </div>
+                </th>
+            )}
+            <th
+                className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50"
+                onClick={() => handleSort('amount')}
+            >
+                <div className="flex items-center justify-end gap-1">
+                    Amount
+                    <SortIcon columnKey="amount" />
+                </div>
+            </th>
+        </tr>
+    );
+
+    const renderCells = (item: VirtualItem) => {
+        if (item.type === 'header') {
+            return (
+                <>
+                    <td colSpan={10} className="px-6 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 border-t border-b border-gray-100">
+                        <div className="flex items-center justify-between">
+                            <span>{item.date}</span>
+                            {renderDayTotals(item.stats)}
+                        </div>
+                    </td>
+                </>
+            );
+        }
+
+        const t = item.data;
+        const currency = t.currency || getAccountCurrency(t.account);
+
+        return (
+            <>
+                <td className={`px-6 ${py} whitespace-nowrap text-sm text-gray-400 font-mono`}>
+                    {(() => {
+                        const total = filteredAndSortedTransactions.length;
+                        const displayIndex = (sortConfig.key === 'date' && sortConfig.direction === 'desc')
+                            ? total - item.originalIndex
+                            : item.originalIndex + 1;
+                        return displayIndex;
+                    })()}
+                </td>
+                <td className={`px-6 ${py} whitespace-nowrap text-sm font-medium text-gray-900`}>
+                    {getTransactionTitle(t)}
+                </td>
+                {showCategory && (
+                    <td className={`px-6 ${py} whitespace-nowrap`}>
+                        {(() => {
+                            const color = getCategoryColor(t.category, t.type);
+                            const Icon = getCategoryIcon(t.category);
+                            return (
+                                <span className={cn(
+                                    "flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium w-fit",
+                                    color.bg,
+                                    color.text
+                                )}>
+                                    <Icon className="w-3.5 h-3.5" />
+                                    {t.category}
+                                </span>
+                            );
+                        })()}
+                    </td>
+                )}
+                {showAccount && (
+                    <td className={`px-6 ${py} whitespace-nowrap text-sm text-gray-500 w-[140px] min-w-[140px] max-w-[140px] truncate`}>{t.account}</td>
+                )}
+                {showNotes && (
+                    <td className={`px-6 ${py} text-sm text-gray-500 w-[180px] min-w-[180px] max-w-[180px] truncate`} title={t.note}>
+                        {t.note}
+                        {!t.note && sortConfig.key !== 'date' && (
+                            <span className="text-xs text-gray-400 ml-2">{formatDate(t.date)}</span>
+                        )}
+                    </td>
+                )}
+                <td className={`px-6 ${py} whitespace-nowrap text-right`}>
+                    <div className="flex flex-col items-end gap-0.5">
+                        <span className={`text-sm font-medium ${t.amount > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
+                            {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount, currency)}
+                        </span>
+                        {!!t.originalAmount && !!t.originalCurrency && t.originalCurrency !== 'RUB' && (
+                            <span className="text-xs text-gray-500">
+                                {(() => {
+                                    if (isPrivacyMode) return '••••••';
+                                    try {
+                                        return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: t.originalCurrency }).format(t.originalAmount);
+                                    } catch {
+                                        return `${t.originalAmount.toLocaleString('ru-RU')} ${t.originalCurrency}`;
+                                    }
+                                })()}
+                            </span>
+                        )}
+                    </div>
+                </td>
+            </>
+        );
+    };
+
+    const renderMobileItem = (item: VirtualItem) => {
+        if (item.type === 'header') {
+            return (
+                <div className="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider flex justify-between items-center border-b border-gray-100">
+                    <span>{item.date}</span>
+                    {renderDayTotals(item.stats)}
+                </div>
+            );
+        }
+        return renderMobileCard(item.data);
+    };
+
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -303,159 +461,32 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
                 </div>
             ) : (
                 <>
-                    {/* Desktop Table View */}
-                    <div className="hidden md:block">
-                        <TableVirtuoso
-                            useWindowScroll
-                            data={virtualItems}
-                            components={{
-                                Table: (props) => <table {...props} className="w-full border-collapse" />,
-                                TableHead: React.forwardRef((props, ref) => <thead {...props} ref={ref} className="bg-gray-50" />),
-                                TableRow: (props) => <tr {...props} className="hover:bg-gray-50 transition-colors" />
-                            }}
-                            fixedHeaderContent={() => (
-                                <tr>
-                                    <th className="px-6 py-3 text-left w-12 text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">#</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3 bg-gray-50">Name</th>
-                                    {showCategory && (
-                                        <th
-                                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50"
-                                            onClick={() => handleSort('category')}
-                                        >
-                                            <div className="flex items-center gap-1">
-                                                Category
-                                                <SortIcon columnKey="category" />
-                                            </div>
-                                        </th>
-                                    )}
-                                    {showAccount && (
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[140px] min-w-[140px]">Account</th>
-                                    )}
-                                    {showNotes && (
-                                        <th
-                                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50 w-[180px] min-w-[180px]"
-                                            onClick={() => handleSort('date')}
-                                        >
-                                            <div className="flex items-center gap-1">
-                                                Note / Date
-                                                <SortIcon columnKey="date" />
-                                            </div>
-                                        </th>
-                                    )}
-                                    <th
-                                        className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors select-none bg-gray-50"
-                                        onClick={() => handleSort('amount')}
-                                    >
-                                        <div className="flex items-center justify-end gap-1">
-                                            Amount
-                                            <SortIcon columnKey="amount" />
-                                        </div>
-                                    </th>
-                                </tr>
-                            )}
-                            itemContent={(_index, item) => {
-                                if (item.type === 'header') {
-                                    return (
-                                        <>
-                                            <td colSpan={10} className="px-6 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/90 backdrop-blur-sm sticky top-0 z-10 border-t border-b border-gray-100">
-                                                <div className="flex items-center justify-between">
-                                                    <span>{item.date}</span>
-                                                    {renderDayTotals(item.stats)}
-                                                </div>
-                                            </td>
-                                        </>
-                                    );
-                                }
-
-                                const t = item.data;
-                                const currency = t.currency || getAccountCurrency(t.account);
-
-                                return (
-                                    <>
-                                        <td className={`px-6 ${py} whitespace-nowrap text-sm text-gray-400 font-mono`}>
-                                            {(() => {
-                                                const total = filteredAndSortedTransactions.length;
-                                                const displayIndex = (sortConfig.key === 'date' && sortConfig.direction === 'desc')
-                                                    ? total - item.originalIndex
-                                                    : item.originalIndex + 1;
-                                                return displayIndex;
-                                            })()}
-                                        </td>
-                                        <td className={`px-6 ${py} whitespace-nowrap text-sm font-medium text-gray-900`}>
-                                            {getTransactionTitle(t)}
-                                        </td>
-                                        {showCategory && (
-                                            <td className={`px-6 ${py} whitespace-nowrap`}>
-                                                {(() => {
-                                                    const color = getCategoryColor(t.category, t.type);
-                                                    const Icon = getCategoryIcon(t.category);
-                                                    return (
-                                                        <span className={cn(
-                                                            "flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium w-fit",
-                                                            color.bg,
-                                                            color.text
-                                                        )}>
-                                                            <Icon className="w-3.5 h-3.5" />
-                                                            {t.category}
-                                                        </span>
-                                                    );
-                                                })()}
-                                            </td>
-                                        )}
-                                        {showAccount && (
-                                            <td className={`px-6 ${py} whitespace-nowrap text-sm text-gray-500 w-[140px] min-w-[140px] max-w-[140px] truncate`}>{t.account}</td>
-                                        )}
-                                        {showNotes && (
-                                            <td className={`px-6 ${py} text-sm text-gray-500 w-[180px] min-w-[180px] max-w-[180px] truncate`} title={t.note}>
-                                                {t.note}
-                                                {!t.note && sortConfig.key !== 'date' && (
-                                                    <span className="text-xs text-gray-400 ml-2">{formatDate(t.date)}</span>
-                                                )}
-                                            </td>
-                                        )}
-                                        <td className={`px-6 ${py} whitespace-nowrap text-right`}>
-                                            <div className="flex flex-col items-end gap-0.5">
-                                                <span className={`text-sm font-medium ${t.amount > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
-                                                    {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount, currency)}
-                                                </span>
-                                                {!!t.originalAmount && !!t.originalCurrency && t.originalCurrency !== 'RUB' && (
-                                                    <span className="text-xs text-gray-500">
-                                                        {(() => {
-                                                            if (isPrivacyMode) return '••••••';
-                                                            try {
-                                                                return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: t.originalCurrency }).format(t.originalAmount);
-                                                            } catch {
-                                                                return `${t.originalAmount.toLocaleString('ru-RU')} ${t.originalCurrency}`;
-                                                            }
-                                                        })()}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </>
-                                );
-                            }}
-                        />
-                    </div>
-
-                    {/* Mobile List View */}
-                    <div className="md:hidden">
-                        <Virtuoso
-                            useWindowScroll
-                            data={virtualItems}
-                            itemContent={(_index, item) => {
-                                if (item.type === 'header') {
-                                    return (
-                                        <div className="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider flex justify-between items-center sticky top-0 z-10 border-b border-gray-100">
-                                            <span>{item.date}</span>
-                                            {renderDayTotals(item.stats)}
-                                        </div>
-                                    );
-                                }
-                                return <MobileCard transaction={item.data} />;
-                            }}
-                        />
-                    </div>
+                    {isDesktop ? (
+                        virtualize ? (
+                            <TableVirtuoso
+                                useWindowScroll
+                                data={virtualItems}
+                                components={TABLE_COMPONENTS}
+                                fixedHeaderContent={renderHeaderRow}
+                                itemContent={(_index, item) => renderCells(item)}
+                            />
+                        ) : (
+                            <table className="w-full border-collapse">
+                                <thead className="bg-gray-50">{renderHeaderRow()}</thead>
+                                <tbody>
+                                    {virtualItems.map(item => (
+                                        <tr key={itemKey(item)} className="hover:bg-gray-50 transition-colors">{renderCells(item)}</tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )
+                    ) : virtualize ? (
+                        <Virtuoso useWindowScroll data={virtualItems} itemContent={(_index, item) => renderMobileItem(item)} />
+                    ) : (
+                        <div>
+                            {virtualItems.map(item => <React.Fragment key={itemKey(item)}>{renderMobileItem(item)}</React.Fragment>)}
+                        </div>
+                    )}
                 </>
             )}
 
