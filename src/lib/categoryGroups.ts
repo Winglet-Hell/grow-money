@@ -100,10 +100,11 @@ export const getGlobalCategory = (category: string): string => {
 const nameSet = (names: string[]) => new Set(names.map(c => c.toLowerCase()));
 const inSet = (set: Set<string>, category: string) => set.has((category || '').toLowerCase().trim());
 
-// Big planned payments — rent, flights and hotels, electronics, visas, insurance. They land on
-// a few days and dwarf everyday spending, so views of spending habits can leave them out.
+// Big planned payments — rent, flights and hotels, electronics, visas, insurance, taxes. They land
+// on a few days and dwarf everyday spending, so views of spending habits can leave them out.
 const PLANNED_PAYMENT_CATEGORIES = nameSet([
     'Rent', 'Accommodation', 'Intercity transport', 'Travel packages', 'Electronics', 'Visas & documents', 'Insurance', 'Страховка',
+    'Taxes',
     'Hotels & flighsts', 'Hotels & flights', 'Tech', 'Study & visa', // before October 2026
 ]);
 

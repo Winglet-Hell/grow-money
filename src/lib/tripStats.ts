@@ -8,7 +8,7 @@ import {
 
 // How a trip compares with ordinary life at home. "Everyday" spending leaves out what doesn't
 // happen day to day — travel itself (tickets, hotels, tours, visas), big planned payments
-// (rent, gadgets, insurance) and the bills that keep running at home anyway — so a day away
+// (rent, gadgets, insurance, taxes) and the bills that keep running at home anyway — so a day away
 // and a day at home are measured on the same things.
 export const isEverydaySpending = (category: string) =>
     getGlobalCategory(category) !== 'Travel' && !isPlannedPayment(category) && !isHomeBill(category);
