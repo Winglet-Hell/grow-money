@@ -650,7 +650,7 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
                     return (
                         <div
                             className={cn(
-                                'rounded-xl border p-5 flex items-start sm:items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500',
+                                'rounded-xl border p-5 flex items-start sm:items-center gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300',
                                 under
                                     ? 'bg-red-50 border-red-200'
                                     : over
@@ -710,7 +710,7 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
             )}
 
             {/* Summary metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <MetricCard
                     title="Planned salary"
                     amount={plannedSalary}

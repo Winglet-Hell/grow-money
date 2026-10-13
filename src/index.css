@@ -16,6 +16,16 @@
   .recharts-wrapper *:focus:not(:focus-visible) {
     outline: none;
   }
+  /* "Reduce motion" in the system settings: things appear and change at once. Loading
+     spinners keep turning, or they would look stuck. */
+  @media (prefers-reduced-motion: reduce) {
+    *:not(.animate-spin), *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @layer utilities {

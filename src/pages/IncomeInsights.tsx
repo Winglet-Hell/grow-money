@@ -554,7 +554,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
             </div>
 
             {summaryMetrics && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <MetricCard
                         title="Avg. Monthly Income"
                         amount={summaryMetrics.avgMonthly}
@@ -590,7 +590,7 @@ export const IncomeInsights: React.FC<IncomeInsightsProps> = ({ transactions }) 
                 </div>
             )}
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300 delay-100">
                 <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex-1">
                         <h3 className="text-lg font-semibold text-gray-800">Income Breakdown</h3>

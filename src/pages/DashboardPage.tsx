@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CalendarClock, Upload, FileSpreadsheet } from 'lucide-react';
 import type { Transaction } from '../types';
 import type { ImportMeta } from '../lib/importing';
@@ -97,6 +97,24 @@ export function DashboardPage({ transactions, importMeta, onImport }: DashboardP
                 : period.key === lastKey ? 'last'
                     : null;
 
+    // The white pill behind the chosen period slides over to the next choice. It is measured from
+    // the chosen tab, whose width differs per label and on phones, where the tabs share the row.
+    const tabsRef = useRef<HTMLDivElement>(null);
+    const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
+    const chosenTab = period.kind === 'all' ? 'all' : period.key;
+    useLayoutEffect(() => {
+        const tabs = tabsRef.current;
+        if (!tabs) return;
+        const measure = () => {
+            const chosen = tabs.querySelector<HTMLElement>('[aria-selected="true"]');
+            if (chosen) setPill({ left: chosen.offsetLeft, width: chosen.offsetWidth });
+        };
+        measure();
+        const observer = new ResizeObserver(measure);
+        observer.observe(tabs);
+        return () => observer.disconnect();
+    }, [chosenTab]);
+
     const isCurrentMonth = period.kind === 'month' && period.key === thisKey;
     const periodLabel = period.kind === 'all' ? 'All time' : monthLabel(period.key);
 
@@ -116,7 +134,7 @@ export function DashboardPage({ transactions, importMeta, onImport }: DashboardP
             : periodLabel;
 
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
             {/* Dashboard Header */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4">
                 <div>
@@ -130,8 +148,17 @@ export function DashboardPage({ transactions, importMeta, onImport }: DashboardP
                     </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
-                    <div className="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto" role="tablist" aria-label="Dashboard period">
+                {/* Right-aligned on wide screens, the period badge goes before the tabs: after them, its
+                    text — "October 2026 · day 13 of 31", "September 2026" — moved the tabs on every switch. */}
+                <div className="flex flex-col sm:flex-row lg:flex-row-reverse sm:items-center gap-3 w-full lg:w-auto">
+                    <div ref={tabsRef} className="relative flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto" role="tablist" aria-label="Dashboard period">
+                        {pill && (
+                            <span
+                                aria-hidden
+                                className="absolute top-1 bottom-1 left-0 rounded-md bg-white shadow-sm transition-[transform,width] duration-300 ease-out"
+                                style={{ transform: `translateX(${pill.left}px)`, width: pill.width }}
+                            />
+                        )}
                         {PRESETS.map(p => (
                             <button
                                 key={p.id}
@@ -139,8 +166,8 @@ export function DashboardPage({ transactions, importMeta, onImport }: DashboardP
                                 aria-selected={activePreset === p.id}
                                 onClick={() => choosePreset(p.id)}
                                 className={cn(
-                                    "flex-1 sm:flex-none px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap",
-                                    activePreset === p.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                                    "relative flex-1 sm:flex-none px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
+                                    activePreset === p.id ? "text-gray-900" : "text-gray-500 hover:text-gray-900"
                                 )}
                             >
                                 {p.label}
@@ -151,7 +178,7 @@ export function DashboardPage({ transactions, importMeta, onImport }: DashboardP
                             <button
                                 role="tab"
                                 aria-selected
-                                className="flex-1 sm:flex-none px-3 py-1.5 rounded-md text-sm font-medium bg-white text-emerald-700 shadow-sm whitespace-nowrap"
+                                className="relative flex-1 sm:flex-none px-3 py-1.5 rounded-md text-sm font-medium text-emerald-700 whitespace-nowrap"
                             >
                                 {monthLabel(period.key, 'short')}
                             </button>

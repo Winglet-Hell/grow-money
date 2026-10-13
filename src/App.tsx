@@ -407,7 +407,8 @@ function AppContent() {
             </div>
           ) : (
             // Logged in Dashboard View - Clean layout
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+            // No entrance of its own: each page fades in itself, and both together slid in twice.
+            <div>
               <Routes>
                 {/* ... existing routes ... */}
                 <Route path="/" element={<DashboardPage transactions={transactions} importMeta={importMeta} onImport={requestImport} />} />

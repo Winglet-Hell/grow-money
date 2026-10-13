@@ -215,7 +215,7 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
     );
 
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
             {/* Header */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4">
                 <div>

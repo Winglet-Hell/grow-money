@@ -500,7 +500,7 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
             : [];
 
         return (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6 flex flex-col md:flex-row md:items-center gap-4 md:gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-75">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6 flex flex-col md:flex-row md:items-center gap-4 md:gap-8 animate-in fade-in slide-in-from-bottom-2 duration-300 delay-75">
                 <div className="flex items-center gap-4 min-w-0">
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${gained ? 'bg-emerald-50' : 'bg-rose-50'}`}>
                         <HandCoins className={`w-6 h-6 ${gained ? 'text-emerald-500' : 'text-rose-400'}`} strokeWidth={1.5} />
@@ -725,7 +725,7 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
             <PageHeader transactions={transactions.filter(t => t.type === 'transfer')} />
 
             {/* Stat cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <StatCard icon={<Layers className="w-8 h-8 text-emerald-500" strokeWidth={1.5} />} label="Currency pairs" value={String(totals.pairCount)} />
                 <StatCard icon={<Repeat className="w-8 h-8 text-blue-500" strokeWidth={1.5} />} label="Exchanges analysed" value={String(totals.crossCount)} />
                 <StatCard icon={<Coins className="w-8 h-8 text-violet-500" strokeWidth={1.5} />} label="Currencies" value={String(totals.currencyCount)} />
@@ -735,7 +735,7 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
             {/* Exchanger's cut: what all exchanges cost versus the market rate of their day */}
             {renderCutSummary()}
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300 delay-100">
                 <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex-1">
                         <h3 className="text-lg font-semibold text-gray-800">Average exchange rates</h3>

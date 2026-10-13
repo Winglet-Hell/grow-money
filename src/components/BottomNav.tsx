@@ -181,7 +181,7 @@ export function BottomNav({ onReset, onImport }: { onReset: () => void; onImport
                         </div>
 
                         {/* Decorative Illustration - Fixed size to prevent scrolling */}
-                        <div className="mt-4 mb-8 flex justify-center opacity-90 animate-in fade-in zoom-in duration-1000">
+                        <div className="mt-4 mb-8 flex justify-center opacity-90 animate-in fade-in zoom-in-95 duration-300">
                             <img
                                 src={menuIllustration}
                                 alt="Financial Growth"

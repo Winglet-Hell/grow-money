@@ -133,7 +133,7 @@ export function WishlistPage({ transactions }: WishlistPageProps) {
     });
 
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
             {/* Header Section */}
             <div className="bg-gradient-to-r from-yellow-500 to-amber-600 rounded-3xl p-8 text-white shadow-lg relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>

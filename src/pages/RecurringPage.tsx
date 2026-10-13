@@ -208,7 +208,7 @@ export function RecurringPage({ transactions }: RecurringPageProps) {
 
     if (summary.series.length === 0 && summary.hidden.length === 0) {
         return (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <Header dataEnd={summary.dataEnd} />
                 <div className="py-16 flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-3xl text-center px-6">
                     <Repeat className="w-12 h-12 mb-4 opacity-50" />
@@ -223,7 +223,7 @@ export function RecurringPage({ transactions }: RecurringPageProps) {
     }
 
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <Header dataEnd={summary.dataEnd} />
 
             {/* Summary cards */}

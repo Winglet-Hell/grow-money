@@ -8,7 +8,7 @@ export function SettingsPage() {
     const [activeTab, setActiveTab] = useState<'profile' | 'account' | 'preferences'>('profile');
 
     return (
-        <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div>
                 <h2 className="text-3xl font-bold text-gray-900">Settings</h2>
                 <p className="text-gray-500">Manage your profile, account and personalization</p>
