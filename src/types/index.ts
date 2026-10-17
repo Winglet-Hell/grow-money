@@ -107,7 +107,8 @@ export type PaycheckJob = {
     id: string;
     name: string; // tab label, e.g. "Addrea" / "Oretex"
     category?: string; // income category treated as this job's paycheck source
-    plannedSalary?: number; // expected monthly net salary
+    plannedSalary?: number; // expected monthly salary: net, or gross when beforeTax
+    beforeTax?: boolean; // salary, overtime and commission are gross; the page withholds НДФЛ itself
     hourlyRate?: number; // default overtime rate (per hour); 0 = job has no overtime
     overtime?: OvertimeEntry[];
     commissionPct?: number; // % of the month's sales paid on top; 0 = no commission

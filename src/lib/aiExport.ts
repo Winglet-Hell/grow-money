@@ -4,7 +4,7 @@
 // Every amount is labelled with its currency, every aggregate says what it covers,
 // and anything the model could reasonably misread (partial months, manually kept
 // balances, transfer legs that are NOT in the base currency) is flagged explicitly.
-import type { Transaction, Trip, PaycheckConfig, Milestone } from '../types';
+import type { Transaction, Trip, PaycheckConfig, PaycheckJob, Milestone } from '../types';
 import { getGlobalCategory, isSubscriptionCategory } from './categoryGroups';
 import { detectRecurring, typicalDayOfMonth } from './recurring';
 import { summarizePeriod, monthKeyFromDate } from './periods';
@@ -15,6 +15,7 @@ import {
 } from './milestones';
 import { activeLimits } from './budget';
 import { getCurrencyMeta } from './currencies';
+import { ndflOn } from './ndfl';
 import {
     FIRST_SNAPSHOT_DATE,
     IMPLAUSIBLE_CUT_PCT,
@@ -41,6 +42,13 @@ const round = (n: number, d = 2): number => {
 // whatever model consumes the export. Tokens and metals keep 8 decimals instead.
 const roundNative = (n: number, currency: string): number =>
     round(n, getCurrencyMeta(currency).kind === 'fiat' ? 2 : 8);
+
+// A job's fixed monthly salary on hand: as entered, or less НДФЛ at the base
+// rate when it is entered before tax.
+const netSalary = (j: PaycheckJob): number => {
+    const s = j.plannedSalary ?? 0;
+    return j.beforeTax ? s - ndflOn(s) : s;
+};
 
 const sum = (xs: number[]): number => xs.reduce((s, x) => s + x, 0);
 const mean = (xs: number[]): number => (xs.length ? sum(xs) / xs.length : 0);
@@ -1285,17 +1293,18 @@ export function buildAIExportPayload(input: AIExportInput) {
             jobs: (paycheck?.jobs ?? []).map(j => ({
                 name: j.name,
                 incomeCategory: j.category || null,
-                plannedNetMonthlySalary: j.plannedSalary ?? null,
+                plannedNetMonthlySalary: j.plannedSalary == null ? null : round(netSalary(j)),
+                plannedGrossMonthlySalary: j.beforeTax ? j.plannedSalary ?? null : null,
                 overtimeHourlyRate: j.hourlyRate || null,
                 salesCommissionPct: j.commissionPct || null,
                 commissionBase: j.commissionPct ? (j.salesLabel || 'sales') : null,
                 monthsOfSelfReportedSales: (j.sales ?? []).length,
             })),
             plannedMonthlySalary: paycheck?.jobs?.length
-                ? round(paycheck.jobs.reduce((s, j) => s + (j.plannedSalary ?? 0), 0))
+                ? round(paycheck.jobs.reduce((s, j) => s + netSalary(j), 0))
                 : paycheck?.plannedSalary ?? null,
             plannedSalaryNote:
-                'Sum of the fixed net salary of every tracked job. Sales commission and overtime sit on top of it and vary month to month.',
+                'Sum of the fixed net salary of every tracked job. Sales commission and overtime sit on top of it and vary month to month. A job with plannedGrossMonthlySalary is paid gross with НДФЛ withheld (commission and overtime too): its net figure is at the 13% base rate, and once that employer\'s pay for the year passes 2.4M RUB the rate on the excess is 15% (18% past 5M), so the net pay drops late in the year.',
         },
 
         milestones: {

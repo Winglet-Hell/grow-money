@@ -24,6 +24,7 @@ import { cn } from '../lib/utils';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { MetricCard } from '../components/MetricCard';
+import { ndflOn, grossOfNet } from '../lib/ndfl';
 
 interface PaycheckPageProps {
     transactions: Transaction[];
@@ -100,12 +101,14 @@ const ORETEX_SEED_SALES: SalesEntry[] = [
     { monthKey: '2026-06', amount: 1829145 },
 ];
 
-// Second employer: a fixed net salary plus a share of the month's Ozon profit.
-// The profit isn't in the bank statement, so it's kept by hand.
+// Second employer: a fixed salary plus a share of the month's Ozon profit, both
+// gross — НДФЛ comes off each, so the page works it out. The profit isn't in
+// the bank statement, so it's kept by hand.
 const ORETEX_SEED: PaycheckJob = {
     id: ORETEX_JOB_ID,
     name: 'Oretex',
-    plannedSalary: 115072.5,
+    plannedSalary: 166750,
+    beforeTax: true,
     hourlyRate: 0,
     overtime: [],
     commissionPct: 3,
@@ -281,6 +284,7 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
     );
 
     const plannedSalary = activeJob?.plannedSalary ?? 0;
+    const beforeTax = !!activeJob?.beforeTax;
     const hourlyRate = activeJob?.hourlyRate ?? 0;
     const commissionPct = activeJob?.commissionPct ?? 0;
     const salesLabel = activeJob?.salesLabel?.trim() || 'Sales';
@@ -371,6 +375,17 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
         return affected;
     }, [paycheckTx]);
 
+    // Net pay per work-month: what the employer has already withheld НДФЛ from,
+    // which sets the year-to-date base of a before-tax job.
+    const receivedByMonth = useMemo(() => {
+        const by = new Map<string, number>();
+        paycheckTx.forEach((t) => {
+            const k = workMonthOf(t);
+            by.set(k, (by.get(k) ?? 0) + Math.abs(t.amount));
+        });
+        return by;
+    }, [paycheckTx]);
+
     // The earliest month shown in the current view is a boundary period and is
     // excluded from the verdict. Two flavours: the very start of the records
     // ("tracking start"), or a year edge where the advance/final split straddles
@@ -391,7 +406,22 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
             const salesEntry = sales.find((s) => s.monthKey === key);
             const salesAmount = salesEntry ? salesEntry.amount : null;
             const commissionValue = commissionPct > 0 && salesAmount !== null ? (salesAmount * commissionPct) / 100 : 0;
-            const expected = plannedSalary + overtimeValue + commissionValue;
+            const gross = plannedSalary + overtimeValue + commissionValue;
+            // A before-tax job is owed its gross minus НДФЛ, charged on top of what
+            // this employer has paid since January (grossed back up from the net
+            // receipts), so the rate climbs from 13% once the year passes 2.4M.
+            // Salary counts toward the month it's for, so the year runs on work-months.
+            let ndfl = 0;
+            if (beforeTax && gross > 0) {
+                const year = key.slice(0, 4);
+                let paidBefore = 0;
+                receivedByMonth.forEach((v, k) => {
+                    if (k.startsWith(year) && k < key) paidBefore += v;
+                });
+                const base = grossOfNet(paidBefore);
+                ndfl = ndflOn(base + gross) - ndflOn(base);
+            }
+            const expected = gross - ndfl;
             const diff = received - expected;
             const isCurrent = key === currentKey;
             const isFuture = key > currentKey;
@@ -409,6 +439,8 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
                 overtimeValue,
                 salesAmount,
                 commissionValue,
+                gross,
+                ndfl,
                 expected,
                 diff,
                 isCurrent,
@@ -422,10 +454,12 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
         },
         [
             paycheckTx,
+            receivedByMonth,
             overtime,
             sales,
             hourlyRate,
             plannedSalary,
+            beforeTax,
             commissionPct,
             currentKey,
             boundaryMonth,
@@ -609,7 +643,7 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <PlanInput
                     label="Planned salary"
-                    hint="What you should be paid per month (net)"
+                    hint={beforeTax ? 'Gross per month, before NDFL' : 'What you should be paid per month (net)'}
                     icon={<Wallet className="w-5 h-5 text-emerald-500" />}
                     value={activeJob.plannedSalary}
                     suffix="₽/mo"
@@ -617,7 +651,7 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
                 />
                 <PlanInput
                     label="Overtime rate"
-                    hint="Pay per hour of overtime · 0 if none"
+                    hint={beforeTax ? 'Gross pay per hour of overtime · 0 if none' : 'Pay per hour of overtime · 0 if none'}
                     icon={<Clock className="w-5 h-5 text-blue-500" />}
                     value={activeJob.hourlyRate ?? 0}
                     suffix="₽/hr"
@@ -715,7 +749,15 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
                     title="Planned salary"
                     amount={plannedSalary}
                     icon={<Wallet className="w-10 h-10 text-emerald-500" strokeWidth={1.5} />}
-                    description={usesCommission ? `Per month, before ${commissionPct}% commission` : 'Expected amount per month'}
+                    description={
+                        beforeTax
+                            ? usesCommission
+                                ? `Gross, before NDFL · ${commissionPct}% commission on top`
+                                : 'Gross per month, before NDFL'
+                            : usesCommission
+                            ? `Per month, before ${commissionPct}% commission`
+                            : 'Expected amount per month'
+                    }
                     isPrivacy={isPrivacyMode}
                 />
                 <MetricCard
@@ -799,6 +841,7 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
                             key={`${activeJob.id}:${key}`}
                             data={getMonthData(key)}
                             plannedSalary={plannedSalary}
+                            beforeTax={beforeTax}
                             hourlyRate={hourlyRate}
                             usesOvertime={usesOvertime}
                             commissionPct={commissionPct}
@@ -861,6 +904,21 @@ const JobEditor: React.FC<{
                     />
                 </label>
             </div>
+            <label className="flex items-start gap-2 cursor-pointer select-none">
+                <input
+                    type="checkbox"
+                    checked={!!job.beforeTax}
+                    onChange={(e) => onChange({ beforeTax: e.target.checked || undefined })}
+                    className="w-4 h-4 mt-0.5 accent-emerald-600"
+                />
+                <span>
+                    <span className="block text-sm text-gray-700">Amounts before NDFL</span>
+                    <span className="block text-xs text-gray-400">
+                        Salary, overtime and commission are gross; the page withholds NDFL from them — 13% of this
+                        employer's pay for the year up to 2.4M ₽, then 15% up to 5M, 18% up to 20M and so on.
+                    </span>
+                </span>
+            </label>
             <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">
                     Naming the job like its income category lets it pick up payments automatically.
@@ -949,6 +1007,8 @@ interface MonthData {
     overtimeValue: number;
     salesAmount: number | null; // null = not filled in yet
     commissionValue: number;
+    gross: number; // plan + overtime + commission
+    ndfl: number; // НДФЛ withheld from the gross (before-tax jobs only, else 0)
     expected: number;
     diff: number;
     isCurrent: boolean;
@@ -963,6 +1023,7 @@ interface MonthData {
 const MonthCard: React.FC<{
     data: MonthData;
     plannedSalary: number;
+    beforeTax: boolean;
     hourlyRate: number;
     usesOvertime: boolean;
     commissionPct: number;
@@ -975,6 +1036,7 @@ const MonthCard: React.FC<{
 }> = ({
     data,
     plannedSalary,
+    beforeTax,
     hourlyRate,
     usesOvertime,
     commissionPct,
@@ -995,6 +1057,8 @@ const MonthCard: React.FC<{
         overtimeValue,
         salesAmount,
         commissionValue,
+        gross,
+        ndfl,
         expected,
         diff,
         isCurrent,
@@ -1069,18 +1133,26 @@ const MonthCard: React.FC<{
     const pct = expected > 0 ? Math.min((received / expected) * 100, 100) : received > 0 ? 100 : 0;
     const diffPositive = diff >= 0;
 
-    // Plan / [Overtime] / [Commission] / Expected / Received
+    // The effective rate tells which band the month fell in (13% → 15% past 2.4M a
+    // year), so privacy mode hides it along with the amounts.
+    const ndflLabel = !isPrivacy && gross > 0 ? `NDFL ${+((ndfl / gross) * 100).toFixed(1)}%` : 'NDFL';
+
+    // Plan / [Overtime] / [Commission] / [NDFL] / Expected / Received
     const breakdown: { label: string; value: number; strong?: boolean }[] = [
         { label: 'Plan', value: plannedSalary },
         ...(usesOvertime ? [{ label: 'Overtime', value: overtimeValue }] : []),
         ...(showCommission ? [{ label: `${commissionPct}% commission`, value: commissionValue }] : []),
+        ...(beforeTax ? [{ label: ndflLabel, value: -ndfl }] : []),
         { label: 'Expected', value: expected, strong: true },
         { label: 'Received', value: received, strong: true },
     ];
-    const breakdownCols =
-        ({ 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4', 5: 'sm:grid-cols-5' } as Record<number, string>)[
-            breakdown.length
-        ] ?? 'sm:grid-cols-4';
+    const colsByCount: Record<number, string> = {
+        3: 'sm:grid-cols-3',
+        4: 'sm:grid-cols-4',
+        5: 'sm:grid-cols-5',
+        6: 'sm:grid-cols-6',
+    };
+    const breakdownCols = colsByCount[breakdown.length] ?? 'sm:grid-cols-4';
 
     return (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
