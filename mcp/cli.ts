@@ -2,11 +2,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline/promises';
-import { loadAppData } from './appData';
-import { loadContext } from './context';
 import { formatJson } from './format';
 import { HOME_DIR, LOGIN_COMMAND, SESSION_FILE, STATEMENT_DIRS, STATEMENT_FILE, tilde } from './paths';
-import { runTool, serve, SERVER_VERSION } from './server';
+import { loadAppData, loadLocalContext, LOCAL_SERVER, serve } from './local';
+import { runTool, SERVER_VERSION } from './server';
 import { readSession, signIn, signOut } from './session';
 import { findStatements } from './statement';
 import { TOOLS } from './tools';
@@ -117,7 +116,7 @@ async function status() {
 
     if (files.length) {
         try {
-            const ctx = await loadContext();
+            const ctx = await loadLocalContext();
             const dates = ctx.statement.transactions.map(t => t.date).sort();
             console.log(`\nData: ${ctx.statement.transactions.length} operations, ${dates[0]} → ${dates[dates.length - 1]}`);
             console.log(`  net worth ${rub(ctx.netWorth)} (${ctx.walletSource === 'account' ? 'account balances' : ctx.walletSource === 'backup' ? 'the backup\'s balances' : 'no balances'}, ${ctx.rates.isLive ? `rates of ${ctx.rates.date ?? 'today'}` : 'fallback rates'})`);
@@ -136,7 +135,7 @@ async function call(name: string | undefined, json: string | undefined) {
     const tool = TOOLS.find(t => t.name === name);
     if (!tool) throw new Error(`Unknown tool "${name ?? ''}". Tools: ${TOOLS.map(t => t.name).join(', ')}.`);
     const args = json ? JSON.parse(json) : {};
-    const result = await runTool(tool, args);
+    const result = await runTool(tool, args, LOCAL_SERVER);
     const body = result.content.map(c => (c.type === 'text' ? c.text : formatJson(c))).join('\n');
     if (result.isError) throw new Error(body);
     console.log(body);

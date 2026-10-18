@@ -1,14 +1,11 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { fetchLiveRates } from '../src/lib/liveRates';
 import { FIRST_SNAPSHOT_DATE, fetchDailyRates, type DailyRates, type ReferenceRates } from '../src/lib/fxBenchmark';
 import { todayKey } from '../src/lib/milestones';
 import { shiftDay } from '../src/lib/tripUtils';
-import { RATES_DIR } from './paths';
 
 // Market rates from currency-api, the feed and mirrors the app uses, as RUB per 1 unit of a code.
 // Today's come from the app's own fetch (kept half an hour). A day's snapshot never changes once
-// published, so each one is kept on disk for good, whole, whatever codes were asked for.
+// published, so each one is kept in memory and, where the server has a disk, in a RateStore for good.
 
 export interface LiveRates {
     rates: Record<string, number>;
@@ -36,23 +33,14 @@ async function limited<T>(fn: () => Promise<T>): Promise<T> {
     }
 }
 
-const fileOf = (date: string) => path.join(RATES_DIR, `${date}.json`);
-
-async function readDisk(date: string): Promise<Record<string, number> | null> {
-    try {
-        const parsed = JSON.parse(await fs.readFile(fileOf(date), 'utf8'));
-        return parsed && typeof parsed === 'object' ? parsed : null;
-    } catch {
-        return null;
-    }
+/** Where day snapshots outlive the process: the local server keeps them on disk (see local.ts). */
+export interface RateStore {
+    read(date: string): Promise<Record<string, number> | null>;
+    write(date: string, rates: Record<string, number>): Promise<void>;
 }
 
-async function writeDisk(date: string, rates: Record<string, number>): Promise<void> {
-    await fs.mkdir(RATES_DIR, { recursive: true });
-    const tmp = `${fileOf(date)}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(rates));
-    await fs.rename(tmp, fileOf(date));
-}
+let store: RateStore | null = null;
+export const setRateStore = (next: RateStore) => { store = next; };
 
 const isMissing = (date: string) => {
     const since = missingSince.get(date);
@@ -66,7 +54,7 @@ function snapshotOn(date: string): Promise<Record<string, number> | null> {
     let promise = pending.get(date);
     if (!promise) {
         promise = (async () => {
-            const saved = await readDisk(date);
+            const saved = store ? await store.read(date).catch(() => null) : null;
             if (saved) {
                 memory.set(date, saved);
                 return saved;
@@ -78,7 +66,7 @@ function snapshotOn(date: string): Promise<Record<string, number> | null> {
             }
             memory.set(date, fresh);
             missingSince.delete(date);
-            await writeDisk(date, fresh).catch(() => undefined);
+            await store?.write(date, fresh).catch(() => undefined);
             return fresh;
         })().finally(() => pending.delete(date));
         pending.set(date, promise);
@@ -93,7 +81,7 @@ function snapshotOn(date: string): Promise<Record<string, number> | null> {
  */
 export async function referenceRates(dates: string[], waitMs = 25_000): Promise<ReferenceRates> {
     const wanted = [...new Set(dates)].filter(d => d >= FIRST_SNAPSHOT_DATE);
-    let timer: NodeJS.Timeout | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([
         Promise.all(wanted.map(snapshotOn)),
         new Promise<void>(resolve => { timer = setTimeout(resolve, waitMs); }),
@@ -114,7 +102,8 @@ export async function referenceRates(dates: string[], waitMs = 25_000): Promise<
 
 /** Today's rates: the app's fetch, else the newest day snapshot the mirrors have. */
 export async function liveRates(): Promise<LiveRates> {
-    const live = await fetchLiveRates();
+    // The main feed sometimes hangs rather than fails; the mirrors answer then.
+    const live = await Promise.race([fetchLiveRates(), new Promise<null>(resolve => setTimeout(resolve, 4_000, null))]);
     if (live) return { rates: live.rates, date: live.date, isLive: true };
     const today = todayKey();
     for (const day of [today, shiftDay(today, -1), shiftDay(today, -2)]) {

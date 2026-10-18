@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "mcp": "node mcp/run.mjs",
     "mcp:login": "node mcp/run.mjs login",
-    "mcp:status": "node mcp/run.mjs status"
+    "mcp:status": "node mcp/run.mjs status",
+    "mcp:deploy": "node mcp/build-function.mjs && supabase functions deploy mcp --project-ref oryartvtjwzkajrjbnwh --no-verify-jwt --use-api"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",
@@ -41,11 +42,13 @@
     "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.23",
+    "esbuild": "^0.27.2",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "postcss": "^8.5.6",
+    "supabase": "^2.119.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.21.1",
     "typescript": "~5.9.3",

@@ -26,3 +26,7 @@ dist-ssr
 *.xlsx
 *.xls
 *.csv
+
+# The online MCP server: its bundle is built by `npm run mcp:deploy`, and the Supabase CLI keeps state in .temp
+supabase/functions/mcp/server.js
+supabase/.temp

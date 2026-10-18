@@ -2,17 +2,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '../src/lib/supabaseConfig';
 import { HOME_DIR, LOGIN_COMMAND, SESSION_FILE } from './paths';
+import { errorMessageOf, type UserToken } from './supabaseRest';
 
-// The Grow Money account the server reads as: a Supabase session kept in ~/.grow-money/session.json,
-// readable by this macOS user only. The password is sent once, by `login`, and never stored. The
-// server only ever GETs rows, so it can't change anything in the account, and every table answers
-// with the owner's rows only (RLS).
+// The Grow Money account the local server reads as: a Supabase session kept in
+// ~/.grow-money/session.json, readable by this macOS user only. The password is sent once, by
+// `login`, and never stored. The rows are read through supabaseRest, which only ever GETs.
 
-export interface Session {
-    access_token: string;
+export interface Session extends UserToken {
     refresh_token: string;
     expires_at: number; // unix seconds
-    user: { id: string; email: string | null };
 }
 
 /** The account can't be read until the user signs in again. */
@@ -38,10 +36,6 @@ const parseBody = (text: string): Record<string, unknown> => {
     }
 };
 
-// Supabase Auth answers errors as {msg} or {error_description} depending on the endpoint.
-const messageOf = (body: Record<string, unknown>, status: number) =>
-    String(body.msg ?? body.error_description ?? body.message ?? body.error ?? `HTTP ${status}`);
-
 async function authRequest(endpoint: string, body: unknown, accessToken?: string): Promise<Record<string, unknown>> {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/${endpoint}`, {
         method: 'POST',
@@ -53,7 +47,7 @@ async function authRequest(endpoint: string, body: unknown, accessToken?: string
         body: JSON.stringify(body),
     });
     const data = parseBody(await res.text());
-    if (!res.ok) throw new AuthError(res.status, messageOf(data, res.status));
+    if (!res.ok) throw new AuthError(res.status, errorMessageOf(data, res.status));
     return data;
 }
 
@@ -172,20 +166,4 @@ export async function signOut(): Promise<boolean> {
     }
     await fs.rm(SESSION_FILE, { force: true });
     return true;
-}
-
-/** Rows of one table, as the signed-in user may see them. GET only: the server never writes. */
-export async function selectRows<T>(session: Session, table: string, query: Record<string, string>): Promise<T[]> {
-    const url = new URL(`${SUPABASE_URL}/rest/v1/${table}`);
-    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
-    const res = await fetch(url, {
-        headers: {
-            apikey: SUPABASE_PUBLISHABLE_KEY,
-            Authorization: `Bearer ${session.access_token}`,
-            Accept: 'application/json',
-        },
-    });
-    const text = await res.text();
-    if (!res.ok) throw new Error(`${table}: ${messageOf(parseBody(text), res.status)}`);
-    return JSON.parse(text) as T[];
 }

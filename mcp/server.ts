@@ -1,21 +1,31 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import * as z from 'zod';
-import { exchangeRates, loadContext, netWorthHistory, type Context } from './context';
+import type { Context } from './context';
 import { formatJson } from './format';
 import { FINANCIAL_REVIEW, monthReview } from './prompts';
 import { TOOLS, type Tool } from './tools';
 import { tabulate } from './tools/analytics';
 
-// The Grow Money MCP server: a local, read-only window onto the user's finances for Claude (or
-// any MCP client). It runs on this computer over stdio, started by the client.
+// The Grow Money MCP server: a read-only window onto the user's finances for Claude, ChatGPT or any
+// MCP client. The same tools run in two places: on this computer over stdio (local.ts), and online
+// as a Supabase Edge Function for the phone and ChatGPT (remote.ts). Only where the data comes
+// from differs, so the server is given a way to load it.
 
-export const SERVER_VERSION = '1.0.0';
+export const SERVER_VERSION = '1.1.0';
 
-const INSTRUCTIONS = [
+export interface ServerOptions {
+    load: () => Promise<Context>;          // the data one call works from
+    source: 'downloads' | 'account';       // where the operations come from, for the instructions
+    afterLoad?: (ctx: Context) => void;    // a hook after the data is in, e.g. to fetch rates ahead
+}
+
+const instructions = (source: ServerOptions['source']) => [
     'Grow Money is the user\'s personal finance app. These tools read their data and change nothing:',
-    'the operations come from the newest backup or Excel export of their expense app (the file they import into Grow Money), and wallet balances, trips, goals, category budgets and life milestones from their Grow Money account.',
+    source === 'downloads'
+        ? 'the operations come from the newest backup or Excel export of their expense app (the file they import into Grow Money),'
+        : 'the operations come from the statement the user last imported into Grow Money (a backup or Excel export of their expense app),',
+    'and wallet balances, trips, goals, category budgets and life milestones from their Grow Money account.',
     'Amounts are in RUB, the base currency, unless a field names another currency; expenses are positive numbers.',
     'Transfers move money between the user\'s own wallets: never count them as spending or income.',
     'The running month is incomplete: compare it with the previous month on the same day or with the projection, never with whole months.',
@@ -26,39 +36,29 @@ const INSTRUCTIONS = [
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 
-let warmed = false;
-// After the first call, fetch in the background what the slower answers need (the market rate of
-// every exchange day and of every week since the first balance), so they come back quickly.
-function warmUp(ctx: Context) {
-    if (warmed) return;
-    warmed = true;
-    void exchangeRates(ctx).catch(() => undefined);
-    void netWorthHistory(ctx).catch(() => undefined);
-}
-
 const text = (value: string, isError = false): CallToolResult => ({ content: [{ type: 'text', text: value }], ...(isError ? { isError } : {}) });
 
-export async function runTool(tool: Tool, args: Record<string, unknown>): Promise<CallToolResult> {
+export async function runTool(tool: Tool, args: Record<string, unknown>, options: Pick<ServerOptions, 'load' | 'afterLoad'>): Promise<CallToolResult> {
     try {
-        const ctx = await loadContext();
-        warmUp(ctx);
+        const ctx = await options.load();
+        options.afterLoad?.(ctx);
         return text(formatJson(tabulate(await tool.run(ctx, args))));
     } catch (e) {
         return text(e instanceof Error ? e.message : String(e), true);
     }
 }
 
-export function createServer(): McpServer {
+export function createServer(options: ServerOptions): McpServer {
     const server = new McpServer(
         { name: 'grow-money', title: 'Grow Money', version: SERVER_VERSION },
-        { instructions: INSTRUCTIONS },
+        { instructions: instructions(options.source) },
     );
 
     for (const tool of TOOLS) {
         server.registerTool(
             tool.name,
             { title: tool.title, description: tool.description, inputSchema: tool.inputSchema, annotations: { title: tool.title, ...READ_ONLY } },
-            (args: Record<string, unknown>) => runTool(tool, args ?? {}),
+            (args: Record<string, unknown>) => runTool(tool, args ?? {}, options),
         );
     }
 
@@ -81,12 +81,4 @@ export function createServer(): McpServer {
     );
 
     return server;
-}
-
-export async function serve(): Promise<void> {
-    const server = createServer();
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    // The client closing the pipe is the signal to go.
-    process.stdin.on('close', () => process.exit(0));
 }

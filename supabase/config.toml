@@ -1,0 +1,7 @@
+# The Supabase CLI's settings for this project, kept to what deploying the online MCP server needs
+# (`npm run mcp:deploy`). Tables and policies are still set up by the supabase_migration_*.sql files.
+project_id = "oryartvtjwzkajrjbnwh"
+
+[functions.mcp]
+# The function checks the sign-in itself, so that a client without one gets the OAuth hints back.
+verify_jwt = false

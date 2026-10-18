@@ -4,12 +4,14 @@ import { buildAIExportPayload, type AIExportPayload } from '../src/lib/aiExport'
 import { makeRateLookup, referenceCoverage, type ReferenceRates } from '../src/lib/fxBenchmark';
 import { todayKey } from '../src/lib/milestones';
 import { netWorthSeries, sampleDays, type NetWorthPoint, type WalletHistory } from '../src/lib/netWorth';
-import { loadAppData, type AppData } from './appData';
-import { liveRates, referenceRates, type LiveRates } from './rates';
-import { loadStatement, type Statement } from './statement';
+import type { AppData } from './appData';
+import { referenceRates, type LiveRates } from './rates';
+import type { Statement } from './statementFile';
 
 // Everything one tool call works from, put together the way the app's pages put it together:
-// the statement's operations, the account's rows, and the wallets valued at today's rates.
+// the statement's operations, the account's rows, and the wallets valued at today's rates. The
+// local server reads them from ~/Downloads and its own sign-in (local.ts), the online one from the
+// account the caller signed in to (remote.ts).
 
 export interface Context {
     now: Date;
@@ -38,8 +40,7 @@ const walletsFromBackup = (snapshot: WalletSnapshot): Account[] =>
 
 const DAY_MS = 86_400_000;
 
-export async function loadContext(): Promise<Context> {
-    const [statement, app, rates] = await Promise.all([loadStatement(), loadAppData(), liveRates()]);
+export function buildContext(statement: Statement, app: AppData, rates: LiveRates): Context {
     const now = new Date();
     const today = todayKey(now);
     const valuation = withDefaultRates(rates.rates);
@@ -60,7 +61,7 @@ export async function loadContext(): Promise<Context> {
     const lastDay = statement.transactions.reduce((max, t) => (t.date > max ? t.date : max), '');
     const behind = lastDay ? Math.round((Date.parse(today) - Date.parse(lastDay.slice(0, 10))) / DAY_MS) : 0;
     if (behind > 2) {
-        notes.push(`The newest operation is from ${lastDay.slice(0, 10)}, ${behind} days ago: the statement (${statement.file.name}) is older than the expense app. For current numbers, make a new backup in the app and save it to the same folder.`);
+        notes.push(`The newest operation is from ${lastDay.slice(0, 10)}, ${behind} days ago: the statement (${statement.file.name}) is older than the expense app. For current numbers, ${statement.file.storedIn === 'account' ? 'import a new backup into Grow Money' : 'make a new backup in the expense app and save it to the same folder'}.`);
     }
     if (!rates.isLive) notes.push('Market rates could not be downloaded: wallets in other currencies are valued at the app\'s built-in fallback rates and are approximate.');
     if (walletSource === 'backup') notes.push(`Wallet balances are the backup's own (as of ${statement.backup!.wallets.asOf.slice(0, 10)}), not the account's.`);

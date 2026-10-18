@@ -2,50 +2,35 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import initSqlJs, { type SqlJsStatic } from 'sql.js';
-import type { BackupExtras, Transaction } from '../src/types';
 import { readBackup } from '../src/lib/backup';
 import { parseExcelStatement } from '../src/lib/excelStatement';
 import { STATEMENT_DIRS, STATEMENT_FILE, tilde } from './paths';
+import { madeAtOf, type Statement, type StatementFile } from './statementFile';
+
+export type { Statement, StatementFile } from './statementFile';
 
 // The operations come from the expense app's own files, the ones imported into the web app: the
 // newest backup (.mmbackup) or Excel export in ~/Downloads. They go through the app's own readers,
 // so they are the very transactions the app shows after importing the same file.
 
-export interface StatementFile {
-    path: string;
-    name: string;
-    kind: 'backup' | 'excel';
-    madeAt: string | null; // when the expense app made it, read off the name: "2026-10-18 17:36"
-    modified: string;      // the file's own time, ISO
-    size: number;
-}
-
-export interface Statement {
-    file: StatementFile;
-    transactions: Transaction[]; // newest first, as the app keeps them
-    backup?: BackupExtras;       // a backup's wallets with their history, and its categories
-}
-
 /** Nothing to read: no file, or a folder macOS keeps closed. */
 export class NoStatement extends Error {}
-
-// The app names both kinds by the moment it made them: 2026_10_18_17_36_01_123747.mmbackup.
-const MADE_AT = /^(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_\d+(?: \(\d+\))?\.[a-z]+$/i;
 
 function describe(filePath: string, stat: { mtime: Date; size: number }, explicit = false): StatementFile | null {
     const name = path.basename(filePath);
     const ext = path.extname(name).toLowerCase();
-    const m = MADE_AT.exec(name);
+    const madeAt = madeAtOf(name);
     // Every backup is the app's; an .xlsx only when named the app's way, since Downloads holds others.
-    const kind = ext === '.mmbackup' ? 'backup' : ext === '.xlsx' && (m || explicit) ? 'excel' : null;
+    const kind = ext === '.mmbackup' ? 'backup' : ext === '.xlsx' && (madeAt || explicit) ? 'excel' : null;
     if (!kind) return null;
     return {
         path: filePath,
         name,
         kind,
-        madeAt: m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : null,
+        madeAt,
         modified: stat.mtime.toISOString(),
         size: stat.size,
+        storedIn: 'downloads',
     };
 }
 
