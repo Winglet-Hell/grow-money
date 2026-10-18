@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, LabelList, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { LineChart as LineChartIcon, Table2 } from 'lucide-react';
 import type { Milestone, Transaction } from '../types';
-import { useHistoricalRates } from '../hooks/useHistoricalRates';
+import { useNetWorthSeries } from '../hooks/useNetWorthSeries';
 import { useUserSettings } from '../contexts/UserSettingsContext';
-import { makeRateLookup } from '../lib/fxBenchmark';
-import { netWorthSeries, readWalletHistory, sampleDays, type NetWorthPoint } from '../lib/netWorth';
+import type { NetWorthPoint } from '../lib/netWorth';
 import { EXPOSURE_COLORS, exposureLabel } from '../lib/exposure';
 import { labelIndices, niceScale } from '../lib/chartScale';
 import { formatDayKey } from '../lib/milestones';
@@ -55,19 +54,7 @@ export function NetWorthChart({ transactions, liveRates, isPrivacyMode }: NetWor
     const { settings } = useUserSettings();
     const [asTable, setAsTable] = useState(false);
 
-    // Read again whenever the statement changes: a backup import writes it first.
-    const history = useMemo(() => (transactions.length ? readWalletHistory() : null), [transactions]);
-    const lastDay = history?.asOf.slice(0, 10) ?? '';
-    const firstDay = useMemo(() => history?.wallets.map(w => w.history[0]?.[0]).filter(Boolean).sort()[0] ?? '', [history]);
-    const days = useMemo(() => (firstDay && lastDay ? sampleDays(firstDay, lastDay) : []), [firstDay, lastDay]);
-    const codes = useMemo(() => [...new Set(history?.wallets.filter(w => !w.archived).map(w => w.currency) ?? [])].filter(c => c !== 'RUB').sort(), [history]);
-
-    const reference = useHistoricalRates(days, codes);
-    const rateOn = useMemo(() => makeRateLookup(reference.snapshots, { rates: liveRates, date: null }), [reference.snapshots, liveRates]);
-    const { points, unvalued } = useMemo(
-        () => (history ? netWorthSeries(history, days, rateOn) : { points: [] as NetWorthPoint[], unvalued: [] as string[] }),
-        [history, days, rateOn]
-    );
+    const { history, firstDay, lastDay, points, unvalued, isLoading, weeks, weeksLoaded } = useNetWorthSeries(transactions, liveRates);
 
     const data = useMemo(() => points.map(p => ({ t: dayTime(p.day), total: p.total, point: p })), [points]);
     const { domain, ticks } = useMemo(() => niceScale(Math.min(0, ...points.map(p => p.total)), Math.max(0, ...points.map(p => p.total))), [points]);
@@ -92,7 +79,6 @@ export function NetWorthChart({ transactions, liveRates, isPrivacyMode }: NetWor
     }, [points]);
 
     const money = (n: number) => (isPrivacyMode ? '••••••' : rub.format(n));
-    const loaded = days.filter(d => reference.snapshots[d]).length;
 
     if (!history) {
         return (
@@ -114,10 +100,10 @@ export function NetWorthChart({ transactions, liveRates, isPrivacyMode }: NetWor
                         Week by week since {formatDayKey(firstDay)}, every wallet at that week's rate
                         {points.length > 1 && <> · <span className="font-medium text-gray-700">{change >= 0 ? '+' : '−'}{money(Math.abs(change))}</span> over the span</>}
                     </p>
-                    {(reference.isLoading || unvalued.length > 0) && (
+                    {(isLoading || unvalued.length > 0) && (
                         <p className="text-xs text-gray-400 mt-0.5">
-                            {reference.isLoading && `Loading rates · ${loaded} of ${days.length} weeks`}
-                            {reference.isLoading && unvalued.length > 0 && ' · '}
+                            {isLoading && `Loading rates · ${weeksLoaded} of ${weeks} weeks`}
+                            {isLoading && unvalued.length > 0 && ' · '}
                             {unvalued.length > 0 && `No rate for ${unvalued.join(', ')}: left out`}
                         </p>
                     )}
