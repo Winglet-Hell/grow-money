@@ -121,7 +121,7 @@ export async function getAnalytics(ctx: Context, sections: Section[]) {
             baseCurrency: p.meta.baseCurrency,
             readMeFirst: [
                 ...p.meta.readMeFirst.filter(line => !/ledger at the end/i.test(line)),
-                'Lists of records come as columns + rows: rows[i][j] is the value of columns[j].',
+                'Lists of three or more records come as columns + rows: rows[i][j] is the value of columns[j].',
             ],
             coverage: p.meta.coverage,
             completeness: p.meta.completeness,

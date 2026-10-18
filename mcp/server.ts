@@ -20,7 +20,7 @@ const INSTRUCTIONS = [
     'Transfers move money between the user\'s own wallets: never count them as spending or income.',
     'The running month is incomplete: compare it with the previous month on the same day or with the projection, never with whole months.',
     'Start with get_overview (it also tells how fresh the data is). Use list_categories for exact names before filtering; query_transactions answers "how much, on what, when"; get_analytics holds the app\'s own reports — read the note fields there before interpreting figures.',
-    'Lists of records come as columns + rows: rows[i][j] is the value of columns[j].',
+    'Lists of three or more records come as columns + rows: rows[i][j] is the value of columns[j].',
     'When a number depends on the period or on the data file, say which.',
 ].join(' ');
 

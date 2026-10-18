@@ -28,29 +28,50 @@ const topCategories = (counted: Transaction[], n: number) => {
 function listTrips(ctx: Context) {
     const { trips } = ctx.app;
     const txs = ctx.statement.transactions;
-    const rows = trips.map(trip => {
+    const measured = trips.map(trip => {
         const resolved = resolveTrip(trip, txs);
-        const m = tripMetrics(trip, trips, txs, resolved);
+        return { trip, resolved, m: tripMetrics(trip, trips, txs, resolved) };
+    });
+    // The columns of the Trip Analytics table, in its order.
+    const rows = measured.map(({ trip, resolved, m }) => {
         const budget = budgetStatus(trip, m, ctx.today);
         return [
             trip.name, tripIcon(trip, txs), trip.startDate, trip.endDate, m.days, tripStatus(trip, ctx.today),
-            round(m.total), nullableRound(m.perDay), round(m.bookedAhead), nullableRound(m.extraVsHome),
-            trip.budget ?? null, budget ? round(budget.left) : null,
+            round(m.total), trip.budget ?? null, round(m.bookedAhead), nullableRound(m.onTripPerDay), nullableRound(m.extraVsHome),
+            budget ? round(budget.left) : null,
             topCategories(resolved.counted, 3).map(([c, v]) => `${c} ${Math.round(v)}`).join('; ') || null,
         ];
+    });
+    // Per year, as the page's tiles add them up: a day there over the days covered, the extra over the trips that compare.
+    const yearRows = tripYears(trips, txs).map(y => {
+        let onTrip = 0;
+        let covered = 0;
+        let extra = 0;
+        let compared = 0;
+        for (const { trip, m } of measured) {
+            if (!trip.startDate.startsWith(y.year)) continue;
+            onTrip += m.onTrip;
+            covered += m.daysCovered;
+            if (m.extraVsHome !== null) {
+                extra += m.extraVsHome;
+                compared++;
+            }
+        }
+        return [y.year, y.trips, y.daysAway, round(y.total), covered ? round(onTrip / covered) : null, compared ? round(extra) : null];
     });
     const untracked = detectUntrackedTrips(trips, txs, ctx.app.preferences.hiddenTripSuggestions ?? []);
     return {
         note: [
-            'Trip costs in RUB, counted as the trip pages count them: everything paid during the trip plus bookings paid ahead and added by hand, minus what was switched off and minus home bills (rent, utilities, phone, subscriptions) that run anyway.',
-            'perDay is the total over the days the statement covers. extraVsHomeRub is what the trip cost beyond the same days at home (everyday spending over the 90 days before it, other trips left out); null when there is too little home life to compare with.',
+            'Trip costs in RUB, counted as the Trip Analytics page counts them: everything paid during the trip plus bookings paid ahead and added by hand, minus what was switched off and minus home bills (rent, utilities, phone, subscriptions) that run anyway.',
+            'aDayThereRub is what a day there cost — spending from the first day on, bookings paid ahead left out — over the days the statement covers (the page\'s "A day there").',
+            'extraVsHomeRub is what the trip cost beyond the same days at home (everyday spending over the 90 days before it, other trips left out); null when there is too little home life to compare with.',
             'A payment shared by two trips (a flight from one into the next) counts once in years and allTripsRub.',
         ].join(' '),
         trips: table(
-            ['trip', 'icon', 'startDate', 'endDate', 'days', 'status', 'totalRub', 'perDayRub', 'bookedAheadRub', 'extraVsHomeRub', 'budgetRub', 'budgetLeftRub', 'topCategories'],
+            ['trip', 'icon', 'startDate', 'endDate', 'days', 'status', 'totalRub', 'budgetRub', 'bookedAheadRub', 'aDayThereRub', 'extraVsHomeRub', 'budgetLeftRub', 'topCategories'],
             rows,
         ),
-        years: table(['year', 'trips', 'daysAway', 'totalRub'], tripYears(trips, txs).map(y => [y.year, y.trips, y.daysAway, round(y.total)])),
+        years: table(['year', 'trips', 'daysAway', 'totalRub', 'aDayThereRub', 'extraVsHomeRub'], yearRows),
         allTripsRub: round(spentOnAllTrips(trips, txs)),
         ...(untracked.length ? {
             untrackedTrips: {
@@ -89,13 +110,14 @@ function tripDetail(ctx: Context, query: string) {
             daysCovered: m.daysCovered,
         },
         note: 'RUB. Counted as the trip page counts it (see get_trips). A split payment shows at this trip\'s part (share). bookedAhead rows were paid before the first day.',
+        // The trip page's tiles: Total (and per day), Booked ahead, On the trip (and a day there), vs home.
         cost: {
             totalRub: round(m.total),
+            totalPerDayRub: nullableRound(m.perDay),
             bookedAheadRub: round(m.bookedAhead),
             bookedAheadCount: m.bookedAheadCount,
-            onTripRub: round(m.onTrip),
-            perDayRub: nullableRound(m.perDay),
-            onTripPerDayRub: nullableRound(m.onTripPerDay),
+            onTheTripRub: round(m.onTrip),
+            aDayThereRub: nullableRound(m.onTripPerDay),
             extraVsHomeRub: nullableRound(m.extraVsHome),
         },
         ...(budget ? {
