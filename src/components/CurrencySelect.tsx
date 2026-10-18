@@ -89,7 +89,8 @@ export const CurrencySelect: React.FC<CurrencySelectProps> = ({ value, onChange,
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Escape') { setIsOpen(false); return; }
+        // Only the list closes: a dialog around the picker listens for Escape on the document.
+        if (e.key === 'Escape') { e.stopPropagation(); setIsOpen(false); return; }
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
             if (!options.length) return;
