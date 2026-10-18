@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { db } from './db';
-import type { Trip, TransactionSnapshot } from '../types';
+import type { Trip, Transaction, TransactionSnapshot } from '../types';
+import { healTripLists } from './tripUtils';
 
 // Trips live in Supabase when signed in and in Dexie when signed out. They are loaded once per
 // session and shared by every page that reads them (Trip Analytics, Travel Index, AI Export).
@@ -197,6 +198,20 @@ export function updateTrip(id: string, patch: Partial<Omit<Trip, 'id'>>, { quiet
     });
     writes.set(id, run);
     return run;
+}
+
+/**
+ * Points every trip's links at the transactions' current ids (see healTripLists) and stores the
+ * trips that changed. Run after a backup import, it moves links made from Excel exports over to
+ * the app's own ids, which no edit in the app breaks. Resolves with the number of trips moved.
+ */
+export async function healTrips(txs: Transaction[]): Promise<number> {
+    const trips = await loadTrips();
+    const healed = trips.flatMap(trip => {
+        const lists = healTripLists(trip, txs);
+        return lists ? [updateTrip(trip.id, lists, { quiet: true })] : [];
+    });
+    return (await Promise.allSettled(healed)).filter(r => r.status === 'fulfilled').length;
 }
 
 export async function createTrip(input: { name: string; startDate: string; endDate: string; icon?: string | null; budget?: number | null }): Promise<Trip> {

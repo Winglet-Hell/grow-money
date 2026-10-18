@@ -9,7 +9,7 @@ import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
 import { syncAccountsWithSupabase, syncWalletsFromBackup, type WalletSyncReport } from './lib/accountUtils';
 import { invalidateAccounts, clearAccountsCache } from './lib/accountsStore';
-import { clearTripsCache } from './lib/tripsStore';
+import { clearTripsCache, healTrips } from './lib/tripsStore';
 import { clearCategoryLimitsCache } from './hooks/useCategoryLimits';
 import { parseFile, type ParsedStatement } from './lib/parser';
 import { readImportMeta, writeImportMeta, clearImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
@@ -205,12 +205,14 @@ function AppContent() {
     writeImportMeta(meta);
     setImportMeta(meta);
 
-    // Bring the wallets up to date, then let every mounted wallet list know. A backup sets
-    // them as the expense app has them; an export only adds the wallets its operations name.
+    // Bring the wallets up to date, then let every mounted wallet list know. A backup (only a
+    // backup carries wallets) sets them as the expense app has them and moves the trips' links
+    // to the app's own ids; an export only adds the wallets its operations name.
     if (session?.user?.id) {
       const result = wallets
         ? { newAccounts: [], walletSync: await syncWalletsFromBackup(wallets, session.user.id) }
         : { newAccounts: await syncAccountsWithSupabase(data, session.user.id) };
+      if (wallets) await healTrips(data).catch(err => console.error('Moving trip links failed:', err));
       await invalidateAccounts();
       return result;
     }

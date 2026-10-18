@@ -2,6 +2,7 @@ import type { ResalePurchaseEntry, Transaction } from '../types';
 import { isGadget, isResaleIncome } from './categoryGroups';
 import { DAYS_PER_MONTH, dayNumber } from './milestones';
 import { dateKeyOf } from './periods';
+import { idsOf } from './transactionId';
 import { formatTags } from './utils';
 
 // The Resale page: what a thing cost to own, from the price paid for it to the price it sold
@@ -142,7 +143,7 @@ export function buildResale(transactions: Transaction[], saved: Record<string, R
     const byItem = new Map<string, { t: Transaction; day: string }[]>();
     const byId = new Map<string, { t: Transaction; day: string }>();
     for (const p of purchases) {
-        byId.set(p.t.id, p);
+        for (const id of idsOf(p.t)) byId.set(id, p);
         const key = itemKey(p.t.note);
         if (!key) continue;
         const list = byItem.get(key);
@@ -161,7 +162,8 @@ export function buildResale(transactions: Transaction[], saved: Record<string, R
     const found = new Map<Transaction, DealSide & { source: PurchaseSource }>();
     // Matches made by hand go first, so a sale with the same comment can't take their purchase.
     for (const s of sales) {
-        const entry = saved[s.key];
+        // A sale without a comment is keyed by its id: by its export id, if matched before backups.
+        const entry = saved[s.key] ?? (s.t.exportId && s.key === `id:${s.t.id}` ? saved[`id:${s.t.exportId}`] : undefined);
         if (!entry) continue;
         if ('purchaseId' in entry) {
             const byRow = byId.get(entry.purchaseId);

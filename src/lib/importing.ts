@@ -1,4 +1,5 @@
 import type { Transaction } from '../types';
+import { idsOf } from './transactionId';
 
 // ---------------------------------------------------------------------------
 // Last-import bookkeeping. Lives next to the transactions (same device, same
@@ -56,9 +57,11 @@ export const describeLastImport = (meta: ImportMeta, now = new Date()) =>
 
 // ---------------------------------------------------------------------------
 // What changed between the data on the device and a freshly parsed file.
-// Transaction ids are content hashes (date|amount|account|category|note|…), so
-// a row that is byte-for-byte the same in both exports keeps its id. A row
-// edited in the source app therefore shows up as one "gone" and one "new".
+// A backup's ids are the source app's own, so a row edited there keeps its id.
+// An Excel export's ids are content hashes (date|amount|account|category|note|…),
+// so there an edited row shows up as one "gone" and one "new". A backup row also
+// answers to its export hash, so switching between the two files isn't a whole
+// statement gone and new.
 // ---------------------------------------------------------------------------
 
 export interface ImportSummary {
@@ -77,8 +80,8 @@ export interface ImportSummary {
 }
 
 export function summarizeImport(previous: Transaction[], next: Transaction[]): ImportSummary {
-    const prevIds = new Set(previous.map(t => t.id));
-    const nextIds = new Set(next.map(t => t.id));
+    const prevIds = new Set(previous.flatMap(idsOf));
+    const nextIds = new Set(next.flatMap(idsOf));
 
     const addedByType = { expense: 0, income: 0, transfer: 0 };
     let added = 0;
@@ -90,7 +93,7 @@ export function summarizeImport(previous: Transaction[], next: Transaction[]): I
     for (const t of next) {
         if (!earliestDate || t.date < earliestDate) earliestDate = t.date;
         if (!latestDate || t.date > latestDate) latestDate = t.date;
-        if (prevIds.has(t.id)) continue;
+        if (idsOf(t).some(id => prevIds.has(id))) continue;
         added++;
         addedByType[t.type]++;
         if (!addedFrom || t.date < addedFrom) addedFrom = t.date;
@@ -98,7 +101,7 @@ export function summarizeImport(previous: Transaction[], next: Transaction[]): I
     }
 
     let removed = 0;
-    for (const id of prevIds) if (!nextIds.has(id)) removed++;
+    for (const t of previous) if (!idsOf(t).some(id => nextIds.has(id))) removed++;
 
     return {
         total: next.length,

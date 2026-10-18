@@ -1,5 +1,6 @@
 export type Transaction = {
-    id: string; // generated ID
+    id: string; // the expense app's own id from a backup; from an Excel export, a content hash (lib/transactionId)
+    exportId?: string; // a backup row's id as an Excel export gives it, which links made before backups still use
     date: string; // ISO string
     category: string;
     amount: number;

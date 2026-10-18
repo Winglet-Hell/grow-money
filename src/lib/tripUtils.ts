@@ -1,13 +1,14 @@
 import type { Transaction, Trip, TransactionSnapshot } from '../types';
 import { getGlobalCategory, isHomeBill, isTravelBooking, isTravelSim } from './categoryGroups';
 import { dateKeyOf } from './periods';
-import { contentId } from './transactionId';
+import { contentId, idsOf } from './transactionId';
 import { formatTags } from './utils';
 
 // A trip is a date range plus two hand-kept lists: transactions switched off inside the range
 // (excluded) and transactions brought in from outside it (additional — flights and hotels paid
-// weeks ahead). Transaction ids are content hashes, so editing a note in the source app gives a
-// transaction a new id; every listed id therefore also keeps a snapshot to find it again.
+// weeks ahead). A backup's ids survive edits in the source app, but an Excel export's are content
+// hashes: editing a note there gives a transaction a new id. Every listed id therefore also keeps
+// a snapshot to find it again, and a backup row still answers to its hash (its exportId).
 
 export type TripLists = Pick<Trip, 'excludedTransactionIds' | 'additionalTransactionIds' | 'transactionSnapshots' | 'transactionShares'>;
 
@@ -120,7 +121,7 @@ export function tripStatus(trip: Pick<Trip, 'startDate' | 'endDate'>, today = lo
 // ------------------------------------------------------------------ index
 
 export interface TxIndex {
-    byId: Map<string, Transaction>;
+    byId: Map<string, Transaction>;            // by every id a row answers to (see idsOf)
     byDate: Map<string, Transaction[]>;        // keyed by the raw date, as snapshots store it
     expensesByDay: Map<string, Transaction[]>; // keyed by "YYYY-MM-DD"
     firstDay: string | null;                   // the span the statement covers
@@ -139,7 +140,7 @@ export function indexTransactions(txs: Transaction[]): TxIndex {
     let firstDay: string | null = null;
     let lastDay: string | null = null;
     for (const t of txs) {
-        byId.set(t.id, t);
+        for (const id of idsOf(t)) byId.set(id, t);
         const sameDate = byDate.get(t.date);
         if (sameDate) sameDate.push(t); else byDate.set(t.date, [t]);
         const day = dateKeyOf(t.date);

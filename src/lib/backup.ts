@@ -7,7 +7,8 @@ import { mapRow, uniquifyIds } from './statementRows';
 // SQLite database and receipt photos. It has everything the xlsx export has and more: balance
 // corrections, the app's own ids, wallet balances. Read so far: the operations and the wallets.
 // Every operation is rebuilt as the export's row and goes through the same mapRow, so a backup
-// gives the very transactions, ids included, that an export made the same day does.
+// gives the very transactions an export made the same day does. Only the id differs: the app's
+// own, which survives edits, with the export's content hash kept as `exportId`.
 
 const DB_FILE = 'MyFinance.db';
 
@@ -143,8 +144,10 @@ function readOperations(db: Database, main: string, units: (code: string) => num
     const fromOf = links(db, 'Transfer', 'FromAccount');
     const toOf = links(db, 'Transfer', 'ToAccount');
 
-    // The export's sheets: newest day first, and within a day the latest entered first.
-    const sheets = { expense: [] as Record<string, unknown>[], income: [] as Record<string, unknown>[], transfer: [] as Record<string, unknown>[] };
+    // The export's sheets, each row with the app's id: newest day first, and within a day the
+    // latest entered first.
+    type SheetRow = { uid: string; row: Record<string, unknown> };
+    const sheets = { expense: [] as SheetRow[], income: [] as SheetRow[], transfer: [] as SheetRow[] };
 
     for (const t of select(db, `
         SELECT uid, type, date, comment, amountInDefaultCurrency, amountInAccountCurrency, amountInRealCurrency
@@ -156,7 +159,7 @@ function readOperations(db: Database, main: string, units: (code: string) => num
         // edited by hand. The export leaves them out, and so does this, for now.
         if (!sheet || category === undefined) continue;
         const account = accounts.get(accountOf.get(uid)?.[0] ?? '');
-        sheet.push({
+        sheet.push({ uid, row: {
             'Дата и время': textOrUndefined(t.date),
             'Категория': category,
             'Счет': account?.title,
@@ -167,7 +170,7 @@ function readOperations(db: Database, main: string, units: (code: string) => num
             'Валюта счета': account && currencyLabel(account.currency),
             'Теги': (tagsOf.get(uid) ?? []).map(tag => tags.get(tag)).filter(Boolean).join(', '),
             'Комментарий': textOrUndefined(t.comment),
-        });
+        } });
     }
 
     for (const t of select(db, `
@@ -176,7 +179,7 @@ function readOperations(db: Database, main: string, units: (code: string) => num
         const uid = String(t.uid);
         const fromCurrency = String(t.fromCurrencyCode ?? '');
         const toCurrency = textOrUndefined(t.toCurrencyCode);
-        sheets.transfer.push({
+        sheets.transfer.push({ uid, row: {
             'Дата и время': textOrUndefined(t.date),
             'Исходящий счет': accounts.get(fromOf.get(uid)?.[0] ?? '')?.title,
             'Входящий счет': accounts.get(toOf.get(uid)?.[0] ?? '')?.title,
@@ -186,15 +189,18 @@ function readOperations(db: Database, main: string, units: (code: string) => num
             'Сумма во входящей валюте счета': toCurrency && amountOrUndefined(t.toAmount, units(toCurrency)),
             'Валюта входящего счета': toCurrency && currencyLabel(toCurrency),
             'Комментарий': textOrUndefined(t.comment),
-        });
+        } });
     }
 
     const parsed = (Object.keys(sheets) as (keyof typeof sheets)[]).flatMap(type =>
-        sheets[type]
-            .map((row, index) => mapRow(row, type, index))
-            .filter((t): t is Transaction => t !== null));
+        sheets[type].flatMap(({ uid, row }, index) => {
+            const t = mapRow(row, type, index);
+            return t ? [{ uid, t }] : [];
+        }));
     if (parsed.length === 0) throw new Error('No operations found in the backup.');
-    return uniquifyIds(parsed);
+    // Numbered the way the export numbers repeats, so the hash matches an export's id exactly.
+    const hashed = uniquifyIds(parsed.map(p => p.t));
+    return hashed.map((t, i) => ({ ...t, id: parsed[i].uid, exportId: t.id }));
 }
 
 /** Every wallet the app still has, with the balance it shows. Archived ones are marked, and so
