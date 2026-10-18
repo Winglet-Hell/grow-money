@@ -23,7 +23,7 @@ import { IncomeInsights } from './pages/IncomeInsights';
 import { PaycheckPage } from './pages/PaycheckPage';
 import { TrendsPage } from './pages/TrendsPage';
 import { AccountsPage } from './pages/AccountsPage';
-import { WishlistPage } from './pages/WishlistPage';
+import { GoalsPage } from './pages/GoalsPage';
 import { AIExportPage } from './pages/AIExportPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TripAnalyticsPage } from './pages/TripAnalyticsPage';
@@ -434,7 +434,7 @@ function AppContent() {
                 <Route path="/income-insights" element={<IncomeInsights transactions={transactions} />} />
                 <Route path="/paycheck" element={<PaycheckPage transactions={transactions} />} />
                 <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
-                <Route path="/wishlist" element={<WishlistPage transactions={transactions} />} />
+                <Route path="/wishlist" element={<GoalsPage transactions={transactions} userId={session?.user?.id} />} />
                 <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} onTransactionsChanged={reloadFromDb} />} />
                 <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
                 <Route path="/trip-analytics" element={<TripAnalyticsPage transactions={transactions} />} />

@@ -48,6 +48,8 @@ export function useAccounts(transactions: Transaction[]) {
     const [isLiveRates, setIsLiveRates] = useState(!!cachedRates);
     const [isLoadingRates, setIsLoadingRates] = useState(!cachedRates);
     const [dbAccounts, setDbAccounts] = useState<Account[]>(() => getCachedAccounts() ?? []);
+    // True until the stored wallets have arrived once; until then every total reads 0.
+    const [isLoadingAccounts, setIsLoadingAccounts] = useState(() => getCachedAccounts() === null);
 
     // Accounts: load once, then follow the store — every save/delete/merge/import goes
     // through invalidateAccounts(), which re-queries and pushes to all mounted hooks.
@@ -55,9 +57,9 @@ export function useAccounts(transactions: Transaction[]) {
         let cancelled = false;
         const unsubscribe = subscribeAccounts(() => {
             const next = getCachedAccounts();
-            if (!cancelled && next) setDbAccounts(next);
+            if (!cancelled && next) { setDbAccounts(next); setIsLoadingAccounts(false); }
         });
-        loadAccounts().then(next => { if (!cancelled) setDbAccounts(next); });
+        loadAccounts().then(next => { if (!cancelled) { setDbAccounts(next); setIsLoadingAccounts(false); } });
         return () => { cancelled = true; unsubscribe(); };
     }, []);
 
@@ -197,6 +199,7 @@ export function useAccounts(transactions: Transaction[]) {
         totalNetWorth,
         rates,
         isLoadingRates,
+        isLoadingAccounts,
         isLiveRates,
         refreshAccounts: fetchSupabaseAccounts
     };
