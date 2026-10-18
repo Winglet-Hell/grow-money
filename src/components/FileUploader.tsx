@@ -3,10 +3,10 @@ import { Upload, FileSpreadsheet, Database, DatabaseBackup, Lock } from 'lucide-
 import { cn } from '../lib/utils';
 import { parseFile } from '../lib/parser';
 import { generateTestData } from '../lib/testData';
-import type { Transaction, WalletSnapshot } from '../types';
+import type { BackupExtras, Transaction } from '../types';
 
 interface FileUploaderProps {
-    onDataLoaded: (data: Transaction[], fileName?: string, wallets?: WalletSnapshot) => void;
+    onDataLoaded: (data: Transaction[], fileName?: string, backup?: BackupExtras) => void;
     onTestData: (data: Transaction[]) => void; // "Try Test Data": shown, never stored
     isAuthenticated?: boolean;
     onSignIn?: () => void;
@@ -32,8 +32,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, onTest
         setLoading(true);
         setError(null);
         try {
-            const { transactions, wallets } = await parseFile(file);
-            onDataLoaded(transactions, file.name, wallets);
+            const { transactions, backup } = await parseFile(file);
+            onDataLoaded(transactions, file.name, backup);
         } catch (err) {
             console.error(err);
             setError(err instanceof Error ? err.message : 'Failed to parse file');

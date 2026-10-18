@@ -1,9 +1,9 @@
-import type { Transaction, WalletSnapshot } from '../types';
+import type { BackupExtras, Transaction } from '../types';
 import ParserWorker from './parser.worker?worker';
 
 export interface ParsedStatement {
     transactions: Transaction[];
-    wallets?: WalletSnapshot; // only a backup carries them
+    backup?: BackupExtras; // what only a backup carries: wallets and categories
 }
 
 export async function parseFile(file: File): Promise<ParsedStatement> {
@@ -25,9 +25,9 @@ function runWorker(message: any): Promise<ParsedStatement> {
         const worker = new ParserWorker();
 
         worker.onmessage = (e) => {
-            const { status, data, wallets, error } = e.data;
+            const { status, data, backup, error } = e.data;
             if (status === 'success') {
-                resolve({ transactions: data, wallets });
+                resolve({ transactions: data, backup });
             } else {
                 reject(new Error(error));
             }

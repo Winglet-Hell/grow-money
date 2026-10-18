@@ -47,6 +47,12 @@ export type WalletSnapshot = {
     }[];
 };
 
+// A category as the expense app shows it: the name of its icon there and its colour.
+export type AppCategory = { name: string; type: 'expense' | 'income'; icon: string; color: string };
+
+// What a backup carries beyond the operations.
+export type BackupExtras = { wallets: WalletSnapshot; categories: AppCategory[] };
+
 export type Trip = {
     id: string; // generated ID
     name: string;

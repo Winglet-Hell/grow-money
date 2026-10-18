@@ -1,6 +1,6 @@
 import { unzipSync } from 'fflate';
 import type { Database, SqlJsStatic, SqlValue } from 'sql.js';
-import type { Transaction, WalletSnapshot } from '../types';
+import type { AppCategory, BackupExtras, Transaction, WalletSnapshot } from '../types';
 import { mapRow, uniquifyIds } from './statementRows';
 
 // A backup made by the source app (".mmbackup"): a short header, then a zip holding the app's
@@ -19,7 +19,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
     transfer: ['uid', 'created', 'modified', 'fromAmount', 'fromCurrencyCode', 'toAmount', 'toCurrencyCode', 'date', 'comment', 'isRemoved'],
     account: ['uid', 'modified', 'title', 'currencyCode', 'position', 'isActive', 'isArchived', 'isRemoved'],
     account_balance: ['uid', 'value'],
-    category: ['uid', 'title'],
+    category: ['uid', 'title', 'type', 'icon', 'color', 'isRemoved'],
     tag: ['uid', 'name'],
     rates: ['fromCurrencyCode', 'toCurrencyCode', 'value'],
     syncable_settings: ['uid', 'value'],
@@ -276,12 +276,23 @@ function balancesAsOf(db: Database): string {
     return seconds.length ? `${seconds[seconds.length - 1]}.000Z` : new Date().toISOString();
 }
 
-export interface BackupStatement {
-    transactions: Transaction[];
-    wallets: WalletSnapshot;
+/** The categories the app still has, with its icon name and colour ("#rrggbb", from ARGB). */
+function readCategories(db: Database): AppCategory[] {
+    return select(db, 'SELECT title, type, icon, color FROM category WHERE isRemoved = 0 ORDER BY type, position')
+        .filter(c => c.type === 'Expense' || c.type === 'Income')
+        .map(c => ({
+            name: String(c.title ?? ''),
+            type: c.type === 'Income' ? 'income' : 'expense',
+            icon: String(c.icon ?? ''),
+            color: `#${((Number(c.color) >>> 0) & 0xffffff).toString(16).padStart(6, '0')}`,
+        }));
 }
 
-/** Reads a backup file: the same transactions an xlsx export of it gives, plus the wallets. */
+export interface BackupStatement extends BackupExtras {
+    transactions: Transaction[];
+}
+
+/** Reads a backup file: the same transactions an xlsx export of it gives, plus the wallets and categories. */
 export function readBackup(file: Uint8Array, SQL: SqlJsStatic): BackupStatement {
     const db = new SQL.Database(unpackDatabase(file));
     try {
@@ -291,6 +302,7 @@ export function readBackup(file: Uint8Array, SQL: SqlJsStatic): BackupStatement 
         return {
             transactions: readOperations(db, main, units),
             wallets: { asOf: balancesAsOf(db), wallets: readWallets(db, units) },
+            categories: readCategories(db),
         };
     } finally {
         db.close();

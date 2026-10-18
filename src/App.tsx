@@ -14,6 +14,7 @@ import { clearCategoryLimitsCache } from './hooks/useCategoryLimits';
 import { parseFile, type ParsedStatement } from './lib/parser';
 import { readImportMeta, writeImportMeta, clearImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
 import { writeWalletHistory, clearWalletHistory } from './lib/netWorth';
+import { rememberAppCategories, forgetAppCategories } from './lib/categoryIcons';
 import { ImportStatementDialog, type ImportState } from './components/ImportStatementDialog';
 import { BottomNav } from './components/BottomNav';
 import { DashboardPage } from './pages/DashboardPage';
@@ -35,7 +36,7 @@ import { Navigation } from './components/Navigation';
 import { supabase } from './lib/supabase';
 import { Auth } from './components/Auth';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import type { Transaction, WalletSnapshot } from './types';
+import type { BackupExtras, Transaction } from './types';
 
 
 // Feature Data
@@ -185,16 +186,19 @@ function AppContent() {
   // Replaces whatever is on the device with a freshly parsed statement. Used by the
   // landing-page uploader and by "Import statement" while data is already loaded.
   // Resolves with what happened to the wallets (nothing when signed out).
-  const applyImport = async (data: Transaction[], fileName?: string, wallets?: WalletSnapshot): Promise<{ newAccounts: string[]; walletSync?: WalletSyncReport }> => {
+  const applyImport = async (data: Transaction[], fileName?: string, backup?: BackupExtras): Promise<{ newAccounts: string[]; walletSync?: WalletSyncReport }> => {
     // UI PREFERENCE: Sort Newest First (Desc)
     data.sort((a, b) => {
       if (a.date !== b.date) return b.date.localeCompare(a.date);
       return (a.index || 0) - (b.index || 0);
     });
 
-    // A backup's balance history, stored before the new statement reaches the pages that read it.
-    // An export has none and leaves the last backup's in place.
-    if (wallets) writeWalletHistory(wallets);
+    // A backup's balance history and category looks, stored before the new statement reaches the
+    // pages that read them. An export has neither and leaves the last backup's in place.
+    if (backup) {
+      writeWalletHistory(backup.wallets);
+      rememberAppCategories(backup.categories);
+    }
     setTransactions(data);
     setIsTestData(false);
     await db.transactions.clear();
@@ -209,22 +213,22 @@ function AppContent() {
     writeImportMeta(meta);
     setImportMeta(meta);
 
-    // Bring the wallets up to date, then let every mounted wallet list know. A backup (only a
-    // backup carries wallets) sets them as the expense app has them and moves the trips' links
-    // to the app's own ids; an export only adds the wallets its operations name.
+    // Bring the wallets up to date, then let every mounted wallet list know. A backup sets them
+    // as the expense app has them and moves the trips' links to the app's own ids; an export
+    // only adds the wallets its operations name.
     if (session?.user?.id) {
-      const result = wallets
-        ? { newAccounts: [], walletSync: await syncWalletsFromBackup(wallets, session.user.id) }
+      const result = backup
+        ? { newAccounts: [], walletSync: await syncWalletsFromBackup(backup.wallets, session.user.id) }
         : { newAccounts: await syncAccountsWithSupabase(data, session.user.id) };
-      if (wallets) await healTrips(data).catch(err => console.error('Moving trip links failed:', err));
+      if (backup) await healTrips(data).catch(err => console.error('Moving trip links failed:', err));
       await invalidateAccounts();
       return result;
     }
     return { newAccounts: [] };
   };
 
-  const handleDataLoaded = async (data: Transaction[], fileName?: string, wallets?: WalletSnapshot) => {
-    await applyImport(data, fileName, wallets);
+  const handleDataLoaded = async (data: Transaction[], fileName?: string, backup?: BackupExtras) => {
+    await applyImport(data, fileName, backup);
   };
 
   // "Try Test Data" is a look around for signed-out visitors, so it is held in memory only.
@@ -246,11 +250,11 @@ function AppContent() {
   // click handler); the dialog only appears once a file has been chosen.
   const requestImport = () => importInputRef.current?.click();
 
-  const finishImport = async (data: Transaction[], fileName: string, wallets?: WalletSnapshot) => {
+  const finishImport = async (data: Transaction[], fileName: string, backup?: BackupExtras) => {
     const summary = summarizeImport(transactions, data);
     setImportState({ status: 'applying', fileName });
     try {
-      const { newAccounts, walletSync } = await applyImport(data, fileName, wallets);
+      const { newAccounts, walletSync } = await applyImport(data, fileName, backup);
       setImportState({ status: 'done', fileName, summary, newAccounts, walletSync });
     } catch (err) {
       console.error('Import failed:', err);
@@ -270,13 +274,13 @@ function AppContent() {
     }
     // Nothing is replaced until the file parsed cleanly. A file much smaller than the
     // current data is probably the wrong export — ask before dropping history.
-    const { transactions: data, wallets } = parsed;
+    const { transactions: data, backup } = parsed;
     const summary = summarizeImport(transactions, data);
     if (summary.looksTruncated) {
-      setImportState({ status: 'confirm', fileName: file.name, summary, data, wallets });
+      setImportState({ status: 'confirm', fileName: file.name, summary, data, backup });
       return;
     }
-    await finishImport(data, file.name, wallets);
+    await finishImport(data, file.name, backup);
   };
 
   // Wiping local data means re-uploading the statement to get it back, so every
@@ -296,6 +300,7 @@ function AppContent() {
     await db.transactions.clear();
     clearImportMeta();
     clearWalletHistory();
+    forgetAppCategories();
     setImportMeta(null);
   };
 
@@ -465,7 +470,7 @@ function AppContent() {
         onClose={() => setImportState({ status: 'idle' })}
         onRetry={() => { setImportState({ status: 'idle' }); requestImport(); }}
         onConfirmReplace={() => {
-          if (importState.status === 'confirm') finishImport(importState.data, importState.fileName, importState.wallets);
+          if (importState.status === 'confirm') finishImport(importState.data, importState.fileName, importState.backup);
         }}
       />
 

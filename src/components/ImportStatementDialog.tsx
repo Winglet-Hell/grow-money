@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { Loader2, CheckCircle2, AlertTriangle, XCircle, FileSpreadsheet, Wallet, X } from 'lucide-react';
-import type { Transaction, WalletSnapshot } from '../types';
+import type { BackupExtras, Transaction } from '../types';
 import { formatImportTime, type ImportSummary } from '../lib/importing';
 import type { WalletSyncReport } from '../lib/accountUtils';
 import { formatCurrencyAmount } from '../lib/currencies';
@@ -13,7 +13,7 @@ import { formatDate } from '../lib/utils';
 export type ImportState =
     | { status: 'idle' }
     | { status: 'parsing'; fileName: string }
-    | { status: 'confirm'; fileName: string; summary: ImportSummary; data: Transaction[]; wallets?: WalletSnapshot }
+    | { status: 'confirm'; fileName: string; summary: ImportSummary; data: Transaction[]; backup?: BackupExtras }
     | { status: 'applying'; fileName: string }
     | { status: 'done'; fileName: string; summary: ImportSummary; newAccounts: string[]; walletSync?: WalletSyncReport }
     | { status: 'error'; fileName: string; message: string };
