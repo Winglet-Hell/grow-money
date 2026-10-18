@@ -203,20 +203,57 @@ function readOperations(db: Database, main: string, units: (code: string) => num
     return hashed.map((t, i) => ({ ...t, id: parsed[i].uid, exportId: t.id }));
 }
 
-/** Every wallet the app still has, with the balance it shows. Archived ones are marked, and so
- *  are those switched off (the app's older way of putting a wallet away); deleted ones are left out. */
+/** Each wallet's balance day by day: every operation moves it, balance corrections included, so
+ *  the running sum ends exactly on the balance the app shows. Kept in stored integers. */
+function balanceMoves(db: Database): Map<string, Map<string, number>> {
+    const moves = new Map<string, Map<string, number>>();
+    const move = (account: SqlValue, day: SqlValue, amount: number) => {
+        if (account === null || day === null || !amount) return;
+        const days = moves.get(String(account)) ?? new Map<string, number>();
+        days.set(String(day), (days.get(String(day)) ?? 0) + amount);
+        moves.set(String(account), days);
+    };
+    for (const t of select(db, `
+        SELECT l.otherUid AS account, t.date, t.type, COALESCE(t.amountInAccountCurrency, t.amountInRealCurrency) AS amount
+        FROM "transaction" t
+        JOIN sync_link l ON l.entityType = 'Transaction' AND l.entityUid = t.uid AND l.otherType = 'Account' AND l.isRemoved = 0
+        WHERE t.isRemoved = 0`)) {
+        move(t.account, t.date, (t.type === 'Income' ? 1 : -1) * Number(t.amount ?? 0));
+    }
+    for (const t of select(db, `
+        SELECT f.otherUid AS source, d.otherUid AS target, t.date, t.fromAmount, COALESCE(t.toAmount, t.fromAmount) AS toAmount
+        FROM transfer t
+        JOIN sync_link f ON f.entityType = 'Transfer' AND f.entityUid = t.uid AND f.otherType = 'FromAccount' AND f.isRemoved = 0
+        JOIN sync_link d ON d.entityType = 'Transfer' AND d.entityUid = t.uid AND d.otherType = 'ToAccount' AND d.isRemoved = 0
+        WHERE t.isRemoved = 0`)) {
+        move(t.source, t.date, -Number(t.fromAmount ?? 0));
+        move(t.target, t.date, Number(t.toAmount ?? 0));
+    }
+    return moves;
+}
+
+/** Every wallet the app still has, with the balance it shows and its history. Archived ones are
+ *  marked, and so are those switched off (the app's older way of putting a wallet away); deleted
+ *  ones are left out. */
 function readWallets(db: Database, units: (code: string) => number): WalletSnapshot['wallets'] {
+    const moves = balanceMoves(db);
     return select(db, `
-        SELECT a.title, a.currencyCode, a.isActive, a.isArchived, COALESCE(b.value, 0) AS balance
+        SELECT a.uid, a.title, a.currencyCode, a.isActive, a.isArchived, COALESCE(b.value, 0) AS balance
         FROM account a LEFT JOIN account_balance b ON b.uid = a.uid
         WHERE a.isRemoved = 0 ORDER BY a.position`)
         .map(a => {
             const currency = String(a.currencyCode ?? '');
+            const perUnit = units(currency);
+            let running = 0;
+            const history = [...(moves.get(String(a.uid)) ?? new Map<string, number>())]
+                .sort(([x], [y]) => x.localeCompare(y))
+                .map(([day, amount]): [string, number] => [day, (running += amount) / perUnit]);
             return {
                 name: String(a.title ?? ''),
                 currency: currencyLabel(currency),
-                balance: Number(a.balance) / units(currency),
+                balance: Number(a.balance) / perUnit,
                 archived: a.isArchived === 1 || a.isActive === 0,
+                history,
             };
         });
 }

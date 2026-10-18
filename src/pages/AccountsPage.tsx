@@ -6,10 +6,12 @@ import { usePrivacy } from '../contexts/PrivacyContext';
 import { CreateAccountModal } from '../components/CreateAccountModal';
 import { EditAccountModal } from '../components/EditAccountModal';
 import { UpdateBalancesModal } from '../components/UpdateBalancesModal';
+import { NetWorthChart } from '../components/NetWorthChart';
 import { WalletRow, WALLET_GRID } from '../components/WalletRow';
 import { isStale } from '../lib/accountFreshness';
 import { createManualAccount, updateAccount } from '../lib/accountUtils';
 import { getCurrencyMeta, formatCurrencyAmount } from '../lib/currencies';
+import { EXPOSURE_COLORS, exposureGroup } from '../lib/exposure';
 import { cn } from '../lib/utils';
 
 interface AccountsPageProps {
@@ -28,20 +30,6 @@ const GROUPED_KEY = 'walletsGrouped';
 const readGrouped = () => { try { return localStorage.getItem(GROUPED_KEY) !== 'false'; } catch { return true; } };
 const storeGrouped = (v: boolean) => { try { localStorage.setItem(GROUPED_KEY, String(v)); } catch { /* storage blocked */ } };
 
-// Net-worth exposure groups: dollar stablecoins are dollars for this purpose.
-const EXPOSURE_COLORS: Record<string, string> = {
-    RUB: '#10b981',
-    USD: '#3b82f6',
-    THB: '#f59e0b',
-    BTC: '#f97316',
-    ETH: '#8b5cf6',
-    Other: '#94a3b8',
-};
-// Colour bucket for the exposure bar (small currencies share "Other").
-const exposureGroup = (currency: string) => {
-    if (currency === 'USDT' || currency === 'USDC' || currency === 'USD') return 'USD';
-    return currency in EXPOSURE_COLORS ? currency : 'Other';
-};
 // Table groups: one per currency family, so "how much THB do I have in total" has an
 // answer. Dollar stablecoins sit with dollars — they are dollars for every practical purpose.
 const currencyFamily = (currency: string) => (currency === 'USDT' || currency === 'USDC' ? 'USD' : currency);
@@ -51,7 +39,7 @@ const isVolatile = (currency: string) => currencyFamily(currency) !== 'USD' && g
 
 export function AccountsPage({ transactions, userId, onTransactionsChanged }: AccountsPageProps) {
     const { isPrivacyMode } = usePrivacy();
-    const { accounts: accountsStatus, totalNetWorth, isLoadingRates, isLiveRates, refreshAccounts } = useAccounts(transactions);
+    const { accounts: accountsStatus, totalNetWorth, rates, isLoadingRates, isLiveRates, refreshAccounts } = useAccounts(transactions);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<AccountStatus | null>(null);
@@ -320,6 +308,8 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
                     onClick={staleCount > 0 ? () => { setGrouped(false); setSort({ key: 'updated', dir: 'asc' }); } : undefined}
                 />
             </div>
+
+            <NetWorthChart transactions={transactions} liveRates={rates} isPrivacyMode={isPrivacyMode} />
 
             {/* Table */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

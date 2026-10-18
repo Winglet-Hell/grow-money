@@ -13,6 +13,7 @@ import { clearTripsCache, healTrips } from './lib/tripsStore';
 import { clearCategoryLimitsCache } from './hooks/useCategoryLimits';
 import { parseFile, type ParsedStatement } from './lib/parser';
 import { readImportMeta, writeImportMeta, clearImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
+import { writeWalletHistory, clearWalletHistory } from './lib/netWorth';
 import { ImportStatementDialog, type ImportState } from './components/ImportStatementDialog';
 import { BottomNav } from './components/BottomNav';
 import { DashboardPage } from './pages/DashboardPage';
@@ -191,6 +192,9 @@ function AppContent() {
       return (a.index || 0) - (b.index || 0);
     });
 
+    // A backup's balance history, stored before the new statement reaches the pages that read it.
+    // An export has none and leaves the last backup's in place.
+    if (wallets) writeWalletHistory(wallets);
     setTransactions(data);
     setIsTestData(false);
     await db.transactions.clear();
@@ -291,6 +295,7 @@ function AppContent() {
     setTransactions([]);
     await db.transactions.clear();
     clearImportMeta();
+    clearWalletHistory();
     setImportMeta(null);
   };
 

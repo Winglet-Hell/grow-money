@@ -38,7 +38,13 @@ export type Account = {
 // The expense app's wallets as a backup recorded them. An xlsx export has none.
 export type WalletSnapshot = {
     asOf: string; // ISO time the balances held at: the backup's last edit or sync
-    wallets: { name: string; currency: string; balance: number; archived: boolean }[];
+    wallets: {
+        name: string;
+        currency: string;
+        balance: number;
+        archived: boolean;
+        history: [string, number][]; // the balance at the end of each day it changed ("YYYY-MM-DD"), oldest first
+    }[];
 };
 
 export type Trip = {
