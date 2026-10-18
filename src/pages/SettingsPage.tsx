@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useUserSettings } from '../contexts/UserSettingsContext';
-import { Loader2, Lock, Layout, CheckCircle2, AlertCircle, User } from 'lucide-react';
+import { Loader2, Lock, Layout, CheckCircle2, AlertCircle, User, Bot } from 'lucide-react';
 import { AVATAR_ICON_NAMES, getAvatarIcon } from '../lib/avatarIcons';
+import { ConnectedAppsSettings } from '../components/ConnectedAppsSettings';
 
 export function SettingsPage() {
-    const [activeTab, setActiveTab] = useState<'profile' | 'account' | 'preferences'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'account' | 'preferences' | 'ai'>('profile');
 
     return (
         <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -38,6 +39,13 @@ export function SettingsPage() {
                         <Layout className="w-4 h-4" />
                         Preferences
                     </button>
+                    <button
+                        onClick={() => setActiveTab('ai')}
+                        className={`w-full text-left px-4 py-3 rounded-xl font-medium transition-colors flex items-center gap-3 ${activeTab === 'ai' ? 'bg-white shadow-sm text-emerald-700' : 'text-gray-600 hover:bg-gray-100'}`}
+                    >
+                        <Bot className="w-4 h-4" />
+                        AI apps
+                    </button>
                 </div>
 
                 {/* Content */}
@@ -45,6 +53,7 @@ export function SettingsPage() {
                     {activeTab === 'profile' && <ProfileSettings />}
                     {activeTab === 'account' && <AccountSettings />}
                     {activeTab === 'preferences' && <PreferencesSettings />}
+                    {activeTab === 'ai' && <ConnectedAppsSettings />}
                 </div>
             </div>
         </div>

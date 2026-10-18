@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { Loader2, CheckCircle2, AlertTriangle, XCircle, FileSpreadsheet, Wallet, X } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertTriangle, XCircle, FileSpreadsheet, Wallet, X, Cloud } from 'lucide-react';
 import type { BackupExtras, Transaction } from '../types';
 import { formatImportTime, type ImportSummary } from '../lib/importing';
 import type { WalletSyncReport } from '../lib/accountUtils';
+import type { CloudCopy } from '../lib/statementCloud';
 import { formatCurrencyAmount } from '../lib/currencies';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { formatDate } from '../lib/utils';
@@ -15,7 +16,7 @@ export type ImportState =
     | { status: 'parsing'; fileName: string }
     | { status: 'confirm'; fileName: string; summary: ImportSummary; data: Transaction[]; backup?: BackupExtras }
     | { status: 'applying'; fileName: string }
-    | { status: 'done'; fileName: string; summary: ImportSummary; newAccounts: string[]; walletSync?: WalletSyncReport }
+    | { status: 'done'; fileName: string; summary: ImportSummary; newAccounts: string[]; walletSync?: WalletSyncReport; copy?: CloudCopy }
     | { status: 'error'; fileName: string; message: string };
 
 interface ImportStatementDialogProps {
@@ -59,7 +60,7 @@ export const ImportStatementDialog: React.FC<ImportStatementDialogProps> = ({ st
                     </p>
                     <p className="text-sm text-gray-500 mt-1 break-all">{state.fileName}</p>
                 </div>
-                <p className="text-xs text-gray-400">Parsed locally — the file is never uploaded anywhere.</p>
+                <p className="text-xs text-gray-400">Read on this device — the file itself is never uploaded.</p>
             </div>
         );
     } else if (state.status === 'confirm') {
@@ -167,6 +168,8 @@ export const ImportStatementDialog: React.FC<ImportStatementDialogProps> = ({ st
                 )}
 
                 {walletSync && <WalletSyncNote report={walletSync} onClose={onClose} />}
+
+                {state.copy && <CopyNote copy={state.copy} />}
             </div>
         );
         footer = (
@@ -287,6 +290,24 @@ function WalletSyncNote({ report, onClose }: { report: WalletSyncReport; onClose
                 {report.notInBackup.length === 0 && <p className="text-emerald-700/80">See them on the {walletsLink}.</p>}
             </div>
         </div>
+    );
+}
+
+// The account's copy of the statement, which Claude on the phone or ChatGPT reads (lib/statementCloud).
+function CopyNote({ copy }: { copy: CloudCopy }) {
+    if (copy.status === 'failed') {
+        return (
+            <p className="text-xs text-amber-700 flex items-start gap-2">
+                <Cloud className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span className="break-words">The copy for Claude wasn't saved to your account: {copy.message}. Everything on this device is in place.</span>
+            </p>
+        );
+    }
+    return (
+        <p className="text-xs text-gray-400 flex items-center gap-2">
+            {copy.status === 'saving' ? <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" /> : <Cloud className="w-3.5 h-3.5 shrink-0" />}
+            {copy.status === 'saving' ? 'Saving a copy to your account for Claude…' : 'Copy saved to your account: Claude can answer from it on any device.'}
+        </p>
     );
 }
 

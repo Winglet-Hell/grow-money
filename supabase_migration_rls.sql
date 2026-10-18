@@ -9,7 +9,8 @@
 --
 -- Run in the Supabase SQL editor. Idempotent: drops every existing policy on
 -- these tables and recreates the owner-only set, so stray policies created
--- from the dashboard are removed too.
+-- from the dashboard are removed too. `statements` comes from
+-- supabase_migration_statements.sql, which has to have run first.
 -- ============================================================================
 
 -- 1. Wipe all existing policies on the app tables (names may differ from the repo).
@@ -21,7 +22,7 @@ begin
     select policyname, tablename
     from pg_policies
     where schemaname = 'public'
-      and tablename in ('accounts', 'wishlist', 'category_limits', 'trips', 'user_settings')
+      and tablename in ('accounts', 'wishlist', 'category_limits', 'trips', 'user_settings', 'statements')
   loop
     execute format('drop policy if exists %I on public.%I', p.policyname, p.tablename);
   end loop;
@@ -33,6 +34,7 @@ alter table public.wishlist        enable row level security;
 alter table public.category_limits enable row level security;
 alter table public.trips           enable row level security;
 alter table public.user_settings   enable row level security;
+alter table public.statements      enable row level security;
 
 -- 3. Owner-only policies: a row is visible/editable only to the signed-in user
 --    whose id is in user_id. Anonymous requests (auth.uid() is null) get nothing.
@@ -40,7 +42,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['accounts', 'wishlist', 'category_limits', 'trips', 'user_settings']
+  foreach t in array array['accounts', 'wishlist', 'category_limits', 'trips', 'user_settings', 'statements']
   loop
     execute format('create policy "Users can view their own %1$s"   on public.%1$I for select using (auth.uid() = user_id)', t);
     execute format('create policy "Users can insert their own %1$s" on public.%1$I for insert with check (auth.uid() = user_id)', t);
@@ -56,6 +58,6 @@ select t.tablename,
 from pg_tables t
 left join pg_policies p on p.schemaname = t.schemaname and p.tablename = t.tablename
 where t.schemaname = 'public'
-  and t.tablename in ('accounts', 'wishlist', 'category_limits', 'trips', 'user_settings')
+  and t.tablename in ('accounts', 'wishlist', 'category_limits', 'trips', 'user_settings', 'statements')
 group by t.tablename, t.rowsecurity
 order by t.tablename;

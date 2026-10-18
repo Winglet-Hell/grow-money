@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { LayoutDashboard, PieChart, TrendingUp, Wallet, LineChart, ShieldCheck, Import, Heart } from 'lucide-react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { PrivacyProvider } from './contexts/PrivacyContext';
 import { UserSettingsProvider } from './contexts/UserSettingsContext';
 
@@ -15,6 +15,7 @@ import { parseFile, type ParsedStatement } from './lib/parser';
 import { readImportMeta, writeImportMeta, clearImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
 import { writeWalletHistory, clearWalletHistory } from './lib/netWorth';
 import { rememberAppCategories, forgetAppCategories } from './lib/categoryIcons';
+import { refreshStatementCopy, saveStatementCopy } from './lib/statementCloud';
 import { ImportStatementDialog, type ImportState } from './components/ImportStatementDialog';
 import { BottomNav } from './components/BottomNav';
 import { DashboardPage } from './pages/DashboardPage';
@@ -32,6 +33,7 @@ import { CurrencyRatesPage } from './pages/CurrencyRatesPage';
 import { RecurringPage } from './pages/RecurringPage';
 import { MilestonesPage } from './pages/MilestonesPage';
 import { ResalePage } from './pages/ResalePage';
+import { OAuthConsentPage } from './pages/OAuthConsentPage';
 import { Navigation } from './components/Navigation';
 import { supabase } from './lib/supabase';
 import { Auth } from './components/Auth';
@@ -86,7 +88,7 @@ const FEATURES = [
   {
     icon: <ShieldCheck className="w-5 h-5" />,
     title: "Privacy First",
-    description: "100% local processing. Your financial data is never uploaded to any server.",
+    description: "Statements are read on your device. Your data lives in your own account, visible only to you and the AI apps you allow.",
     color: "bg-gray-50 text-gray-600"
   }
 ];
@@ -108,6 +110,7 @@ function AppContent() {
   const [isTestData, setIsTestData] = useState(false); // "Try Test Data" is on screen (held in memory only)
   const importInputRef = useRef<HTMLInputElement>(null);
   const dataLoadedRef = useRef(false);
+  const location = useLocation();
 
 
   // Navigation items handled in Navigation component
@@ -143,7 +146,9 @@ function AppContent() {
   // Reads the device copy into state. Also used after a wallet rename/merge re-points
   // operations in Dexie, so the pages see the new names without a reload. Replaces test
   // data a visitor was looking at before signing in, even when nothing is stored.
-  const reloadFromDb = async () => {
+  // `copy` brings the account's copy for Claude in line too (lib/statementCloud): when it is
+  // missing or older on load, and always after the operations changed here.
+  const reloadFromDb = async (copy?: { userId: string; when: 'ifStale' | 'always' }) => {
     try {
       const count = await db.transactions.count();
       if (count > 0) {
@@ -154,6 +159,13 @@ function AppContent() {
           return (a.index || 0) - (b.index || 0);
         });
         setTransactions(savedTransactions);
+        const meta = readImportMeta();
+        if (copy && meta) {
+          const saving = copy.when === 'always'
+            ? saveStatementCopy(copy.userId, savedTransactions, meta)
+            : refreshStatementCopy(copy.userId, savedTransactions, meta);
+          saving.catch(err => console.warn('The copy of the statement for Claude was not saved:', err));
+        }
       } else {
         setTransactions([]);
       }
@@ -180,13 +192,14 @@ function AppContent() {
     if (dataLoadedRef.current) return; // don't reload on token refresh
     dataLoadedRef.current = true;
 
-    reloadFromDb().finally(() => setIsLoading(false));
+    reloadFromDb({ userId: session.user.id, when: 'ifStale' }).finally(() => setIsLoading(false));
   }, [session, authReady]);
 
   // Replaces whatever is on the device with a freshly parsed statement. Used by the
   // landing-page uploader and by "Import statement" while data is already loaded.
-  // Resolves with what happened to the wallets (nothing when signed out).
-  const applyImport = async (data: Transaction[], fileName?: string, backup?: BackupExtras): Promise<{ newAccounts: string[]; walletSync?: WalletSyncReport }> => {
+  // Resolves with what happened to the wallets (nothing when signed out), and, signed in, the
+  // save of the account's copy for Claude, which goes on in the background.
+  const applyImport = async (data: Transaction[], fileName?: string, backup?: BackupExtras): Promise<{ newAccounts: string[]; walletSync?: WalletSyncReport; copy?: Promise<void> }> => {
     // UI PREFERENCE: Sort Newest First (Desc)
     data.sort((a, b) => {
       if (a.date !== b.date) return b.date.localeCompare(a.date);
@@ -217,18 +230,21 @@ function AppContent() {
     // as the expense app has them and moves the trips' links to the app's own ids; an export
     // only adds the wallets its operations name.
     if (session?.user?.id) {
+      const copy = saveStatementCopy(session.user.id, data, meta);
+      copy.catch(() => undefined); // handled by the caller once the wallets are done; no unhandled rejection meanwhile
       const result = backup
         ? { newAccounts: [], walletSync: await syncWalletsFromBackup(backup.wallets, session.user.id) }
         : { newAccounts: await syncAccountsWithSupabase(data, session.user.id) };
       if (backup) await healTrips(data).catch(err => console.error('Moving trip links failed:', err));
       await invalidateAccounts();
-      return result;
+      return { ...result, copy };
     }
     return { newAccounts: [] };
   };
 
   const handleDataLoaded = async (data: Transaction[], fileName?: string, backup?: BackupExtras) => {
-    await applyImport(data, fileName, backup);
+    const { copy } = await applyImport(data, fileName, backup);
+    copy?.catch(err => console.warn('The copy of the statement for Claude was not saved:', err));
   };
 
   // "Try Test Data" is a look around for signed-out visitors, so it is held in memory only.
@@ -254,8 +270,15 @@ function AppContent() {
     const summary = summarizeImport(transactions, data);
     setImportState({ status: 'applying', fileName });
     try {
-      const { newAccounts, walletSync } = await applyImport(data, fileName, backup);
-      setImportState({ status: 'done', fileName, summary, newAccounts, walletSync });
+      const { newAccounts, walletSync, copy } = await applyImport(data, fileName, backup);
+      setImportState({ status: 'done', fileName, summary, newAccounts, walletSync, ...(copy ? { copy: { status: 'saving' } } : {}) });
+      // The dialog says how the account's copy for Claude went, while it is still open on this import.
+      copy?.then(
+        () => setImportState(s => (s.status === 'done' && s.fileName === fileName ? { ...s, copy: { status: 'saved' } } : s)),
+        (err: unknown) => setImportState(s => (s.status === 'done' && s.fileName === fileName
+          ? { ...s, copy: { status: 'failed', message: err instanceof Error ? err.message : String(err) } }
+          : s)),
+      );
     } catch (err) {
       console.error('Import failed:', err);
       setImportState({ status: 'error', fileName, message: err instanceof Error ? err.message : 'Could not save the data' });
@@ -309,6 +332,11 @@ function AppContent() {
     // Optional: Clear local data on logout? 
     // await handleReset(); 
   };
+
+  // Connecting Claude, ChatGPT or another app: its own page, with or without imported data.
+  if (location.pathname === '/oauth/consent') {
+    return <OAuthConsentPage session={session} authReady={authReady} />;
+  }
 
   if (isLoading) {
     return (
@@ -435,7 +463,7 @@ function AppContent() {
                 <Route path="/paycheck" element={<PaycheckPage transactions={transactions} />} />
                 <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
                 <Route path="/wishlist" element={<GoalsPage transactions={transactions} userId={session?.user?.id} />} />
-                <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} onTransactionsChanged={reloadFromDb} />} />
+                <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} onTransactionsChanged={() => reloadFromDb(session?.user?.id ? { userId: session.user.id, when: 'always' } : undefined)} />} />
                 <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
                 <Route path="/trip-analytics" element={<TripAnalyticsPage transactions={transactions} />} />
                 <Route path="/trip-analytics/:tripId" element={<TripAnalyticsPage transactions={transactions} />} />
@@ -477,7 +505,7 @@ function AppContent() {
       <ConfirmDialog
         isOpen={isResetDialogOpen}
         title="Clear imported data?"
-        description="This removes the transactions stored on this device. Wallets, goals and settings stay in your account — you'll just need to upload the statement again."
+        description="This removes the transactions stored on this device. Wallets, goals, settings and the copy Claude reads stay in your account — you'll just need to upload the statement again."
         confirmLabel="Clear data"
         tone="danger"
         onConfirm={handleReset}
