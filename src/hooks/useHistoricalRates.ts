@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FIRST_SNAPSHOT_DATE, type DailyRates, type ReferenceRates } from '../lib/fxBenchmark';
+import { FIRST_SNAPSHOT_DATE, fetchDailyRates, type DailyRates, type ReferenceRates } from '../lib/fxBenchmark';
 
 // Daily reference rates from the same currency-api feed that powers useLiveRates, one
 // snapshot per calendar day as "RUB per 1 unit of CODE". Snapshots exist from
@@ -13,11 +13,6 @@ const memory = new Map<string, DailyRates>();
 // Dates the feed had nothing for this session (e.g. today's file not published yet).
 // Not persisted, so they are retried on the next visit.
 const unavailable = new Set<string>();
-
-const mirrorsFor = (date: string) => [
-    `https://${date}.currency-api.pages.dev/v1/currencies/rub.json`,
-    `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${date}/v1/currencies/rub.json`,
-];
 
 function readCache(date: string): DailyRates | undefined {
     const hit = memory.get(date);
@@ -40,32 +35,6 @@ function writeCache(date: string, rates: DailyRates) {
     } catch {
         // Quota exceeded or storage blocked — the in-memory copy still serves this session.
     }
-}
-
-async function fetchSnapshot(date: string): Promise<Record<string, number> | null> {
-    for (const url of mirrorsFor(date)) {
-        try {
-            const res = await fetch(url);
-            if (!res.ok) continue;
-            const data = await res.json();
-            if (!data || !data.rub) continue;
-
-            // data.rub[code] = units of CODE per 1 RUB → invert to RUB per CODE.
-            const next: Record<string, number> = {};
-            for (const [code, perRub] of Object.entries(data.rub as Record<string, number>)) {
-                if (typeof perRub === 'number' && perRub > 0) {
-                    next[code.toUpperCase()] = 1 / perRub;
-                }
-            }
-            // Stablecoins occasionally missing — fall back to USD parity.
-            if (next.USD && !next.USDT) next.USDT = next.USD;
-            if (next.USD && !next.USDC) next.USDC = next.USD;
-            return next;
-        } catch {
-            // Try the next mirror.
-        }
-    }
-    return null;
 }
 
 const hasAll = (snapshot: DailyRates | undefined, codes: string[]) =>
@@ -97,7 +66,7 @@ export function useHistoricalRates(dates: string[], codes: string[]): ReferenceR
         const worker = async () => {
             while (queue.length > 0 && !cancelled) {
                 const date = queue.shift()!;
-                const fresh = await fetchSnapshot(date);
+                const fresh = await fetchDailyRates(date);
                 // A snapshot is valid regardless of who asked for it — cache it even when
                 // this effect has been superseded, and only skip the re-render.
                 if (fresh) {

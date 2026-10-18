@@ -20,6 +20,38 @@ export interface ReferenceRates {
     missingDates: string[];                // requested dates with no snapshot (too old or not published yet)
 }
 
+const mirrorsFor = (date: string) => [
+    `https://${date}.currency-api.pages.dev/v1/currencies/rub.json`,
+    `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${date}/v1/currencies/rub.json`,
+];
+
+/** The feed's snapshot of one day as RUB per 1 unit of every code it lists, or null when no mirror has it. */
+export async function fetchDailyRates(date: string): Promise<Record<string, number> | null> {
+    for (const url of mirrorsFor(date)) {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) continue;
+            const data = await res.json();
+            if (!data || !data.rub) continue;
+
+            // data.rub[code] = units of CODE per 1 RUB → invert to RUB per CODE.
+            const next: Record<string, number> = {};
+            for (const [code, perRub] of Object.entries(data.rub as Record<string, number>)) {
+                if (typeof perRub === 'number' && perRub > 0) {
+                    next[code.toUpperCase()] = 1 / perRub;
+                }
+            }
+            // Stablecoins occasionally missing — fall back to USD parity.
+            if (next.USD && !next.USDT) next.USDT = next.USD;
+            if (next.USD && !next.USDC) next.USDC = next.USD;
+            return next;
+        } catch {
+            // Try the next mirror.
+        }
+    }
+    return null;
+}
+
 /** RUB per 1 unit of `code` on `date`, or null when unknown. */
 export type RateLookup = (date: string, code: string) => number | null;
 

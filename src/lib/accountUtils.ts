@@ -1,32 +1,11 @@
 import { supabase } from './supabase';
 import { db } from './db';
 import type { Account, Transaction, WalletSnapshot } from '../types';
-import { normalizeCurrencyCode, inferCurrencyFromName, isCryptoCode } from './currencies';
+import { inferAccountDetails } from './accountStatus';
 
 // Wallets are matched by name, ignoring case and spaces, the way operations refer to them
 // ("USDT Bybit" and "Usdt bybit" are one wallet).
 const walletKey = (name: string) => (name || '').toLowerCase().replace(/\s+/g, '');
-
-export function inferAccountDetails(accountName: string, detectedCurrency?: string): Partial<Account> {
-    const lowerName = accountName.toLowerCase();
-
-    // The currency recorded on the transaction wins; otherwise look for a code in the
-    // account's own name ("Cash KRW" → KRW, "GoPay IDR" → IDR).
-    const currency = normalizeCurrencyCode(detectedCurrency || '')
-        || inferCurrencyFromName(accountName)
-        || 'THB';
-
-    let type: Account['type'] = 'cash'; // Default
-    if (isCryptoCode(currency)) {
-        type = 'crypto';
-    } else if (lowerName.includes('bank') || lowerName.includes('card') || lowerName.includes('main')) {
-        type = 'bank';
-    } else if (lowerName.includes('wallet')) {
-        type = 'wallet';
-    }
-
-    return { type, currency };
-}
 
 // Auto-create DB rows for every account referenced by any operation — expense/income
 // source, and BOTH legs of transfers (outgoing account + incoming `category`). New

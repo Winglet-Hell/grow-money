@@ -12,6 +12,33 @@ import { formatTags } from './utils';
 
 export type TripLists = Pick<Trip, 'excludedTransactionIds' | 'additionalTransactionIds' | 'transactionSnapshots' | 'transactionShares'>;
 
+// A row of the Supabase `trips` table.
+export type TripRow = {
+    id: string;
+    name: string;
+    start_date: string;
+    end_date: string;
+    excluded_transaction_ids: string[] | null;
+    additional_transaction_ids: string[] | null;
+    transaction_snapshots: Record<string, TransactionSnapshot> | null;
+    icon?: string | null;   // both absent until supabase_migration_trip_icon_budget.sql has run
+    budget?: number | string | null;
+    transaction_shares?: Record<string, number> | null; // absent until supabase_migration_trip_shares.sql has run
+};
+
+export const tripFromRow = (t: TripRow): Trip => ({
+    id: t.id,
+    name: t.name,
+    startDate: t.start_date,
+    endDate: t.end_date,
+    excludedTransactionIds: t.excluded_transaction_ids || [],
+    additionalTransactionIds: t.additional_transaction_ids || [],
+    transactionSnapshots: t.transaction_snapshots || {},
+    ...(t.icon !== undefined ? { icon: t.icon } : {}),
+    ...(t.budget !== undefined ? { budget: t.budget === null ? null : Number(t.budget) } : {}),
+    ...(t.transaction_shares !== undefined ? { transactionShares: t.transaction_shares || {} } : {}),
+});
+
 export const createSnapshot = (t: Transaction): TransactionSnapshot => ({
     date: t.date,
     amount: t.amount,

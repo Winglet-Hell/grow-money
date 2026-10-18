@@ -6,9 +6,10 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useNetWorthSeries } from '../hooks/useNetWorthSeries';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import {
-    createGoal, deleteGoal, formatSpan, loadGoals, monthsLabel, netWorthGrowth, planGoals, savingPace, setGoalReached, updateGoal,
-    DEFAULT_GOAL_ICON, MIGRATION_HINT, PRIORITIES, type Goal, type GoalPriority, type GoalValues,
+    formatSpan, monthsLabel, netWorthGrowth, planGoals, savingPace,
+    DEFAULT_GOAL_ICON, PRIORITIES, type Goal, type GoalPriority, type GoalValues,
 } from '../lib/goals';
+import { createGoal, deleteGoal, loadGoals, setGoalReached, updateGoal, MIGRATION_HINT } from '../lib/goalsStore';
 import { monthLabel } from '../lib/periods';
 import { todayKey } from '../lib/milestones';
 import { GoalRow, ReachedGoalRow, GOAL_GRID } from '../components/GoalRow';

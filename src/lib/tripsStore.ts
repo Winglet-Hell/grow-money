@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { db } from './db';
-import type { Trip, Transaction, TransactionSnapshot } from '../types';
-import { healTripLists } from './tripUtils';
+import type { Trip, Transaction } from '../types';
+import { healTripLists, tripFromRow } from './tripUtils';
 
 // Trips live in Supabase when signed in and in Dexie when signed out. They are loaded once per
 // session and shared by every page that reads them (Trip Analytics, Travel Index, AI Export).
@@ -41,33 +41,6 @@ const messageOf = (e: unknown) => {
         : message;
 };
 
-// A row of the Supabase `trips` table.
-type TripRow = {
-    id: string;
-    name: string;
-    start_date: string;
-    end_date: string;
-    excluded_transaction_ids: string[] | null;
-    additional_transaction_ids: string[] | null;
-    transaction_snapshots: Record<string, TransactionSnapshot> | null;
-    icon?: string | null;   // both absent until supabase_migration_trip_icon_budget.sql has run
-    budget?: number | string | null;
-    transaction_shares?: Record<string, number> | null; // absent until supabase_migration_trip_shares.sql has run
-};
-
-const fromRow = (t: TripRow): Trip => ({
-    id: t.id,
-    name: t.name,
-    startDate: t.start_date,
-    endDate: t.end_date,
-    excludedTransactionIds: t.excluded_transaction_ids || [],
-    additionalTransactionIds: t.additional_transaction_ids || [],
-    transactionSnapshots: t.transaction_snapshots || {},
-    ...(t.icon !== undefined ? { icon: t.icon } : {}),
-    ...(t.budget !== undefined ? { budget: t.budget === null ? null : Number(t.budget) } : {}),
-    ...(t.transaction_shares !== undefined ? { transactionShares: t.transaction_shares || {} } : {}),
-});
-
 // Icon, budget and shares go out only once a trip has them, so trips keep saving before the columns exist.
 const toRow = (t: Trip) => ({
     name: t.name,
@@ -102,7 +75,7 @@ async function query(userKey: string): Promise<Trip[]> {
     }
     const { data, error } = await supabase.from('trips').select('*').eq('user_id', userKey);
     if (error) throw new Error(error.message);
-    return (data ?? []).map(fromRow);
+    return (data ?? []).map(tripFromRow);
 }
 
 function setTrips(trips: Trip[]) {
@@ -239,7 +212,7 @@ export async function createTrip(input: { name: string; startDate: string; endDa
             .select()
             .single();
         if (error) throw new Error(messageOf(error.message));
-        trip = fromRow(data);
+        trip = tripFromRow(data);
     }
     stored.set(trip.id, trip);
     if (cache?.userKey === userKey) setTrips([trip, ...cache.trips]);
