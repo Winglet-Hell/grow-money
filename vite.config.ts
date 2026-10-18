@@ -49,5 +49,11 @@ export default defineConfig({
   },
   worker: {
     format: 'es'
+  },
+  // The parser worker's dependencies. The dev server's scan doesn't look inside workers, so
+  // without this it finds them during the first import, re-optimizes, fails that import and
+  // reloads the page.
+  optimizeDeps: {
+    include: ['papaparse', 'xlsx', 'sql.js', 'fflate']
   }
 })
