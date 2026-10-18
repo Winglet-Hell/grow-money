@@ -31,7 +31,7 @@ import {
 // small numeric helpers
 // ---------------------------------------------------------------------------
 
-const round = (n: number, d = 2): number => {
+export const round = (n: number, d = 2): number => {
     if (!isFinite(n)) return 0;
     const f = 10 ** d;
     return Math.round(n * f) / f;
@@ -40,7 +40,7 @@ const round = (n: number, d = 2): number => {
 // Two decimals is right for money but destroys crypto: 0.0089 ETH becomes 0.01, and
 // anything under half a cent becomes 0 — which reads as "this wallet is empty" to
 // whatever model consumes the export. Tokens and metals keep 8 decimals instead.
-const roundNative = (n: number, currency: string): number =>
+export const roundNative = (n: number, currency: string): number =>
     round(n, getCurrencyMeta(currency).kind === 'fiat' ? 2 : 8);
 
 // A job's fixed monthly salary on hand: as entered, or less НДФЛ at the base
@@ -101,7 +101,7 @@ const share = (part: number, total: number): number => (total ? round((part / to
 // transaction helpers
 // ---------------------------------------------------------------------------
 
-const tagsOf = (t: Transaction): string[] => {
+export const tagsOf = (t: Transaction): string[] => {
     if (Array.isArray(t.tags)) return t.tags.map(x => String(x).trim()).filter(Boolean);
     if (t.tags) return [String(t.tags).trim()].filter(Boolean);
     return [];
@@ -109,7 +109,7 @@ const tagsOf = (t: Transaction): string[] => {
 
 // The label that identifies *where* the money went. Tags are filled on nearly every
 // row in this dataset; notes are the rare fallback.
-const payeeOf = (t: Transaction): string | null => {
+export const payeeOf = (t: Transaction): string | null => {
     const tag = tagsOf(t)[0];
     if (tag) return tag;
     const note = (t.note || '').trim();
@@ -126,10 +126,10 @@ const baseAmount = (t: Transaction): number => Math.abs(t.amount);
 const hasNativeAmount = (t: Transaction): boolean =>
     t.originalAmount !== undefined && Boolean(t.originalCurrency);
 
-const nativeCurrencyOf = (t: Transaction, baseCurrency: string): string =>
+export const nativeCurrencyOf = (t: Transaction, baseCurrency: string): string =>
     ((hasNativeAmount(t) ? t.originalCurrency : t.currency) || baseCurrency).toUpperCase();
 
-const nativeAmountOf = (t: Transaction): number =>
+export const nativeAmountOf = (t: Transaction): number =>
     Math.abs(hasNativeAmount(t) ? t.originalAmount! : t.amount);
 
 // ---------------------------------------------------------------------------
