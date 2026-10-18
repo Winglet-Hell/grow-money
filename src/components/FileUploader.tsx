@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Upload, FileSpreadsheet, Database, Lock } from 'lucide-react';
+import { Upload, FileSpreadsheet, Database, DatabaseBackup, Lock } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { parseFile } from '../lib/parser';
 import { generateTestData } from '../lib/testData';
@@ -145,7 +145,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, onTest
 
                 <input
                     type="file"
-                    accept=".csv,.xlsx,.xls"
+                    accept=".csv,.xlsx,.xls,.mmbackup"
                     className="hidden"
                     id="file-upload"
                     onChange={handleInputChange}
@@ -196,8 +196,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, onTest
                                     {isDragOver ? "Drop Now" : "Upload Statement"}
                                 </h3>
                                 <p className="text-emerald-900/50 text-base md:text-lg font-medium leading-relaxed">
-                                    <span className="md:hidden">Excel / CSV formats</span>
-                                    <span className="hidden md:inline">Drag & drop Excel file to unlock <span className="text-emerald-600/80 font-semibold">instant</span> analytics.</span>
+                                    <span className="md:hidden">Excel, CSV or app backup</span>
+                                    <span className="hidden md:inline">Drag & drop an Excel export or app backup to unlock <span className="text-emerald-600/80 font-semibold">instant</span> analytics.</span>
                                 </p>
                             </div>
                         </label>
@@ -205,9 +205,9 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, onTest
 
                     {/* 6. Actions Row: Supported Formats - Hidden on mobile */}
                     <div className="hidden md:flex items-center justify-center gap-3 mt-0 md:mt-2 w-full max-w-md">
-                        {['XLSX', 'CSV'].map((ext) => (
+                        {([['XLSX', FileSpreadsheet], ['CSV', FileSpreadsheet], ['MMBACKUP', DatabaseBackup]] as const).map(([ext, Icon]) => (
                             <span key={ext} className="flex items-center gap-1.5 bg-white/40 border border-white/60 px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-[10px] md:text-xs text-emerald-800/70 font-bold uppercase tracking-widest backdrop-blur-md shadow-sm pointer-events-none select-none">
-                                <FileSpreadsheet className="w-3 md:w-3.5 h-3 md:h-3.5" /> {ext}
+                                <Icon className="w-3 md:w-3.5 h-3 md:h-3.5" /> {ext}
                             </span>
                         ))}
                     </div>

@@ -442,7 +442,7 @@ function AppContent() {
       <input
         ref={importInputRef}
         type="file"
-        accept=".csv,.xlsx,.xls"
+        accept=".csv,.xlsx,.xls,.mmbackup"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];

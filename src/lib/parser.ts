@@ -7,9 +7,11 @@ export async function parseFile(file: File): Promise<Transaction[]> {
     if (extension === 'csv') {
         return parseCSV(file);
     } else if (['xlsx', 'xls'].includes(extension || '')) {
-        return parseExcel(file);
+        return parseBinary(file, 'xlsx');
+    } else if (extension === 'mmbackup') {
+        return parseBinary(file, 'mmbackup');
     } else {
-        throw new Error('Unsupported file format. Please upload CSV or Excel.');
+        throw new Error('Unsupported file format. Please upload an Excel or CSV export, or a .mmbackup backup.');
     }
 }
 
@@ -52,7 +54,8 @@ function parseCSV(file: File): Promise<Transaction[]> {
     });
 }
 
-function parseExcel(file: File): Promise<Transaction[]> {
+// An Excel export or the expense app's backup: both go to the worker as raw bytes.
+function parseBinary(file: File, fileType: 'xlsx' | 'mmbackup'): Promise<Transaction[]> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -63,7 +66,7 @@ function parseExcel(file: File): Promise<Transaction[]> {
             runWorker({
                 fileData,
                 fileName: file.name,
-                fileType: 'xlsx'
+                fileType
             }).then(resolve).catch(reject);
         };
         reader.onerror = (err) => reject(err);
