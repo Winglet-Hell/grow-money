@@ -1,7 +1,12 @@
-import type { Transaction } from '../types';
+import type { Transaction, WalletSnapshot } from '../types';
 import ParserWorker from './parser.worker?worker';
 
-export async function parseFile(file: File): Promise<Transaction[]> {
+export interface ParsedStatement {
+    transactions: Transaction[];
+    wallets?: WalletSnapshot; // only a backup carries them
+}
+
+export async function parseFile(file: File): Promise<ParsedStatement> {
     const extension = file.name.split('.').pop()?.toLowerCase();
 
     if (extension === 'csv') {
@@ -15,14 +20,14 @@ export async function parseFile(file: File): Promise<Transaction[]> {
     }
 }
 
-function runWorker(message: any): Promise<Transaction[]> {
+function runWorker(message: any): Promise<ParsedStatement> {
     return new Promise((resolve, reject) => {
         const worker = new ParserWorker();
 
         worker.onmessage = (e) => {
-            const { status, data, error } = e.data;
+            const { status, data, wallets, error } = e.data;
             if (status === 'success') {
-                resolve(data);
+                resolve({ transactions: data, wallets });
             } else {
                 reject(new Error(error));
             }
@@ -38,7 +43,7 @@ function runWorker(message: any): Promise<Transaction[]> {
     });
 }
 
-function parseCSV(file: File): Promise<Transaction[]> {
+function parseCSV(file: File): Promise<ParsedStatement> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -55,7 +60,7 @@ function parseCSV(file: File): Promise<Transaction[]> {
 }
 
 // An Excel export or the expense app's backup: both go to the worker as raw bytes.
-function parseBinary(file: File, fileType: 'xlsx' | 'mmbackup'): Promise<Transaction[]> {
+function parseBinary(file: File, fileType: 'xlsx' | 'mmbackup'): Promise<ParsedStatement> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {

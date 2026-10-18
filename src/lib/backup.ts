@@ -1,11 +1,11 @@
 import { unzipSync } from 'fflate';
 import type { Database, SqlJsStatic, SqlValue } from 'sql.js';
-import type { Transaction } from '../types';
+import type { Transaction, WalletSnapshot } from '../types';
 import { mapRow, uniquifyIds } from './statementRows';
 
 // A backup made by the source app (".mmbackup"): a short header, then a zip holding the app's
 // SQLite database and receipt photos. It has everything the xlsx export has and more: balance
-// corrections, the app's own ids, wallet balances. For now only what the export has is read.
+// corrections, the app's own ids, wallet balances. Read so far: the operations and the wallets.
 // Every operation is rebuilt as the export's row and goes through the same mapRow, so a backup
 // gives the very transactions, ids included, that an export made the same day does.
 
@@ -14,9 +14,10 @@ const DB_FILE = 'MyFinance.db';
 // The columns read below. The format is the app's own and undocumented, so a backup from a
 // changed app is turned away plainly instead of being half imported.
 const REQUIRED_COLUMNS: Record<string, string[]> = {
-    transaction: ['uid', 'created', 'type', 'amountInDefaultCurrency', 'amountInRealCurrency', 'amountInAccountCurrency', 'date', 'comment', 'isRemoved'],
-    transfer: ['uid', 'created', 'fromAmount', 'fromCurrencyCode', 'toAmount', 'toCurrencyCode', 'date', 'comment', 'isRemoved'],
-    account: ['uid', 'title', 'currencyCode'],
+    transaction: ['uid', 'created', 'modified', 'type', 'amountInDefaultCurrency', 'amountInRealCurrency', 'amountInAccountCurrency', 'date', 'comment', 'isRemoved'],
+    transfer: ['uid', 'created', 'modified', 'fromAmount', 'fromCurrencyCode', 'toAmount', 'toCurrencyCode', 'date', 'comment', 'isRemoved'],
+    account: ['uid', 'modified', 'title', 'currencyCode', 'position', 'isActive', 'isArchived', 'isRemoved'],
+    account_balance: ['uid', 'value'],
     category: ['uid', 'title'],
     tag: ['uid', 'name'],
     rates: ['fromCurrencyCode', 'toCurrencyCode', 'value'],
@@ -131,10 +132,7 @@ const textOrUndefined = (value: SqlValue) => (value === null ? undefined : Strin
 // The export writes crypto codes without the app's "ct:" prefix.
 const currencyLabel = (code: string) => code.replace(/^ct:/, '');
 
-function readStatement(db: Database): Transaction[] {
-    const main = String(select(db, "SELECT value FROM syncable_settings WHERE uid = 'defaultCurrencyCode'")[0]?.value ?? 'RUB');
-    const units = unitsPerWhole(db, main);
-
+function readOperations(db: Database, main: string, units: (code: string) => number): Transaction[] {
     const accounts = new Map(select(db, 'SELECT uid, title, currencyCode FROM account')
         .map(r => [String(r.uid), { title: String(r.title ?? ''), currency: String(r.currencyCode ?? '') }]));
     const categories = new Map(select(db, 'SELECT uid, title FROM category').map(r => [String(r.uid), String(r.title ?? '')]));
@@ -199,12 +197,58 @@ function readStatement(db: Database): Transaction[] {
     return uniquifyIds(parsed);
 }
 
-/** Reads a backup file into the same transactions an xlsx export of it gives. */
-export function readBackup(file: Uint8Array, SQL: SqlJsStatic): Transaction[] {
+/** Every wallet the app still has, with the balance it shows. Archived ones are marked, and so
+ *  are those switched off (the app's older way of putting a wallet away); deleted ones are left out. */
+function readWallets(db: Database, units: (code: string) => number): WalletSnapshot['wallets'] {
+    return select(db, `
+        SELECT a.title, a.currencyCode, a.isActive, a.isArchived, COALESCE(b.value, 0) AS balance
+        FROM account a LEFT JOIN account_balance b ON b.uid = a.uid
+        WHERE a.isRemoved = 0 ORDER BY a.position`)
+        .map(a => {
+            const currency = String(a.currencyCode ?? '');
+            return {
+                name: String(a.title ?? ''),
+                currency: currencyLabel(currency),
+                balance: Number(a.balance) / units(currency),
+                archived: a.isArchived === 1 || a.isActive === 0,
+            };
+        });
+}
+
+/** When the balances held: the latest moment the backup knows of, which is its last edit or
+ *  the app's last sync with its server (done whenever the app opens), whichever came later. */
+function balancesAsOf(db: Database): string {
+    const stamps = select(db, `
+        SELECT MAX(modified) AS at FROM "transaction"
+        UNION ALL SELECT MAX(modified) FROM transfer
+        UNION ALL SELECT MAX(modified) FROM account`).map(r => r.at);
+    if (select(db, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sync_data'").length) {
+        stamps.push(...select(db, "SELECT value AS at FROM sync_data WHERE key = 'syncCompletedDate'").map(r => r.at));
+    }
+    // UTC stamps with 3 or 6 decimals: compare them to the second.
+    const seconds = stamps
+        .map(at => (typeof at === 'string' ? /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d/.exec(at)?.[0] : undefined))
+        .filter((at): at is string => !!at)
+        .sort();
+    return seconds.length ? `${seconds[seconds.length - 1]}.000Z` : new Date().toISOString();
+}
+
+export interface BackupStatement {
+    transactions: Transaction[];
+    wallets: WalletSnapshot;
+}
+
+/** Reads a backup file: the same transactions an xlsx export of it gives, plus the wallets. */
+export function readBackup(file: Uint8Array, SQL: SqlJsStatic): BackupStatement {
     const db = new SQL.Database(unpackDatabase(file));
     try {
         checkFormat(db);
-        return readStatement(db);
+        const main = String(select(db, "SELECT value FROM syncable_settings WHERE uid = 'defaultCurrencyCode'")[0]?.value ?? 'RUB');
+        const units = unitsPerWhole(db, main);
+        return {
+            transactions: readOperations(db, main, units),
+            wallets: { asOf: balancesAsOf(db), wallets: readWallets(db, units) },
+        };
     } finally {
         db.close();
     }

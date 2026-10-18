@@ -31,7 +31,13 @@ export type Account = {
     balance: number;
     balance_date?: string; // ISO date string for checkpoint
     balance_checkpoint_tx_id?: string; // ID of the last transaction included in this balance
-    is_hidden?: boolean;
+    is_hidden?: boolean; // archived in the expense app: kept, but out of the list and net worth
+};
+
+// The expense app's wallets as a backup recorded them. An xlsx export has none.
+export type WalletSnapshot = {
+    asOf: string; // ISO time the balances held at: the backup's last edit or sync
+    wallets: { name: string; currency: string; balance: number; archived: boolean }[];
 };
 
 export type Trip = {

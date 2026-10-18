@@ -1,6 +1,6 @@
 
 import Papa from 'papaparse';
-import type { Transaction } from '../types';
+import type { Transaction, WalletSnapshot } from '../types';
 import { mapRow, uniquifyIds } from './statementRows';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm-browser.wasm?url';
 
@@ -91,7 +91,7 @@ async function parseCSVData(fileContent: string, fileName: string): Promise<Tran
 }
 
 // The source app's backup is its SQLite database; sql.js, which reads it, loads only for backups.
-async function parseBackupData(fileData: ArrayBuffer): Promise<Transaction[]> {
+async function parseBackupData(fileData: ArrayBuffer): Promise<{ transactions: Transaction[]; wallets: WalletSnapshot }> {
     const [{ default: initSqlJs }, { readBackup }] = await Promise.all([import('sql.js'), import('./backup')]);
     const SQL = await initSqlJs({ locateFile: () => sqlWasmUrl });
     return readBackup(new Uint8Array(fileData), SQL);
@@ -107,18 +107,19 @@ self.onmessage = async (e: MessageEvent) => {
 
     try {
         let transactions: Transaction[] = [];
+        let wallets: WalletSnapshot | undefined;
 
         if (fileType === 'xlsx' || fileType === 'xls') {
             transactions = await parseExcelData(fileData as ArrayBuffer);
         } else if (fileType === 'csv') {
             transactions = await parseCSVData(fileData as string, fileName);
         } else if (fileType === 'mmbackup') {
-            transactions = await parseBackupData(fileData as ArrayBuffer);
+            ({ transactions, wallets } = await parseBackupData(fileData as ArrayBuffer));
         } else {
             throw new Error(`Unsupported file type: ${fileType}`);
         }
 
-        self.postMessage({ status: 'success', data: transactions });
+        self.postMessage({ status: 'success', data: transactions, wallets });
     } catch (error: any) {
         self.postMessage({ status: 'error', error: error.message });
     }

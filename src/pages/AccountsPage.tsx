@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Wifi, WifiOff, Plus, Eye, EyeOff, ListChecks, AlertTriangle, Wallet, PieChart, Clock, ArrowUp, ArrowDown, ArrowUpDown, Activity, Layers } from 'lucide-react';
+import { Wifi, WifiOff, Plus, Eye, EyeOff, ListChecks, AlertTriangle, Wallet, PieChart, Clock, ArrowUp, ArrowDown, ArrowUpDown, Activity, Layers, Archive } from 'lucide-react';
 import type { Transaction, Account } from '../types';
 import { useAccounts, type AccountStatus } from '../hooks/useAccounts';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -56,13 +56,18 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
     const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<AccountStatus | null>(null);
     const [showEmpty, setShowEmpty] = useState(false);
+    const [showArchived, setShowArchived] = useState(false);
     const [grouped, setGroupedState] = useState<boolean>(readGrouped);
     const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'value', dir: 'desc' });
     const setGrouped = (v: boolean) => { setGroupedState(v); storeGrouped(v); };
 
     const money = (n: number) => (isPrivacyMode ? '••••••' : rub.format(n));
 
-    const withBalance = useMemo(() => accountsStatus.filter(a => a.current !== 0), [accountsStatus]);
+    // Wallets archived in the expense app sit apart: out of every total, listed on request.
+    const active = useMemo(() => accountsStatus.filter(a => !a.archived), [accountsStatus]);
+    const archived = useMemo(() => accountsStatus.filter(a => a.archived), [accountsStatus]);
+
+    const withBalance = useMemo(() => active.filter(a => a.current !== 0), [active]);
     const staleCount = useMemo(() => withBalance.filter(isStale).length, [withBalance]);
     const undatedCount = useMemo(() => withBalance.filter(a => a.isStored && !a.balance_date).length, [withBalance]);
 
@@ -70,7 +75,7 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
     // spend-by-currency chart on the analytics pages.
     const exposure = useMemo(() => {
         const byGroup = new Map<string, number>();
-        accountsStatus.forEach(a => {
+        active.forEach(a => {
             if (!a.hasRate || a.rubEquivalent <= 0) return;
             const g = exposureGroup(a.currency);
             byGroup.set(g, (byGroup.get(g) ?? 0) + a.rubEquivalent);
@@ -79,16 +84,16 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
         return Array.from(byGroup.entries())
             .map(([group, value]) => ({ group, value, share: total > 0 ? value / total : 0 }))
             .sort((a, b) => b.value - a.value);
-    }, [accountsStatus]);
+    }, [active]);
 
     const volatile = useMemo(() => {
-        const valued = accountsStatus.filter(a => a.hasRate);
+        const valued = active.filter(a => a.hasRate);
         const total = valued.reduce((s, a) => s + a.rubEquivalent, 0);
         const wallets = valued.filter(a => isVolatile(a.currency) && a.current !== 0);
         const value = wallets.reduce((s, a) => s + a.rubEquivalent, 0);
         const coins = [...new Set(wallets.map(a => a.currency))];
         return { value, share: total > 0 ? value / total : 0, wallets: wallets.length, coins };
-    }, [accountsStatus]);
+    }, [active]);
 
     const groups = useMemo(() => {
         const dir = sort.dir === 'asc' ? 1 : -1;
@@ -111,7 +116,7 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
         };
         // "Empty" means a zero balance — nothing else. Thresholding on 0.01 used to hide
         // small crypto holdings that were worth thousands of rubles.
-        const visible = accountsStatus.filter(a => showEmpty || a.current !== 0);
+        const visible = active.filter(a => showEmpty || a.current !== 0);
         const sorted = [...visible].sort(compare);
         if (!grouped) {
             // One flat list: the sort applies across every wallet, which is what "oldest
@@ -133,7 +138,7 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
                 nativeTotal: family === 'USD' ? null : rows.reduce((s, a) => s + a.current, 0),
             }))
             .sort((a, b) => b.total - a.total || a.family.localeCompare(b.family));
-    }, [accountsStatus, showEmpty, sort, grouped]);
+    }, [active, showEmpty, sort, grouped]);
 
     const toggleSort = (key: SortKey) => setSort(prev => ({
         key,
@@ -221,7 +226,7 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900">Wallets</h2>
                     <p className="text-gray-500">
-                        Balances are entered by hand — click one to change it.{' '}
+                        A backup import sets the balances; click one to change it by hand.{' '}
                         <span className="inline-flex items-center gap-1 text-gray-400">
                             {isLoadingRates ? <Wifi className="w-3.5 h-3.5 animate-pulse" /> : isLiveRates ? <Wifi className="w-3.5 h-3.5 text-emerald-500" /> : <WifiOff className="w-3.5 h-3.5 text-amber-500" />}
                             {isLoadingRates ? 'updating rates' : isLiveRates ? 'live rates' : 'estimated rates (offline)'}
@@ -254,7 +259,7 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
                 <SummaryTile
                     title="Net worth"
                     value={money(totalNetWorth)}
-                    sub={`${withBalance.length} wallets with a balance · ${accountsStatus.length} total`}
+                    sub={`${withBalance.length} wallets with a balance · ${active.length} total`}
                     icon={<Wallet className="w-9 h-9 text-emerald-500" strokeWidth={1.5} />}
                 />
                 <SummaryTile
@@ -343,8 +348,22 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
                         title={showEmpty ? 'Hide zero-balance wallets' : 'Show zero-balance wallets'}
                     >
                         {showEmpty ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        {showEmpty ? 'Hide empty' : `Show empty (${accountsStatus.length - withBalance.length})`}
+                        {showEmpty ? 'Hide empty' : `Show empty (${active.length - withBalance.length})`}
                     </button>
+                    {archived.length > 0 && (
+                        <button
+                            onClick={() => setShowArchived(v => !v)}
+                            aria-pressed={showArchived}
+                            className={cn(
+                                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap",
+                                showArchived ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                            )}
+                            title={showArchived ? 'Hide wallets archived in the expense app' : 'Show wallets archived in the expense app'}
+                        >
+                            <Archive className="w-3.5 h-3.5" />
+                            {showArchived ? 'Hide archived' : `Archived (${archived.length})`}
+                        </button>
+                    )}
                     <div className="md:hidden flex items-center gap-1.5 ml-auto">
                         <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Sort</span>
                         {([['value', '≈ RUB'], ['name', 'Name'], ['updated', 'Updated'], ['activity', 'Activity']] as [SortKey, string][]).map(([key, label]) => (
@@ -372,6 +391,29 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
                 {groups.length === 0 && (
                     <p className="px-6 py-8 text-sm text-gray-400 italic text-center">No wallets with a balance{showEmpty ? '' : ' — empty ones are hidden'}.</p>
                 )}
+                {showArchived && archived.length > 0 && (
+                    <div>
+                        <div className="flex items-baseline justify-between gap-3 px-4 md:px-6 py-2.5 bg-gray-50 border-y border-gray-100">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 min-w-0">
+                                <Archive className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">Archived in the expense app</span>
+                                <span className="text-xs font-medium text-gray-400 shrink-0">{archived.length}</span>
+                            </div>
+                            <div className="text-xs font-medium text-gray-400 shrink-0">not counted in net worth</div>
+                        </div>
+                        {archived.map(acc => (
+                            <WalletRow
+                                key={acc.id}
+                                account={acc}
+                                share={0}
+                                isPrivacyMode={isPrivacyMode}
+                                canEdit={!!userId}
+                                onEdit={setEditingAccount}
+                                onSaveBalance={saveBalance}
+                            />
+                        ))}
+                    </div>
+                )}
             </div>
 
             <CreateAccountModal
@@ -382,7 +424,7 @@ export function AccountsPage({ transactions, userId, onTransactionsChanged }: Ac
 
             <UpdateBalancesModal
                 isOpen={isUpdateAllOpen}
-                accounts={accountsStatus}
+                accounts={active}
                 onClose={() => setIsUpdateAllOpen(false)}
                 onSaveBalance={saveBalance}
                 onDone={handleEditSave}

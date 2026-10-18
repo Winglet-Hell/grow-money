@@ -7,11 +7,11 @@ import { UserSettingsProvider } from './contexts/UserSettingsContext';
 import { cn } from './lib/utils';
 import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
-import { syncAccountsWithSupabase } from './lib/accountUtils';
+import { syncAccountsWithSupabase, syncWalletsFromBackup, type WalletSyncReport } from './lib/accountUtils';
 import { invalidateAccounts, clearAccountsCache } from './lib/accountsStore';
 import { clearTripsCache } from './lib/tripsStore';
 import { clearCategoryLimitsCache } from './hooks/useCategoryLimits';
-import { parseFile } from './lib/parser';
+import { parseFile, type ParsedStatement } from './lib/parser';
 import { readImportMeta, writeImportMeta, clearImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
 import { ImportStatementDialog, type ImportState } from './components/ImportStatementDialog';
 import { BottomNav } from './components/BottomNav';
@@ -34,7 +34,7 @@ import { Navigation } from './components/Navigation';
 import { supabase } from './lib/supabase';
 import { Auth } from './components/Auth';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import type { Transaction } from './types';
+import type { Transaction, WalletSnapshot } from './types';
 
 
 // Feature Data
@@ -183,8 +183,8 @@ function AppContent() {
 
   // Replaces whatever is on the device with a freshly parsed statement. Used by the
   // landing-page uploader and by "Import statement" while data is already loaded.
-  // Resolves with the wallets the account sync created (empty when signed out).
-  const applyImport = async (data: Transaction[], fileName?: string): Promise<string[]> => {
+  // Resolves with what happened to the wallets (nothing when signed out).
+  const applyImport = async (data: Transaction[], fileName?: string, wallets?: WalletSnapshot): Promise<{ newAccounts: string[]; walletSync?: WalletSyncReport }> => {
     // UI PREFERENCE: Sort Newest First (Desc)
     data.sort((a, b) => {
       if (a.date !== b.date) return b.date.localeCompare(a.date);
@@ -205,18 +205,20 @@ function AppContent() {
     writeImportMeta(meta);
     setImportMeta(meta);
 
-    // Sync newly discovered accounts to Supabase, then let every mounted wallet list
-    // know the set of wallets may have grown.
+    // Bring the wallets up to date, then let every mounted wallet list know. A backup sets
+    // them as the expense app has them; an export only adds the wallets its operations name.
     if (session?.user?.id) {
-      const created = await syncAccountsWithSupabase(data, session.user.id);
+      const result = wallets
+        ? { newAccounts: [], walletSync: await syncWalletsFromBackup(wallets, session.user.id) }
+        : { newAccounts: await syncAccountsWithSupabase(data, session.user.id) };
       await invalidateAccounts();
-      return created;
+      return result;
     }
-    return [];
+    return { newAccounts: [] };
   };
 
-  const handleDataLoaded = async (data: Transaction[], fileName?: string) => {
-    await applyImport(data, fileName);
+  const handleDataLoaded = async (data: Transaction[], fileName?: string, wallets?: WalletSnapshot) => {
+    await applyImport(data, fileName, wallets);
   };
 
   // "Try Test Data" is a look around for signed-out visitors, so it is held in memory only.
@@ -238,12 +240,12 @@ function AppContent() {
   // click handler); the dialog only appears once a file has been chosen.
   const requestImport = () => importInputRef.current?.click();
 
-  const finishImport = async (data: Transaction[], fileName: string) => {
+  const finishImport = async (data: Transaction[], fileName: string, wallets?: WalletSnapshot) => {
     const summary = summarizeImport(transactions, data);
     setImportState({ status: 'applying', fileName });
     try {
-      const newAccounts = await applyImport(data, fileName);
-      setImportState({ status: 'done', fileName, summary, newAccounts });
+      const { newAccounts, walletSync } = await applyImport(data, fileName, wallets);
+      setImportState({ status: 'done', fileName, summary, newAccounts, walletSync });
     } catch (err) {
       console.error('Import failed:', err);
       setImportState({ status: 'error', fileName, message: err instanceof Error ? err.message : 'Could not save the data' });
@@ -252,9 +254,9 @@ function AppContent() {
 
   const handleImportFile = async (file: File) => {
     setImportState({ status: 'parsing', fileName: file.name });
-    let data: Transaction[];
+    let parsed: ParsedStatement;
     try {
-      data = await parseFile(file);
+      parsed = await parseFile(file);
     } catch (err) {
       console.error('Failed to parse statement:', err);
       setImportState({ status: 'error', fileName: file.name, message: err instanceof Error ? err.message : 'Failed to parse file' });
@@ -262,12 +264,13 @@ function AppContent() {
     }
     // Nothing is replaced until the file parsed cleanly. A file much smaller than the
     // current data is probably the wrong export — ask before dropping history.
+    const { transactions: data, wallets } = parsed;
     const summary = summarizeImport(transactions, data);
     if (summary.looksTruncated) {
-      setImportState({ status: 'confirm', fileName: file.name, summary, data });
+      setImportState({ status: 'confirm', fileName: file.name, summary, data, wallets });
       return;
     }
-    await finishImport(data, file.name);
+    await finishImport(data, file.name, wallets);
   };
 
   // Wiping local data means re-uploading the statement to get it back, so every
@@ -455,7 +458,7 @@ function AppContent() {
         onClose={() => setImportState({ status: 'idle' })}
         onRetry={() => { setImportState({ status: 'idle' }); requestImport(); }}
         onConfirmReplace={() => {
-          if (importState.status === 'confirm') finishImport(importState.data, importState.fileName);
+          if (importState.status === 'confirm') finishImport(importState.data, importState.fileName, importState.wallets);
         }}
       />
 

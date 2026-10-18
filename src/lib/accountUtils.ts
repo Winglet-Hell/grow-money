@@ -1,7 +1,11 @@
 import { supabase } from './supabase';
 import { db } from './db';
-import type { Account, Transaction } from '../types';
+import type { Account, Transaction, WalletSnapshot } from '../types';
 import { normalizeCurrencyCode, inferCurrencyFromName, isCryptoCode } from './currencies';
+
+// Wallets are matched by name, ignoring case and spaces, the way operations refer to them
+// ("USDT Bybit" and "Usdt bybit" are one wallet).
+const walletKey = (name: string) => (name || '').toLowerCase().replace(/\s+/g, '');
 
 export function inferAccountDetails(accountName: string, detectedCurrency?: string): Partial<Account> {
     const lowerName = accountName.toLowerCase();
@@ -36,13 +40,11 @@ export async function syncAccountsWithSupabase(transactions: Transaction[], user
     if (!transactions.length || !userId) return [];
 
     try {
-        const normalize = (s: string) => (s || '').toLowerCase().replace(/\s+/g, '');
-
         // Collect every referenced account, deduped by normalized name.
         const collected = new Map<string, { name: string; detectedCurrency?: string }>();
         const record = (name: string | undefined, currency?: string) => {
             if (!name) return;
-            const key = normalize(name);
+            const key = walletKey(name);
             if (!key || key === 'unknown' || key === 'uncategorized') return;
             const existing = collected.get(key);
             if (!existing) {
@@ -74,7 +76,7 @@ export async function syncAccountsWithSupabase(transactions: Transaction[], user
             return [];
         }
 
-        const existingNorm = new Set((existingAccounts || []).map(a => normalize(a.name)));
+        const existingNorm = new Set((existingAccounts || []).map(a => walletKey(a.name)));
 
         const newAccountsToCreate: Omit<Account, 'id' | 'created_at'>[] = [];
         collected.forEach(({ name, detectedCurrency }, key) => {
@@ -104,6 +106,85 @@ export async function syncAccountsWithSupabase(transactions: Transaction[], user
     } catch (err) {
         console.error('Unexpected error during account sync:', err);
         return [];
+    }
+}
+
+// What a backup import did to the stored wallets, for the import dialog.
+export interface WalletSyncReport {
+    asOf: string;
+    added: string[];
+    changed: { name: string; before: number; beforeCurrency: string; after: number; currency: string }[];
+    refined: string[]; // the stored balance was the backup's, rounded: only its decimals were added
+    archived: string[];
+    unarchived: string[];
+    notInBackup: string[]; // stored here only, left as they are: renamed or deleted in the app?
+    error?: string;
+}
+
+// Digits after the point in a number as JS writes it ("2e-8" has 8).
+const decimalsOf = (n: number) => {
+    const [digits, exponent] = String(n).split('e-');
+    return (digits.split('.')[1]?.length ?? 0) + (exponent ? Number(exponent) : 0);
+};
+
+/** What a backup changes in the stored wallets. The backup is the authority on every wallet it
+ *  has: its name as the app writes it, currency, balance and whether it is archived. A stored
+ *  wallet the backup doesn't have is left alone, and an archived one that isn't stored here is
+ *  not created. Pure, so the plan can be checked before anything is written. */
+export function planWalletSync(stored: Account[], snapshot: WalletSnapshot, userId: string) {
+    const byKey = new Map(stored.map(a => [walletKey(a.name), a]));
+    const seen = new Set<string>();
+    const updates: Account[] = [];
+    const inserts: Omit<Account, 'id' | 'created_at'>[] = [];
+    const report: WalletSyncReport = { asOf: snapshot.asOf, added: [], changed: [], refined: [], archived: [], unarchived: [], notInBackup: [] };
+
+    for (const w of snapshot.wallets) {
+        const key = walletKey(w.name);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const row = byKey.get(key);
+        if (!row) {
+            if (w.archived) continue;
+            const { type } = inferAccountDetails(w.name, w.currency);
+            inserts.push({ user_id: userId, name: w.name, type: type || 'cash', currency: w.currency, balance: w.balance, balance_date: snapshot.asOf, is_hidden: false });
+            report.added.push(w.name);
+            continue;
+        }
+        // Dated as of the backup even when the number stays: it was true then.
+        updates.push({ ...row, name: w.name, currency: w.currency, balance: w.balance, balance_date: snapshot.asOf, is_hidden: w.archived });
+        if (row.balance !== w.balance || row.currency !== w.currency) {
+            const rounded = row.currency === w.currency && Number(w.balance.toFixed(Math.min(decimalsOf(row.balance), 100))) === row.balance;
+            if (rounded) report.refined.push(w.name);
+            else report.changed.push({ name: w.name, before: row.balance, beforeCurrency: row.currency, after: w.balance, currency: w.currency });
+        }
+        if (w.archived && !row.is_hidden) report.archived.push(w.name);
+        if (!w.archived && row.is_hidden) report.unarchived.push(w.name);
+    }
+    report.notInBackup = stored.filter(a => !seen.has(walletKey(a.name))).map(a => a.name);
+    return { updates, inserts, report };
+}
+
+/** Sets the stored wallets from a backup (see planWalletSync) and reports what changed. */
+export async function syncWalletsFromBackup(snapshot: WalletSnapshot, userId: string): Promise<WalletSyncReport> {
+    const failed = (error: unknown): WalletSyncReport => ({
+        asOf: snapshot.asOf, added: [], changed: [], refined: [], archived: [], unarchived: [], notInBackup: [],
+        error: (error as { message?: string })?.message ?? String(error),
+    });
+    try {
+        const { data, error } = await supabase.from('accounts').select('*').eq('user_id', userId);
+        if (error) return failed(error);
+        const { updates, inserts, report } = planWalletSync(data ?? [], snapshot, userId);
+        if (updates.length) {
+            const { error: upsertError } = await supabase.from('accounts').upsert(updates);
+            if (upsertError) return failed(upsertError);
+        }
+        if (inserts.length) {
+            const { error: insertError } = await supabase.from('accounts').insert(inserts);
+            if (insertError) return failed(insertError);
+        }
+        return report;
+    } catch (err) {
+        return failed(err);
     }
 }
 

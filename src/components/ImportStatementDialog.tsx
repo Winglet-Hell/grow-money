@@ -2,17 +2,20 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { Loader2, CheckCircle2, AlertTriangle, XCircle, FileSpreadsheet, Wallet, X } from 'lucide-react';
-import type { Transaction } from '../types';
-import type { ImportSummary } from '../lib/importing';
+import type { Transaction, WalletSnapshot } from '../types';
+import { formatImportTime, type ImportSummary } from '../lib/importing';
+import type { WalletSyncReport } from '../lib/accountUtils';
+import { formatCurrencyAmount } from '../lib/currencies';
+import { usePrivacy } from '../contexts/PrivacyContext';
 import { formatDate } from '../lib/utils';
 
 // One import runs through these states; App.tsx owns the machine, this only renders it.
 export type ImportState =
     | { status: 'idle' }
     | { status: 'parsing'; fileName: string }
-    | { status: 'confirm'; fileName: string; summary: ImportSummary; data: Transaction[] }
+    | { status: 'confirm'; fileName: string; summary: ImportSummary; data: Transaction[]; wallets?: WalletSnapshot }
     | { status: 'applying'; fileName: string }
-    | { status: 'done'; fileName: string; summary: ImportSummary; newAccounts: string[] }
+    | { status: 'done'; fileName: string; summary: ImportSummary; newAccounts: string[]; walletSync?: WalletSyncReport }
     | { status: 'error'; fileName: string; message: string };
 
 interface ImportStatementDialogProps {
@@ -88,7 +91,7 @@ export const ImportStatementDialog: React.FC<ImportStatementDialogProps> = ({ st
             </>
         );
     } else if (state.status === 'done') {
-        const { summary, newAccounts } = state;
+        const { summary, newAccounts, walletSync } = state;
         const nothingNew = summary.added === 0 && summary.removed === 0;
         const typeBits = [
             summary.addedByType.expense > 0 && plural(summary.addedByType.expense, 'expense', 'expenses'),
@@ -162,6 +165,8 @@ export const ImportStatementDialog: React.FC<ImportStatementDialogProps> = ({ st
                         </div>
                     </div>
                 )}
+
+                {walletSync && <WalletSyncNote report={walletSync} onClose={onClose} />}
             </div>
         );
         footer = (
@@ -225,6 +230,65 @@ export const ImportStatementDialog: React.FC<ImportStatementDialogProps> = ({ st
         document.body
     );
 };
+
+// What a backup did to the wallets: the balances that moved (the first few), the rest in words.
+function WalletSyncNote({ report, onClose }: { report: WalletSyncReport; onClose: () => void }) {
+    const { isPrivacyMode } = usePrivacy();
+    const amount = (n: number, currency: string) => (isPrivacyMode ? '••••' : formatCurrencyAmount(n, currency));
+    const walletsLink = <Link to="/accounts" onClick={onClose} className="underline font-medium">Wallets page</Link>;
+
+    if (report.error) {
+        return (
+            <div className="rounded-xl bg-amber-50 border border-amber-100 p-3 text-sm text-amber-800 flex items-start gap-3">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                <div className="min-w-0">
+                    <p className="font-medium">The operations are in, but the wallets weren't updated</p>
+                    <p className="text-amber-700/80 break-words">{report.error}</p>
+                </div>
+            </div>
+        );
+    }
+
+    const shown = report.changed.slice(0, 4);
+    const untouched = report.changed.length + report.refined.length + report.added.length + report.archived.length + report.unarchived.length === 0;
+    return (
+        <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-sm text-emerald-800 flex items-start gap-3">
+            <Wallet className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+                <p className="font-medium">Wallets set from the backup, as of {formatImportTime(report.asOf)}</p>
+                {untouched && <p className="text-emerald-700/80">Every balance already matched.</p>}
+                {shown.length > 0 && (
+                    <ul className="space-y-0.5 text-emerald-700/90">
+                        {shown.map(c => (
+                            <li key={c.name} className="flex flex-wrap justify-between gap-x-3">
+                                <span className="min-w-0 break-words">{c.name}</span>
+                                <span className="ml-auto tabular-nums whitespace-nowrap">{amount(c.before, c.beforeCurrency)} → {amount(c.after, c.currency)}</span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                {report.changed.length > shown.length && (
+                    <p className="text-emerald-700/80">and {plural(report.changed.length - shown.length, 'more balance', 'more balances')}</p>
+                )}
+                {report.refined.length > 0 && (
+                    <p className="text-emerald-700/80">
+                        {report.changed.length > 0 ? plural(report.refined.length, 'other balance', 'other balances') : plural(report.refined.length, 'balance', 'balances')} only
+                        gained the decimals the app keeps.
+                    </p>
+                )}
+                {report.added.length > 0 && <p>Added: {report.added.join(', ')}</p>}
+                {report.archived.length > 0 && <p>Archived in the app: {report.archived.join(', ')}</p>}
+                {report.unarchived.length > 0 && <p>Back from the archive: {report.unarchived.join(', ')}</p>}
+                {report.notInBackup.length > 0 && (
+                    <p className="text-amber-700">
+                        Not in the backup, left as they are: {report.notInBackup.join(', ')}. If they were renamed or deleted in the app, delete them on the {walletsLink}.
+                    </p>
+                )}
+                {report.notInBackup.length === 0 && <p className="text-emerald-700/80">See them on the {walletsLink}.</p>}
+            </div>
+        </div>
+    );
+}
 
 function Stat({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'good' | 'warn' | 'muted' }) {
     const color = tone === 'good' ? 'text-emerald-600' : tone === 'warn' ? 'text-amber-600' : tone === 'muted' ? 'text-gray-400' : 'text-gray-900';

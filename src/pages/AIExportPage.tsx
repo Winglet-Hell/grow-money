@@ -55,7 +55,7 @@ export function AIExportPage({ transactions }: AIExportPageProps) {
         () =>
             buildAIExportPayload({
                 transactions,
-                accounts: accounts.map(a => ({
+                accounts: accounts.filter(a => !a.archived).map(a => ({
                     name: a.name,
                     type: a.type,
                     currency: a.currency,

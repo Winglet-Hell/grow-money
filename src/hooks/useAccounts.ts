@@ -20,6 +20,7 @@ export interface AccountStatus extends AccountConfig {
     rubEquivalent: number;
     hasRate: boolean; // false when no RUB rate is known, so the balance cannot be valued
     isStored: boolean; // has a DB row (discovered-only accounts get one on first save)
+    archived: boolean; // archived in the expense app: listed apart, not counted in net worth
     // Activity from the imported operations — the one clue to whether a manual balance is stale.
     txCount: number;
     lastActivity: string | null;   // newest operation touching this account ("YYYY-MM-DD")
@@ -84,9 +85,10 @@ export function useAccounts(transactions: Transaction[]) {
         return () => { cancelled = true; };
     }, []);
 
-    // Wallet balances are entered MANUALLY and stored in the DB — that is the single
-    // source of truth. Transactions do NOT move these numbers: the export has no starting
-    // balances and no manual corrections, so deriving a running balance is unreliable.
+    // Wallet balances are stored in the DB — that is the single source of truth. A backup
+    // import sets them as the expense app has them; otherwise they're typed in by hand.
+    // Transactions do NOT move these numbers: the export has no starting balances and no
+    // manual corrections, so deriving a running balance from it is unreliable.
     // Transactions are used here only to surface account *names* that don't have a row yet.
     const accounts = useMemo(() => {
         const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, '');
@@ -123,7 +125,7 @@ export function useAccounts(transactions: Transaction[]) {
             };
         };
 
-        // 1. DB accounts — the manually maintained balances.
+        // 1. DB accounts — the stored balances.
         dbAccounts.forEach(acc => {
             const key = normalize(acc.name);
             byKey.set(key, {
@@ -137,6 +139,7 @@ export function useAccounts(transactions: Transaction[]) {
                 hasRate: true, // recomputed below, once the rate table is consulted
                 balance_date: acc.balance_date,
                 isStored: !!acc.id,
+                archived: !!acc.is_hidden,
                 ...activityOf(key, acc.balance_date),
             });
         });
@@ -160,6 +163,7 @@ export function useAccounts(transactions: Transaction[]) {
                     rubEquivalent: 0,
                     hasRate: true, // recomputed below, once the rate table is consulted
                     isStored: false,
+                    archived: false,
                     ...activityOf(key),
                 });
             };
@@ -185,7 +189,7 @@ export function useAccounts(transactions: Transaction[]) {
     }, [transactions, rates, dbAccounts]);
 
     const totalNetWorth = useMemo(() => {
-        return accounts.reduce((acc, curr) => acc + curr.rubEquivalent, 0);
+        return accounts.reduce((acc, curr) => acc + (curr.archived ? 0 : curr.rubEquivalent), 0);
     }, [accounts]);
 
     return {
