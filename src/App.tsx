@@ -423,7 +423,7 @@ function AppContent() {
 
   // If not authenticated and explicitly asked for auth, show Auth screen
   if (!session && showAuth) {
-    return <Auth onLogin={() => setShowAuth(false)} />;
+    return <Auth onLogin={() => setShowAuth(false)} onBack={() => setShowAuth(false)} />;
   }
 
 
