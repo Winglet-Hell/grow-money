@@ -1,4 +1,3 @@
-import type { WalletSnapshot } from '../types';
 import type { RateLookup } from './fxBenchmark';
 import { exposureGroup } from './exposure';
 
@@ -24,7 +23,8 @@ export function readWalletHistory(): WalletHistory | null {
     }
 }
 
-export function writeWalletHistory(snapshot: WalletSnapshot): void {
+/** Keeps a backup's balances (its WalletSnapshot will do), or the history the account's copy carries. */
+export function writeWalletHistory(snapshot: WalletHistory): void {
     const history: WalletHistory = {
         asOf: snapshot.asOf,
         wallets: snapshot.wallets.map(({ name, currency, archived, history }) => ({ name, currency, archived, history })),

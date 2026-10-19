@@ -7,10 +7,14 @@ import { idsOf } from './transactionId';
 // ---------------------------------------------------------------------------
 
 export interface ImportMeta {
-    at: string;                // ISO timestamp of the import
+    at: string;                // ISO timestamp of the import (on whichever device made it)
     count: number;             // rows imported
     fileName?: string;
     latestDate: string | null; // newest transaction date in the file ("YYYY-MM-DD")
+    // How the statement stands against the account's copy (lib/statementSync).
+    userId?: string;           // the account it belongs to
+    version?: string;          // the version of the account's copy it last matched
+    unsaved?: 'import' | 'edit'; // imported or changed here since, and not in the account yet
 }
 
 const META_KEY = 'growmoney:lastImport';

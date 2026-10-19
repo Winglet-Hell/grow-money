@@ -293,20 +293,21 @@ function WalletSyncNote({ report, onClose }: { report: WalletSyncReport; onClose
     );
 }
 
-// The account's copy of the statement, which Claude on the phone or ChatGPT reads (lib/statementCloud).
+// The account's copy of the statement, which the user's other devices load and Claude on the phone
+// or ChatGPT reads (lib/statementCloud, lib/statementSync).
 function CopyNote({ copy }: { copy: CloudCopy }) {
     if (copy.status === 'failed') {
         return (
             <p className="text-xs text-amber-700 flex items-start gap-2">
                 <Cloud className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                <span className="break-words">The copy for Claude wasn't saved to your account: {copy.message}. Everything on this device is in place.</span>
+                <span className="break-words">Not saved to your account yet: {copy.message}. Everything on this device is in place, and it's tried again the next time you come back to Grow Money.</span>
             </p>
         );
     }
     return (
         <p className="text-xs text-gray-400 flex items-center gap-2">
             {copy.status === 'saving' ? <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" /> : <Cloud className="w-3.5 h-3.5 shrink-0" />}
-            {copy.status === 'saving' ? 'Saving a copy to your account for Claude…' : 'Copy saved to your account: Claude can answer from it on any device.'}
+            {copy.status === 'saving' ? 'Saving to your account…' : 'Saved to your account: your other devices and Claude get this statement.'}
         </p>
     );
 }

@@ -9,14 +9,16 @@ import { db } from './lib/db';
 import { FileUploader } from './components/FileUploader';
 import { syncAccountsWithSupabase, syncWalletsFromBackup, type WalletSyncReport } from './lib/accountUtils';
 import { invalidateAccounts, clearAccountsCache } from './lib/accountsStore';
-import { clearTripsCache, healTrips } from './lib/tripsStore';
+import { clearTripsCache, healTrips, loadTrips } from './lib/tripsStore';
 import { clearCategoryLimitsCache } from './hooks/useCategoryLimits';
 import { parseFile, type ParsedStatement } from './lib/parser';
-import { readImportMeta, writeImportMeta, clearImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
-import { writeWalletHistory, clearWalletHistory } from './lib/netWorth';
-import { rememberAppCategories, forgetAppCategories } from './lib/categoryIcons';
-import { refreshStatementCopy, saveStatementCopy } from './lib/statementCloud';
+import { readImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
+import { writeWalletHistory } from './lib/netWorth';
+import { rememberAppCategories } from './lib/categoryIcons';
+import type { CloudHead } from './lib/statementCloud';
+import { clearDevice, deviceMeta, loadFromAccount, newestFirst, noteEdited, saveImported, storeStatement, syncStatement, type SyncOutcome } from './lib/statementSync';
 import { ImportStatementDialog, type ImportState } from './components/ImportStatementDialog';
+import { AccountCopyCard } from './components/AccountCopyCard';
 import { BottomNav } from './components/BottomNav';
 import { DashboardPage } from './pages/DashboardPage';
 import { CategoryInsights } from './pages/CategoryInsights';
@@ -97,6 +99,9 @@ const FEATURES = [
 
 // ... existing code ...
 
+// A sync in the background that failed (offline, say) is tried again on the next look.
+const warnSync = (err: unknown) => console.warn("Couldn't compare the statement with the account's copy:", err);
+
 function AppContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,8 +113,12 @@ function AppContent() {
   const [importMeta, setImportMeta] = useState<ImportMeta | null>(() => readImportMeta());
   const [importState, setImportState] = useState<ImportState>({ status: 'idle' });
   const [isTestData, setIsTestData] = useState(false); // "Try Test Data" is on screen (held in memory only)
+  // The account's statement, offered on a device emptied with "Clear data" (or one it failed to reach).
+  const [accountCopy, setAccountCopy] = useState<{ head: CloudHead; error?: string; loading?: boolean } | null>(null);
+  const [loadingNote, setLoadingNote] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const dataLoadedRef = useRef(false);
+  const userIdRef = useRef<string | undefined>(undefined); // who is signed in now, for syncs that finish later
   const location = useLocation();
 
 
@@ -119,6 +128,7 @@ function AppContent() {
   useEffect(() => {
     // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      userIdRef.current = session?.user?.id;
       setSession(session);
       setUserEmail(session?.user?.email);
       setAuthReady(true);
@@ -127,6 +137,7 @@ function AppContent() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      userIdRef.current = session?.user?.id;
       setSession(session);
       setUserEmail(session?.user?.email);
       setAuthReady(true);
@@ -137,49 +148,57 @@ function AppContent() {
         clearAccountsCache();
         clearTripsCache();
         clearCategoryLimitsCache();
+        setAccountCopy(null);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Reads the device copy into state. Also used after a wallet rename/merge re-points
-  // operations in Dexie, so the pages see the new names without a reload. Replaces test
-  // data a visitor was looking at before signing in, even when nothing is stored.
-  // `copy` brings the account's copy for Claude in line too (lib/statementCloud): when it is
-  // missing or older on load, and always after the operations changed here.
-  const reloadFromDb = async (copy?: { userId: string; when: 'ifStale' | 'always' }) => {
+  // Reads the device copy into state: the signed-in account's only. Also used after a wallet
+  // rename/merge re-points operations in Dexie, so the pages see the new names without a
+  // reload. Replaces test data a visitor was looking at before signing in, even when nothing
+  // is stored. Resolves with whether there was anything to show.
+  const reloadFromDb = async (userId: string): Promise<boolean> => {
     try {
-      const count = await db.transactions.count();
-      if (count > 0) {
-        const savedTransactions = await db.transactions.toArray();
-        // UI PREFERENCE: Sort Newest First (Desc)
-        savedTransactions.sort((a, b) => {
-          if (a.date !== b.date) return b.date.localeCompare(a.date);
-          return (a.index || 0) - (b.index || 0);
-        });
-        setTransactions(savedTransactions);
-        const meta = readImportMeta();
-        if (copy && meta) {
-          const saving = copy.when === 'always'
-            ? saveStatementCopy(copy.userId, savedTransactions, meta)
-            : refreshStatementCopy(copy.userId, savedTransactions, meta);
-          saving.catch(err => console.warn('The copy of the statement for Claude was not saved:', err));
-        }
-      } else {
-        setTransactions([]);
-      }
-      setImportMeta(readImportMeta());
+      const meta = deviceMeta(userId);
+      const savedTransactions = meta ? await db.transactions.toArray() : [];
+      // UI PREFERENCE: Sort Newest First (Desc)
+      savedTransactions.sort(newestFirst);
+      setTransactions(savedTransactions);
+      setImportMeta(meta);
       setIsTestData(false);
+      return savedTransactions.length > 0;
     } catch (error) {
       console.error('Error loading data:', error);
+      return false;
     }
   };
+
+  // Brings this device's statement and the account's copy in line (lib/statementSync) and shows
+  // what came of it — unless the account it ran for is no longer the one signed in. `sync` is
+  // loadFromAccount for the landing page's button.
+  const syncWithAccount = (userId: string, sync: (userId: string) => Promise<SyncOutcome> = syncStatement) =>
+    sync(userId).then(outcome => {
+      if (userIdRef.current !== userId) return;
+      if (outcome.kind === 'pulled') {
+        setTransactions(outcome.transactions);
+        setImportMeta(outcome.meta);
+        setIsTestData(false);
+        // The import that made the copy set the wallets and moved the trips' links in the account too.
+        invalidateAccounts();
+        loadTrips(true);
+      }
+      // The copy is offered on a device with nothing to show; once loaded, or gone, it isn't.
+      setAccountCopy(outcome.kind === 'offer' ? { head: outcome.head, error: outcome.error } : null);
+    });
 
   // 2. Load locally-stored transactions once the session is actually known.
   //    (Previously this ran once on mount reading a stale `session` closure that was
   //     still null, so it never loaded data after the session resolved — the app showed
   //     the landing page on every reload even when signed in with data on device.)
+  //    Then the account's copy: a statement imported on another device comes in, and this
+  //    device's goes up when it's the newer one.
   useEffect(() => {
     if (!authReady) return;
 
@@ -192,19 +211,53 @@ function AppContent() {
     if (dataLoadedRef.current) return; // don't reload on token refresh
     dataLoadedRef.current = true;
 
-    reloadFromDb({ userId: session.user.id, when: 'ifStale' }).finally(() => setIsLoading(false));
+    const userId: string = session.user.id;
+    (async () => {
+      if (await reloadFromDb(userId)) {
+        setIsLoading(false);
+        syncWithAccount(userId).catch(warnSync);
+        return;
+      }
+      // Nothing on this device yet (a new phone or browser): wait for the account's copy rather
+      // than flash the upload screen first — though not for ever on a bad connection. Right
+      // after signing in the page is already up, so the wait shows from here.
+      setIsLoading(true);
+      setLoadingNote('Checking your account for a statement…');
+      await Promise.race([syncWithAccount(userId).catch(warnSync), new Promise(resolve => setTimeout(resolve, 10_000))]);
+      setLoadingNote(null);
+      setIsLoading(false);
+    })();
   }, [session, authReady]);
+
+  // 3. Back on the page (from another app or tab, a phone woken up, the network back): a
+  //    statement imported elsewhere meanwhile comes in. Unless the copy changed, that costs
+  //    one small request for its version.
+  const signedInId: string | undefined = session?.user?.id;
+  useEffect(() => {
+    if (!signedInId) return;
+    let lastLook = Date.now();
+    const lookAgain = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastLook < 15_000) return;
+      lastLook = Date.now();
+      syncWithAccount(signedInId).catch(warnSync);
+    };
+    document.addEventListener('visibilitychange', lookAgain);
+    window.addEventListener('online', lookAgain);
+    return () => {
+      document.removeEventListener('visibilitychange', lookAgain);
+      window.removeEventListener('online', lookAgain);
+    };
+  }, [signedInId]);
 
   // Replaces whatever is on the device with a freshly parsed statement. Used by the
   // landing-page uploader and by "Import statement" while data is already loaded.
   // Resolves with what happened to the wallets (nothing when signed out), and, signed in, the
-  // save of the account's copy for Claude, which goes on in the background.
+  // save of the account's copy — what the other devices and Claude read — which goes on in
+  // the background.
   const applyImport = async (data: Transaction[], fileName?: string, backup?: BackupExtras): Promise<{ newAccounts: string[]; walletSync?: WalletSyncReport; copy?: Promise<void> }> => {
     // UI PREFERENCE: Sort Newest First (Desc)
-    data.sort((a, b) => {
-      if (a.date !== b.date) return b.date.localeCompare(a.date);
-      return (a.index || 0) - (b.index || 0);
-    });
+    data.sort(newestFirst);
+    const userId: string | undefined = session?.user?.id;
 
     // A backup's balance history and category looks, stored before the new statement reaches the
     // pages that read them. An export has neither and leaves the last backup's in place.
@@ -214,27 +267,28 @@ function AppContent() {
     }
     setTransactions(data);
     setIsTestData(false);
-    await db.transactions.clear();
-    await db.transactions.bulkAdd(data);
+    setAccountCopy(null);
 
     const meta: ImportMeta = {
       at: new Date().toISOString(),
       count: data.length,
       fileName,
       latestDate: data.reduce<string | null>((max, t) => (!max || t.date > max ? t.date : max), null),
+      // Signed in, it goes to the account next, in place of what the account held.
+      ...(userId ? { userId, version: deviceMeta(userId)?.version, unsaved: 'import' as const } : {}),
     };
-    writeImportMeta(meta);
+    await storeStatement(data, meta);
     setImportMeta(meta);
 
     // Bring the wallets up to date, then let every mounted wallet list know. A backup sets them
     // as the expense app has them and moves the trips' links to the app's own ids; an export
     // only adds the wallets its operations name.
-    if (session?.user?.id) {
-      const copy = saveStatementCopy(session.user.id, data, meta);
+    if (userId) {
+      const copy = saveImported(userId, data, meta);
       copy.catch(() => undefined); // handled by the caller once the wallets are done; no unhandled rejection meanwhile
       const result = backup
-        ? { newAccounts: [], walletSync: await syncWalletsFromBackup(backup.wallets, session.user.id) }
-        : { newAccounts: await syncAccountsWithSupabase(data, session.user.id) };
+        ? { newAccounts: [], walletSync: await syncWalletsFromBackup(backup.wallets, userId) }
+        : { newAccounts: await syncAccountsWithSupabase(data, userId) };
       if (backup) await healTrips(data).catch(err => console.error('Moving trip links failed:', err));
       await invalidateAccounts();
       return { ...result, copy };
@@ -244,7 +298,7 @@ function AppContent() {
 
   const handleDataLoaded = async (data: Transaction[], fileName?: string, backup?: BackupExtras) => {
     const { copy } = await applyImport(data, fileName, backup);
-    copy?.catch(err => console.warn('The copy of the statement for Claude was not saved:', err));
+    copy?.catch(err => console.warn("The statement wasn't saved to the account (it goes up on the next sync):", err));
   };
 
   // "Try Test Data" is a look around for signed-out visitors, so it is held in memory only.
@@ -272,7 +326,7 @@ function AppContent() {
     try {
       const { newAccounts, walletSync, copy } = await applyImport(data, fileName, backup);
       setImportState({ status: 'done', fileName, summary, newAccounts, walletSync, ...(copy ? { copy: { status: 'saving' } } : {}) });
-      // The dialog says how the account's copy for Claude went, while it is still open on this import.
+      // The dialog says how the account's copy went, while it is still open on this import.
       copy?.then(
         () => setImportState(s => (s.status === 'done' && s.fileName === fileName ? { ...s, copy: { status: 'saved' } } : s)),
         (err: unknown) => setImportState(s => (s.status === 'done' && s.fileName === fileName
@@ -320,11 +374,31 @@ function AppContent() {
   const handleReset = async () => {
     setIsResetDialogOpen(false);
     setTransactions([]);
-    await db.transactions.clear();
-    clearImportMeta();
-    clearWalletHistory();
-    forgetAppCategories();
     setImportMeta(null);
+    await clearDevice();
+    // The account keeps its copy: offered here to load back, never brought back unasked.
+    if (session?.user?.id) syncWithAccount(session.user.id).catch(warnSync);
+  };
+
+  // A wallet renamed or merged re-pointed operations on this device: show them, and save them
+  // to the account so the other devices get the new names too.
+  const handleOperationsEdited = async () => {
+    const userId: string | undefined = session?.user?.id;
+    if (!userId) return;
+    noteEdited(userId);
+    await reloadFromDb(userId);
+    syncWithAccount(userId).catch(warnSync);
+  };
+
+  // "Load from account" on the landing page.
+  const loadAccountCopy = () => {
+    const userId: string | undefined = session?.user?.id;
+    if (!userId || !accountCopy) return;
+    const { head } = accountCopy;
+    setAccountCopy({ head, loading: true });
+    syncWithAccount(userId, loadFromAccount).catch((err: unknown) => {
+      if (userIdRef.current === userId) setAccountCopy({ head, error: err instanceof Error ? err.message : String(err) });
+    });
   };
 
   const handleLogout = async () => {
@@ -340,8 +414,9 @@ function AppContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-emerald-50">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-emerald-50 px-4">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+        {loadingNote && <p className="text-sm font-medium text-emerald-800/60 text-center">{loadingNote}</p>}
       </div>
     );
   }
@@ -431,6 +506,10 @@ function AppContent() {
                 </p>
               </div>
 
+              {session && accountCopy && (
+                <AccountCopyCard head={accountCopy.head} error={accountCopy.error} loading={!!accountCopy.loading} onLoad={loadAccountCopy} />
+              )}
+
               <FileUploader onDataLoaded={handleDataLoaded} onTestData={loadTestData} isAuthenticated={!!session} onSignIn={() => setShowAuth(true)} />
 
               {/* Comprehensive Features Grid - Hidden on mobile as per user request */}
@@ -463,7 +542,7 @@ function AppContent() {
                 <Route path="/paycheck" element={<PaycheckPage transactions={transactions} />} />
                 <Route path="/trends" element={<TrendsPage transactions={transactions} />} />
                 <Route path="/wishlist" element={<GoalsPage transactions={transactions} userId={session?.user?.id} />} />
-                <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} onTransactionsChanged={() => reloadFromDb(session?.user?.id ? { userId: session.user.id, when: 'always' } : undefined)} />} />
+                <Route path="/accounts" element={<AccountsPage transactions={transactions} userId={session?.user?.id} onTransactionsChanged={handleOperationsEdited} />} />
                 <Route path="/ai-export" element={<AIExportPage transactions={transactions} />} />
                 <Route path="/trip-analytics" element={<TripAnalyticsPage transactions={transactions} />} />
                 <Route path="/trip-analytics/:tripId" element={<TripAnalyticsPage transactions={transactions} />} />
@@ -505,7 +584,7 @@ function AppContent() {
       <ConfirmDialog
         isOpen={isResetDialogOpen}
         title="Clear imported data?"
-        description="This removes the transactions stored on this device. Wallets, goals, settings and the copy Claude reads stay in your account — you'll just need to upload the statement again."
+        description="This removes the transactions stored on this device. Your account keeps its copy, along with wallets, goals and settings — load it back here or upload a statement again."
         confirmLabel="Clear data"
         tone="danger"
         onConfirm={handleReset}

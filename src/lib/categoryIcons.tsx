@@ -369,6 +369,16 @@ function storedAppCategories(): Map<string, AppCategory> {
     return appCategories;
 }
 
+/** The last backup's categories as kept on this device, for the account's copy; null before any. */
+export function readAppCategories(): AppCategory[] | null {
+    try {
+        const list = JSON.parse(localStorage.getItem(APP_CATEGORIES_KEY) ?? 'null');
+        return Array.isArray(list) ? list : null;
+    } catch {
+        return null;
+    }
+}
+
 /** Keeps a backup's categories for the looks of the ones the table doesn't know. */
 export function rememberAppCategories(categories: AppCategory[]): void {
     try { localStorage.setItem(APP_CATEGORIES_KEY, JSON.stringify(categories)); } catch { /* storage blocked */ }

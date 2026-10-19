@@ -1,10 +1,12 @@
 -- ============================================================================
--- statements: a copy of the last imported statement, for the online MCP server.
+-- statements: the account's copy of the last imported statement.
 --
--- One row per user, written by the app on every signed-in import (lib/statementCloud): the
--- operations as the app parsed them, and the wallets' day-by-day balances from the last backup.
--- The online MCP server (supabase/functions/mcp) reads it when Claude on the phone or the web, or
--- ChatGPT, asks about money. Owner-only like every table (supabase_migration_rls.sql lists it too).
+-- One row per user, written by the device that imported or changed the operations
+-- (lib/statementCloud): the operations as the app parsed them, the wallets' day-by-day balances
+-- and the categories from the last backup. The user's other devices load it from here
+-- (lib/statementSync), and the online MCP server (supabase/functions/mcp) reads it when Claude
+-- on the phone or the web, or ChatGPT, asks about money. Owner-only like every table
+-- (supabase_migration_rls.sql lists it too).
 --
 -- Run once in the Supabase SQL editor. Safe to run again.
 -- ============================================================================
@@ -17,8 +19,12 @@ create table if not exists public.statements (
   latest_date date,                                 -- the newest operation in it
   transactions jsonb not null default '[]'::jsonb,  -- every operation, as the app keeps them (src/types Transaction)
   wallet_history jsonb,                             -- lib/netWorth WalletHistory from the last backup; null before any
-  updated_at timestamptz not null default now()
+  app_categories jsonb,                             -- src/types AppCategory[] from the last backup; null before any
+  updated_at timestamptz not null default now()     -- changes with every save: the copy's version
 );
+
+-- Added with loading the copy on other devices: the looks of categories the app's own table doesn't know.
+alter table public.statements add column if not exists app_categories jsonb;
 
 alter table public.statements enable row level security;
 
