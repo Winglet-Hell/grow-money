@@ -12,9 +12,8 @@ interface AccountCopyCardProps {
 // On the landing page of a device emptied with "Clear data", or one the account's copy didn't
 // reach: the statement the account keeps, to load back here without the file.
 export function AccountCopyCard({ head, error, loading, onLoad }: AccountCopyCardProps) {
-    // Narrower than the uploader below, so it clears the landing page's floating icons.
     return (
-        <div className="w-full max-w-xl mx-auto mb-4 md:mb-6 relative z-20 rounded-2xl border border-white/70 bg-white/70 backdrop-blur-md shadow-sm px-4 py-3.5 md:px-5 md:py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+        <div className="w-full rounded-2xl border border-emerald-900/5 bg-white shadow-sm px-4 py-3.5 md:px-5 md:py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
             <div className="flex items-start gap-3 flex-1 min-w-0">
                 <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
                     <CloudDownload className="w-5 h-5 text-emerald-600" />

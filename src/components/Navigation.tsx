@@ -246,7 +246,7 @@ export function Navigation({ onReset, onImport, importMeta, isAuthenticated, onS
                             onClick={onSignIn}
                             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap"
                         >
-                            Sign In
+                            Sign in
                         </button>
                     ) : (
                         <div className="relative">

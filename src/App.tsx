@@ -1,12 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, PieChart, TrendingUp, Wallet, LineChart, ShieldCheck, Import, Heart } from 'lucide-react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { PrivacyProvider } from './contexts/PrivacyContext';
 import { UserSettingsProvider } from './contexts/UserSettingsContext';
 
-import { cn } from './lib/utils';
 import { db } from './lib/db';
-import { FileUploader } from './components/FileUploader';
+import { Landing } from './components/Landing';
 import { syncAccountsWithSupabase, syncWalletsFromBackup, type WalletSyncReport } from './lib/accountUtils';
 import { invalidateAccounts, clearAccountsCache } from './lib/accountsStore';
 import { clearTripsCache, healTrips, loadTrips } from './lib/tripsStore';
@@ -41,63 +39,6 @@ import { supabase } from './lib/supabase';
 import { Auth } from './components/Auth';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import type { BackupExtras, Transaction } from './types';
-
-
-// Feature Data
-const FEATURES = [
-  {
-    icon: <LayoutDashboard className="w-5 h-5" />,
-    title: "Smart Overview",
-    description: "Get an instant snapshot of your net balance and recent financial activity at a glance.",
-    color: "bg-emerald-50 text-emerald-600"
-  },
-  {
-    icon: <PieChart className="w-5 h-5" />,
-    title: "Category Insights",
-    description: "Deep dive into your spending habits with detailed category and tag breakdowns.",
-    color: "bg-blue-50 text-blue-600"
-  },
-  {
-    icon: <TrendingUp className="w-5 h-5" />,
-    title: "Income Analysis",
-    description: "Track your revenue sources and monitor your monthly earnings growth.",
-    color: "bg-purple-50 text-purple-600"
-  },
-  {
-    icon: <LineChart className="w-5 h-5" />,
-    title: "Financial Trends",
-    description: "Analyze historical performance over 3M, 6M, 1Y or All Time periods.",
-    color: "bg-amber-50 text-amber-600"
-  },
-  {
-    icon: <Wallet className="w-5 h-5" />,
-    title: "Multi-Wallet",
-    description: "Manage multiple accounts and track your total net worth in one place.",
-    color: "bg-indigo-50 text-indigo-600"
-  },
-  {
-    icon: <Heart className="w-5 h-5" />,
-    title: "Goal Planning",
-    description: "Set financial goals, track wishlists, and monitor your savings progress.",
-    color: "bg-rose-50 text-rose-600"
-  },
-  {
-    icon: <Import className="w-5 h-5" />,
-    title: "AI Integration",
-    description: "Export clean data efficiently for advanced analysis with ChatGPT or Gemini.",
-    color: "bg-sky-50 text-sky-600"
-  },
-  {
-    icon: <ShieldCheck className="w-5 h-5" />,
-    title: "Privacy First",
-    description: "Statements are read on your device. Your data lives in your own account, visible only to you and the AI apps you allow.",
-    color: "bg-gray-50 text-gray-600"
-  }
-];
-
-
-
-// ... existing code ...
 
 // A sync in the background that failed (offline, say) is tried again on the next look.
 const warnSync = (err: unknown) => console.warn("Couldn't compare the statement with the account's copy:", err);
@@ -249,8 +190,8 @@ function AppContent() {
     };
   }, [signedInId]);
 
-  // Replaces whatever is on the device with a freshly parsed statement. Used by the
-  // landing-page uploader and by "Import statement" while data is already loaded.
+  // Replaces whatever is on the device with a freshly parsed statement. Every import comes
+  // here through handleImportFile: the import screen's drop zone and "Import statement" alike.
   // Resolves with what happened to the wallets (nothing when signed out), and, signed in, the
   // save of the account's copy — what the other devices and Claude read — which goes on in
   // the background.
@@ -296,10 +237,6 @@ function AppContent() {
     return { newAccounts: [] };
   };
 
-  const handleDataLoaded = async (data: Transaction[], fileName?: string, backup?: BackupExtras) => {
-    const { copy } = await applyImport(data, fileName, backup);
-    copy?.catch(err => console.warn("The statement wasn't saved to the account (it goes up on the next sync):", err));
-  };
 
   // "Try Test Data" is a look around for signed-out visitors, so it is held in memory only.
   // Going through applyImport would replace the statement stored on this device — signing
@@ -429,21 +366,6 @@ function AppContent() {
 
   return (
     <div className={`min-h-screen pb-4 md:pb-8 font-sans selection:bg-emerald-200 selection:text-emerald-900 overflow-x-hidden relative transition-colors duration-700 ${transactions.length > 0 ? 'bg-slate-50' : 'bg-[#F0FDF9]'}`}>
-      {/* --- Ethereal Background Layers (Only on Landing) --- */}
-
-      {transactions.length === 0 && (
-        <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
-          {/* Top Right Blob - Ghostly */}
-          <div className="absolute top-[-20%] right-[-10%] w-[70vw] h-[70vw] bg-gradient-to-br from-emerald-50/20 to-cyan-50/20 rounded-full blur-[80px] md:blur-[160px] mix-blend-multiply opacity-30 animate-blob transition-all duration-1000" />
-
-          {/* Bottom Left Blob - Ghostly */}
-          <div className="absolute bottom-[-20%] left-[-10%] w-[60vw] h-[60vw] bg-gradient-to-tr from-teal-50/20 to-emerald-50/10 rounded-full blur-[80px] md:blur-[160px] mix-blend-multiply opacity-30 animate-blob animation-delay-4000 transition-all duration-1000" />
-
-          {/* Center - Almost invisible shimmer */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50vw] h-[50vw] bg-white/40 rounded-full blur-[100px] md:blur-[180px] opacity-20 animate-pulse-slow" />
-        </div>
-      )}
-
       {/* Navigation */}
       <Navigation
         onReset={requestReset}
@@ -459,77 +381,16 @@ function AppContent() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 md:pt-24 pb-8 relative">
         {
           transactions.length === 0 ? (
-            <div className="min-h-[80vh] md:min-h-[85vh] flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-8 duration-1000 relative">
-
-              {/* --- Floating Glass Icons --- */}
-
-              {/* Top Left: Bar Chart */}
-              <div className="absolute top-[15%] left-[10%] w-20 h-20 rounded-2xl bg-white/30 border border-white/60 backdrop-blur-xl shadow-lg flex items-center justify-center animate-float hidden lg:flex">
-                <div className="bg-emerald-100/50 p-3 rounded-xl">
-                  <LineChart className="w-8 h-8 text-emerald-600" />
-                </div>
-              </div>
-
-              {/* Top Right: Pie Chart */}
-              <div className="absolute top-[20%] right-[15%] w-16 h-16 rounded-2xl bg-white/30 border border-white/60 backdrop-blur-xl shadow-lg flex items-center justify-center animate-float animation-delay-2000 hidden lg:flex">
-                <div className="bg-cyan-100/50 p-3 rounded-xl">
-                  <PieChart className="w-6 h-6 text-cyan-600" />
-                </div>
-              </div>
-
-              {/* Bottom Left: Coins */}
-              <div className="absolute bottom-[25%] left-[15%] w-14 h-14 rounded-full bg-white/30 border border-white/60 backdrop-blur-xl shadow-lg flex items-center justify-center animate-float animation-delay-4000 hidden lg:flex">
-                <div className="bg-emerald-50 p-2.5 rounded-full">
-                  <TrendingUp className="w-5 h-5 text-emerald-600" />
-                </div>
-              </div>
-
-              {/* Bottom Right: Wallet */}
-              <div className="absolute bottom-[30%] right-[10%] w-18 h-18 rounded-2xl bg-white/30 border border-white/60 backdrop-blur-xl shadow-lg flex items-center justify-center animate-float animation-delay-1000 hidden lg:flex">
-                <div className="bg-teal-100/50 p-3 rounded-xl">
-                  <Wallet className="w-7 h-7 text-teal-600" />
-                </div>
-              </div>
-
-
-              {/* Hero Section */}
-              <div className="text-center mb-6 md:mb-8 max-w-4xl relative z-10 px-2 lg:px-0">
-                <h2 className="text-4xl md:text-7xl font-extrabold tracking-tight text-emerald-950 mb-3 md:mb-6 leading-tight">
-                  Your Personal <br className="hidden md:block" />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">
-                    Financial Analytics
-                  </span>
-                </h2>
-                <p className="text-emerald-800/60 text-base md:text-xl font-medium tracking-wide max-w-2xl mx-auto leading-relaxed">
-                  Transform statements into insights. <br className="hidden md:block" />
-                  Secure, private, and beautifully visualized.
-                </p>
-              </div>
-
-              {session && accountCopy && (
+            <Landing
+              isAuthenticated={!!session}
+              onSignIn={() => setShowAuth(true)}
+              onTestData={loadTestData}
+              onFile={handleImportFile}
+              onChooseFile={requestImport}
+              accountCopy={session && accountCopy ? (
                 <AccountCopyCard head={accountCopy.head} error={accountCopy.error} loading={!!accountCopy.loading} onLoad={loadAccountCopy} />
-              )}
-
-              <FileUploader onDataLoaded={handleDataLoaded} onTestData={loadTestData} isAuthenticated={!!session} onSignIn={() => setShowAuth(true)} />
-
-              {/* Comprehensive Features Grid - Hidden on mobile as per user request */}
-              <div className="mt-12 md:mt-32 w-full hidden md:block">
-                <div className="text-center mb-12">
-                  <h3 className="text-sm font-bold text-emerald-600/50 uppercase tracking-[0.2em]">Everything you need</h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full px-4">
-                  {FEATURES.map((feature, idx) => (
-                    <FeatureItem key={idx} {...feature} darkMode={false} glassMode={true} />
-                  ))}
-                </div>
-              </div>
-
-              {/* Footer text */}
-              <div className="mt-20 text-center text-sm text-emerald-800/40 font-medium tracking-widest uppercase">
-                <p>© 2026 Grow Money</p>
-              </div>
-            </div>
+              ) : undefined}
+            />
           ) : (
             // Logged in Dashboard View - Clean layout
             // No entrance of its own: each page fades in itself, and both together slid in twice.
@@ -606,31 +467,5 @@ function App() {
     </BrowserRouter>
   );
 }
-
-const FeatureItem = ({ icon, title, description, color, darkMode, glassMode }: { icon: React.ReactNode, title: string, description: string, color: string, darkMode?: boolean, glassMode?: boolean }) => (
-  <div className={cn(
-    "group flex flex-col gap-4 p-6 rounded-2xl border transition-all duration-300 hover:-translate-y-1 relative overflow-hidden",
-    glassMode
-      ? "bg-white/40 border-white/60 shadow-sm hover:shadow-lg hover:bg-white/60 backdrop-blur-lg"
-      : darkMode
-        ? "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20 hover:shadow-[0_0_20px_rgba(52,211,153,0.1)]"
-        : "bg-white border-gray-100 shadow-sm hover:shadow-lg"
-  )}>
-    <div className={cn(
-      "w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 duration-300",
-      glassMode ? "bg-white/50 text-emerald-600 shadow-inner" : (darkMode ? "bg-white/10 text-emerald-400" : color)
-    )}>
-      {icon}
-    </div>
-    <div className="space-y-2 relative z-10">
-      <h3 className={cn("font-bold text-lg", darkMode ? "text-white" : "text-emerald-950")}>{title}</h3>
-      <p className={cn("text-sm leading-relaxed", darkMode ? "text-slate-400" : "text-emerald-800/60")}>{description}</p>
-    </div>
-
-    {darkMode && (
-      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-    )}
-  </div>
-)
 
 export default App;
