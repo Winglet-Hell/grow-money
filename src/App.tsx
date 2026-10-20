@@ -421,11 +421,14 @@ function AppContent() {
       {transactions.length > 0 && <BottomNav onReset={requestReset} onImport={requestImport} importMeta={importMeta} />}
 
       {/* Shared picker for every "Import statement" entry point. Resetting value lets the
-          same file be chosen twice in a row (e.g. after fixing an export). */}
+          same file be chosen twice in a row (e.g. after fixing an export).
+          iOS keeps only the extensions it knows a MIME type for, so ".mmbackup" alone left the
+          backup greyed out in Files. application/octet-stream (any file) lets it be picked there;
+          parseFile turns away whatever isn't a statement. */}
       <input
         ref={importInputRef}
         type="file"
-        accept=".csv,.xlsx,.xls,.mmbackup"
+        accept=".csv,.xlsx,.xls,.mmbackup,application/octet-stream"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
