@@ -29,6 +29,8 @@ import { useHistoricalRates } from '../hooks/useHistoricalRates';
 import {
     FIRST_SNAPSHOT_DATE,
     IMPLAUSIBLE_CUT_PCT,
+    exchangerKey,
+    exchangerOf,
     isCrossCurrencyTransfer,
     isImplausibleCut,
     makeRateLookup,
@@ -50,6 +52,7 @@ interface Observation {
     fromCurrency: string;
     toAmount: number;
     toCurrency: string;
+    via: string | null;    // who it went through, from the transfer's comment
 }
 
 interface PairStat {
@@ -92,10 +95,25 @@ interface PairBenchmark {
     perObs: (ObsBenchmark | null)[];  // aligned with pair.observations
 }
 
+// Everything exchanged through one person or service, as named in the transfers' comments.
+interface ExchangerStat {
+    key: string;                      // exchangerKey; '' = exchanges whose comment names nobody
+    name: string | null;              // spelled as in the newest comment
+    count: number;
+    lastDate: string;
+    pairs: { key: string; from: string; to: string; base: string; quote: string; avgRate: number; count: number }[];
+    covered: number;                  // exchanges that have a reference rate for their day
+    lossRub: number;
+    vsMarketPct: number | null;       // volume-weighted across covered exchanges
+}
+
 type SortField = 'pair' | 'avgRate' | 'count' | 'lastDate' | 'spread' | 'nowVsAvg' | 'vsMarket';
 type SortOrder = 'asc' | 'desc';
 
 const mean = (arr: number[]) => arr.reduce((s, x) => s + x, 0) / (arr.length || 1);
+
+const newestFirst = (x: Transaction, y: Transaction) =>
+    x.date !== y.date ? y.date.localeCompare(x.date) : (x.index ?? 0) - (y.index ?? 0);
 
 // Signed percentage: "+0.4%" / "−1.8%".
 const formatSignedPct = (pct: number) =>
@@ -167,14 +185,115 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
     const [searchQuery, setSearchQuery] = useState('');
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
+    const [viaFilter, setViaFilter] = useState<string | null>(null); // an exchangerKey; null = every exchange
 
-    const { pairs, totals, needsReimport, crossDates, crossCodes } = useMemo(() => {
+    const { allCross, totalTransfers, needsReimport, crossDates, crossCodes, baseOfPair } = useMemo(() => {
         const allTransfers = transactions.filter(t => t.type === 'transfer');
 
         // Old data imported before the transfer-leg fields existed won't carry currencies.
         const hasLegData = allTransfers.some(t => t.fromCurrency || t.toCurrency);
 
-        const cross = allTransfers.filter(isCrossCurrencyTransfer);
+        const allCross = allTransfers.filter(isCrossCurrencyTransfer);
+
+        // The rate number stays quoted the readable way (strong currency as base, >= 1),
+        // e.g. "1 USD = 1487 KRW". It is settled over all of a pair's exchanges, so picking
+        // one exchanger never turns the quote around.
+        const toPerFrom = new Map<string, number[]>();
+        for (const t of allCross) {
+            const key = `${t.fromCurrency}>${t.toCurrency}`;
+            toPerFrom.set(key, [...(toPerFrom.get(key) || []), t.toAmount! / t.fromAmount!]);
+        }
+        const baseOfPair = new Map<string, string>();
+        for (const [key, list] of toPerFrom) {
+            const [from, to] = key.split('>');
+            baseOfPair.set(key, mean(list) >= 1 ? from : to);
+        }
+
+        return {
+            allCross,
+            totalTransfers: allTransfers.length,
+            needsReimport: allTransfers.length > 0 && !hasLegData,
+            // What the per-day reference rates need to cover.
+            crossDates: [...new Set(allCross.map(t => t.date))].sort(),
+            crossCodes: [...new Set(allCross.flatMap(t => [t.fromCurrency!, t.toCurrency!]))].sort(),
+            baseOfPair,
+        };
+    }, [transactions]);
+
+    // Live "current" rates (same source the app uses to value wallets). A pair's market
+    // rate is quote-per-base = (RUB per base) / (RUB per quote); null when uncovered.
+    const { rates, date: ratesDate, isLoading: ratesLoading } = useLiveRates();
+    const hasRates = Object.keys(rates).length > 0;
+    const marketRate = (pair: PairStat): number | null => {
+        const b = rates[pair.base];
+        const q = rates[pair.quote];
+        return b && q ? b / q : null;
+    };
+    // Baseline for the comparison: today's market rate, or the last transfer if unavailable.
+    const baselineOf = (pair: PairStat): number => marketRate(pair) ?? pair.lastRate;
+
+    // Reference rates for the day of each exchange — what the money would have been worth
+    // at the market rate, so the gap to what you actually got is the exchanger's cut.
+    const { snapshots, isLoading: historyLoading, missingDates } = useHistoricalRates(crossDates, crossCodes);
+    // The live snapshot stands in for days the feed has not published yet (today).
+    const rateOn = useMemo(() => makeRateLookup(snapshots, { rates, date: ratesDate }), [snapshots, rates, ratesDate]);
+
+    // Who the exchanges went through, as the transfers' comments name them, each measured
+    // against the market rate of its day the same way the pairs are.
+    const exchangers = useMemo(() => {
+        const groups = new Map<string, Transaction[]>();
+        for (const t of allCross) {
+            const key = exchangerKey(exchangerOf(t));
+            groups.set(key, [...(groups.get(key) || []), t]);
+        }
+
+        const list: ExchangerStat[] = [];
+        for (const [key, txs] of groups) {
+            const sorted = [...txs].sort(newestFirst);
+            const ratesByPair = new Map<string, number[]>();
+            let sentRub = 0, lossRub = 0, covered = 0;
+            for (const t of sorted) {
+                const pairKey = `${t.fromCurrency}>${t.toCurrency}`;
+                const base = baseOfPair.get(pairKey)!;
+                const rate = t.fromCurrency === base ? t.toAmount! / t.fromAmount! : t.fromAmount! / t.toAmount!;
+                ratesByPair.set(pairKey, [...(ratesByPair.get(pairKey) || []), rate]);
+
+                const bm = benchmarkConversion(t.date, t.fromAmount!, t.fromCurrency!, t.toAmount!, t.toCurrency!, rateOn);
+                if (!bm) continue;
+                sentRub += bm.sentRub;
+                lossRub += bm.lossRub;
+                covered++;
+            }
+            list.push({
+                key,
+                name: exchangerOf(sorted[0]),
+                count: sorted.length,
+                lastDate: sorted[0].date,
+                pairs: [...ratesByPair]
+                    .map(([pairKey, rates]) => {
+                        const [from, to] = pairKey.split('>');
+                        const base = baseOfPair.get(pairKey)!;
+                        return { key: pairKey, from, to, base, quote: base === from ? to : from, avgRate: mean(rates), count: rates.length };
+                    })
+                    .sort((a, b) => b.count - a.count),
+                covered,
+                lossRub,
+                vsMarketPct: sentRub > 0 ? -lossRub / sentRub : null,
+            });
+        }
+        // The named ones by how often they were used; the exchanges that name nobody last.
+        return list.sort((a, b) =>
+            (a.key === '') !== (b.key === '') ? (a.key === '' ? 1 : -1) : b.count - a.count
+        );
+    }, [allCross, baseOfPair, rateOn]);
+    const hasNamedExchangers = exchangers.some(x => x.key !== '');
+    // A pick the data no longer has (renamed in a newer import) shows every exchange again.
+    const via = hasNamedExchangers && exchangers.some(x => x.key === viaFilter) ? viaFilter : null;
+    const viaName = via === null ? null : exchangers.find(x => x.key === via)!.name ?? 'not noted';
+
+    const { pairs, totals } = useMemo(() => {
+        // With an exchanger picked, every figure on the page covers only the exchanges made through it.
+        const cross = via === null ? allCross : allCross.filter(t => exchangerKey(exchangerOf(t)) === via);
 
         // Group by direction — the actual money flow (source -> destination), so a pair reads
         // "I spend RUB to buy USDT". Buying a currency and selling the leftover back are two
@@ -182,7 +301,7 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
         // looking better than either deal was, so the way back gets a row of its own.
         const groups = new Map<string, Transaction[]>();
         for (const t of cross) {
-            const key = `${t.fromCurrency}|${t.toCurrency}`;
+            const key = `${t.fromCurrency}>${t.toCurrency}`;
             const list = groups.get(key) || [];
             list.push(t);
             groups.set(key, list);
@@ -192,19 +311,17 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
         const currencySet = new Set<string>();
 
         for (const [key, list] of groups) {
-            const [from, to] = key.split('|');
+            const [from, to] = key.split('>');
             currencySet.add(from);
             currencySet.add(to);
 
-            // The rate number stays quoted the readable way (strong currency as base, >= 1),
-            // e.g. "1 USD = 1487 KRW".
-            const toPerFrom = list.map(t => t.toAmount! / t.fromAmount!);
-            const [base, quote] = mean(toPerFrom) >= 1 ? [from, to] : [to, from];
+            const base = baseOfPair.get(key)!;
+            const quote = base === from ? to : from;
 
             const rateOf = (t: Transaction) =>
                 t.fromCurrency === base ? t.toAmount! / t.fromAmount! : t.fromAmount! / t.toAmount!;
 
-            const observations: Observation[] = list.map(t => ({
+            const observations: Observation[] = [...list].sort(newestFirst).map(t => ({
                 date: t.date,
                 index: t.index ?? 0,
                 rate: rateOf(t),
@@ -214,9 +331,8 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                 fromCurrency: t.fromCurrency!,
                 toAmount: t.toAmount!,
                 toCurrency: t.toCurrency!,
-            })).sort((x, y) =>
-                x.date !== y.date ? y.date.localeCompare(x.date) : (x.index - y.index)
-            );
+                via: exchangerOf(t),
+            }));
 
             const rates = observations.map(o => o.rate);
             let baseVolume = 0;
@@ -253,39 +369,16 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
         return {
             pairs,
             totals: {
-                totalTransfers: allTransfers.length,
+                totalTransfers,
                 crossCount: cross.length,
-                internalCount: allTransfers.length - cross.length,
+                internalCount: totalTransfers - allCross.length,
                 pairCount: pairs.length,
                 currencyCount: currencySet.size,
             },
-            needsReimport: allTransfers.length > 0 && !hasLegData,
-            // What the per-day reference rates need to cover.
-            crossDates: [...new Set(cross.map(t => t.date))].sort(),
-            crossCodes: [...currencySet].sort(),
         };
-    }, [transactions]);
-
-    // Live "current" rates (same source the app uses to value wallets). A pair's market
-    // rate is quote-per-base = (RUB per base) / (RUB per quote); null when uncovered.
-    const { rates, date: ratesDate, isLoading: ratesLoading } = useLiveRates();
-    const hasRates = Object.keys(rates).length > 0;
-    const marketRate = (pair: PairStat): number | null => {
-        const b = rates[pair.base];
-        const q = rates[pair.quote];
-        return b && q ? b / q : null;
-    };
-    // Baseline for the comparison: today's market rate, or the last transfer if unavailable.
-    const baselineOf = (pair: PairStat): number => marketRate(pair) ?? pair.lastRate;
-
-    // Reference rates for the day of each exchange — what the money would have been worth
-    // at the market rate, so the gap to what you actually got is the exchanger's cut.
-    const { snapshots, isLoading: historyLoading, missingDates } = useHistoricalRates(crossDates, crossCodes);
+    }, [allCross, totalTransfers, baseOfPair, via]);
 
     const benchmarks = useMemo(() => {
-        // The live snapshot stands in for days the feed has not published yet (today).
-        const rateOn = makeRateLookup(snapshots, { rates, date: ratesDate });
-
         const byPair = new Map<string, PairBenchmark>();
         let totalSentRub = 0;
         let totalLossRub = 0;
@@ -342,7 +435,7 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                 vsMarketPct: totalSentRub > 0 ? -totalLossRub / totalSentRub : 0,
             },
         };
-    }, [pairs, snapshots, rates, ratesDate]);
+    }, [pairs, rateOn]);
 
     const filteredSorted = useMemo(() => {
         let data = [...pairs];
@@ -549,6 +642,78 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
         );
     };
 
+    // Who the exchanges went through, side by side: the pairs each was used for with the
+    // average rate there, and the share it kept versus the market rate of the day. Picking
+    // one narrows the page to its exchanges.
+    const renderExchangers = () => (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-4 md:px-6 py-4 border-b border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-800">Exchangers</h3>
+                <p className="text-sm text-gray-500">Who you exchanged through, from the transfer comments — pick one to see only its rates</p>
+            </div>
+            <div className="divide-y divide-gray-50">
+                {exchangers.map(x => {
+                    const selected = via === x.key;
+                    const negligible = x.vsMarketPct !== null && Math.abs(x.vsMarketPct) < 0.0005;
+                    const shownPairs = x.pairs.slice(0, 4);
+                    return (
+                        <button
+                            key={x.key}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => setViaFilter(selected ? null : x.key)}
+                            className={`w-full text-left px-4 md:px-6 py-3 grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_8rem] items-center gap-x-4 gap-y-2 transition-colors ${selected ? 'bg-emerald-50/70 shadow-[inset_3px_0_0_#34d399]' : 'hover:bg-gray-50/60'}`}
+                        >
+                            <div className="min-w-0">
+                                <div className={`font-medium truncate ${x.name ? 'text-gray-900' : 'text-gray-400 italic'}`} title={x.name ?? undefined}>
+                                    {x.name ?? 'Not noted'}
+                                </div>
+                                <div className="text-[11px] text-gray-400 truncate">
+                                    {x.count} exchange{x.count === 1 ? '' : 's'} · last {formatDate(x.lastDate)}
+                                </div>
+                            </div>
+                            <div className="col-span-2 md:col-span-1 order-last md:order-none flex flex-wrap gap-1.5 text-xs">
+                                {shownPairs.map(p => (
+                                    <span
+                                        key={p.key}
+                                        className="px-2 py-1 rounded-lg bg-gray-50 border border-gray-100 flex items-center gap-1 whitespace-nowrap"
+                                        title={`${p.count} exchange${p.count === 1 ? '' : 's'} · on average 1 ${p.base} = ${formatRate(p.avgRate)} ${p.quote}`}
+                                    >
+                                        <span className="text-gray-600 font-medium">{p.from}</span>
+                                        <ArrowRight className="w-3 h-3 text-gray-300" />
+                                        <span className="text-gray-600 font-medium">{p.to}</span>
+                                        <span className="text-gray-400 ml-0.5">{formatRate(p.avgRate)}</span>
+                                    </span>
+                                ))}
+                                {x.pairs.length > shownPairs.length && (
+                                    <span className="px-2 py-1 text-gray-400">+{x.pairs.length - shownPairs.length} more</span>
+                                )}
+                            </div>
+                            <div className="flex flex-col items-end">
+                                {isPrivacyMode || x.vsMarketPct === null ? (
+                                    <span className="text-gray-300 text-xs">{isPrivacyMode ? '•••' : historyLoading ? '…' : '—'}</span>
+                                ) : (
+                                    <>
+                                        <div
+                                            className={`font-semibold ${pctColor(x.vsMarketPct)}`}
+                                            title={negligible ? 'About the market rate' : x.vsMarketPct < 0 ? 'Kept versus the market rate of the day' : 'More than the market rate of the day'}
+                                        >
+                                            {negligible ? '≈ market' : formatSignedPct(x.vsMarketPct)}
+                                        </div>
+                                        <div className="text-[11px] text-gray-400 whitespace-nowrap">
+                                            {formatLoss(x.lossRub, 'RUB')}
+                                            {x.covered < x.count && <span title={`${x.covered} of ${x.count} exchanges have a reference rate`}> · {x.covered}/{x.count}</span>}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+
     const SortIcon = ({ field }: { field: SortField }) =>
         sortField === field ? <ArrowUpDown className="w-3 h-3" /> : null;
 
@@ -641,6 +806,16 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                                                 <ArrowRight className="w-3 h-3 text-gray-300" />
                                                 <span className="font-medium text-gray-700">{o.toAccount}</span>
                                             </span>
+                                            {o.via && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setViaFilter(exchangerKey(o.via))}
+                                                    className="block text-[11px] text-emerald-700 hover:underline"
+                                                    title={`Show only the exchanges via ${o.via}`}
+                                                >
+                                                    via {o.via}
+                                                </button>
+                                            )}
                                         </td>
                                         <td className="py-2.5 text-right text-gray-600 whitespace-nowrap">{maskVol(o.fromAmount, o.fromCurrency)}</td>
                                         <td className="py-2.5 text-right text-gray-600 whitespace-nowrap">{maskVol(o.toAmount, o.toCurrency)}</td>
@@ -722,7 +897,20 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
     // --- Main view ----------------------------------------------------------
     return (
         <div className="space-y-6 enter-cascade">
-            <PageHeader transactions={transactions.filter(t => t.type === 'transfer')} />
+            <PageHeader
+                transactions={transactions.filter(t => t.type === 'transfer')}
+                filter={viaName !== null && (
+                    <button
+                        type="button"
+                        onClick={() => setViaFilter(null)}
+                        className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-xs md:text-sm font-medium flex items-center gap-1.5 hover:bg-emerald-100 transition-colors"
+                        title="Show every exchange"
+                    >
+                        via {viaName}
+                        <X className="w-3.5 h-3.5" />
+                    </button>
+                )}
+            />
 
             {/* Stat cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 enter-row">
@@ -735,11 +923,18 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
             {/* Exchanger's cut: what all exchanges cost versus the market rate of their day */}
             {renderCutSummary()}
 
+            {/* Who the exchanges went through, from the transfers' comments */}
+            {hasNamedExchangers && renderExchangers()}
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex-1">
                         <h3 className="text-lg font-semibold text-gray-800">Average exchange rates</h3>
-                        <p className="text-sm text-gray-500">Derived from your account-to-account transfers</p>
+                        <p className="text-sm text-gray-500">
+                            {viaName !== null
+                                ? `Only the exchanges via ${viaName}`
+                                : 'Derived from your account-to-account transfers'}
+                        </p>
                     </div>
                     <div className="relative flex-1 sm:max-w-xs">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -910,6 +1105,8 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
                     {missingDates.length > 0
                         ? `; ${missingDates.length} exchange date${missingDates.length === 1 ? '' : 's'} without one ${missingDates.length === 1 ? 'is' : 'are'} shown as —`
                         : ''}.
+                    Write who you exchanged through in the transfer's comment and “Exchangers” sets them side by side;
+                    bare numbers there, like a rate you noted down, are skipped.
                     This is a personal benchmark, not a market forecast.
                 </span>
             </p>
@@ -919,18 +1116,21 @@ export const CurrencyRatesPage: React.FC<CurrencyRatesPageProps> = ({ transactio
 
 // --- Small presentational helpers ------------------------------------------
 
-const PageHeader: React.FC<{ transactions: { date: string }[] }> = ({ transactions }) => (
+const PageHeader: React.FC<{ transactions: { date: string }[]; filter?: React.ReactNode }> = ({ transactions, filter }) => (
     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
             <h2 className="text-2xl font-bold text-gray-900">Currency Rates</h2>
             <p className="text-gray-500">Average exchange rates from your transfers</p>
         </div>
-        {transactions.length > 0 && (
-            <div className="px-3 py-1 bg-gray-100 rounded-lg text-xs md:text-sm font-medium text-gray-600 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                {getFormattedDateRange(transactions)}
-            </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+            {filter}
+            {transactions.length > 0 && (
+                <div className="px-3 py-1 bg-gray-100 rounded-lg text-xs md:text-sm font-medium text-gray-600 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    {getFormattedDateRange(transactions)}
+                </div>
+            )}
+        </div>
     </div>
 );
 

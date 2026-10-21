@@ -77,6 +77,23 @@ export const isCrossCurrencyTransfer = (t: Transaction): boolean =>
     !!t.fromCurrency && !!t.toCurrency && t.fromCurrency !== t.toCurrency &&
     (t.fromAmount ?? 0) > 0 && (t.toAmount ?? 0) > 0;
 
+/**
+ * Who the user exchanged through, as they wrote it in the transfer's comment ("Никита", "EX24").
+ * Bare numbers are left out: the comment is also where a rate gets noted down ("81,17").
+ * null = the comment names nobody.
+ */
+export function exchangerOf(t: Transaction): string | null {
+    const name = (t.note ?? '')
+        .split(/\s+/)
+        .filter(word => word && !/^[\d.,]+$/.test(word))
+        .join(' ')
+        .replace(/[\s,.;:–—-]+$/, '');
+    return name || null;
+}
+
+/** One exchanger however the comment spells it ("EX24", "Ex24"); '' = no name in the comment. */
+export const exchangerKey = (name: string | null) => (name ?? '').toLocaleLowerCase('ru');
+
 /** The dates and currency codes the reference rates must cover for these transactions. */
 export function referenceCoverage(transactions: Transaction[]): { dates: string[]; codes: string[] } {
     const dates = new Set<string>();

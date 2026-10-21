@@ -19,6 +19,8 @@ import { ndflOn } from './ndfl';
 import {
     FIRST_SNAPSHOT_DATE,
     IMPLAUSIBLE_CUT_PCT,
+    exchangerKey,
+    exchangerOf,
     isCrossCurrencyTransfer,
     isImplausibleCut,
     makeRateLookup,
@@ -886,6 +888,7 @@ export function buildAIExportPayload(input: AIExportInput) {
                 date: t.date,
                 fromAccount: t.account,
                 toAccount: t.category,
+                exchanger: exchangerOf(t),
                 spent: roundNative(t.fromAmount!, t.fromCurrency!),
                 spentCurrency: t.fromCurrency!,
                 received: roundNative(t.toAmount!, t.toCurrency!),
@@ -927,6 +930,33 @@ export function buildAIExportPayload(input: AIExportInput) {
             };
         })
         .sort((a, b) => (b.lostToExchangerInBase ?? -Infinity) - (a.lostToExchangerInBase ?? -Infinity));
+
+    // Who the money went through, as the user names them in the transfer's comment (a P2P
+    // counterparty, a cash exchanger). Conversions whose comment names nobody share one group.
+    const exchangerGroups = new Map<string, Transaction[]>();
+    crossTransfers.forEach(t => {
+        const key = exchangerKey(exchangerOf(t));
+        exchangerGroups.set(key, [...(exchangerGroups.get(key) || []), t]);
+    });
+    const byExchanger = [...exchangerGroups.values()]
+        .map(list => {
+            const newest = list.reduce((a, b) => (b.date > a.date ? b : a));
+            const spentCurrencies = new Set(list.map(t => t.fromCurrency!));
+            const spentCurrency = spentCurrencies.size === 1 ? list[0].fromCurrency! : null;
+            const sentInBase = sum(list.map(t => {
+                const bm = benchmarkOf.get(t);
+                return bm ? inBase(bm.sentRub, t.date) ?? 0 : 0;
+            }));
+            return {
+                exchanger: exchangerOf(newest),
+                pairs: [...new Set(list.map(t => `${t.fromCurrency} → ${t.toCurrency}`))],
+                count: list.length,
+                lastDate: newest.date,
+                sentValueInBase: round(sentInBase),
+                ...aggregateBenchmark(list, spentCurrency),
+            };
+        })
+        .sort((a, b) => (a.exchanger === null ? 1 : 0) - (b.exchanger === null ? 1 : 0) || b.count - a.count);
 
     const benchmarked = crossTransfers.filter(t => benchmarkOf.has(t));
     // Mis-recorded rows (see isImplausibleCut) stay in the totals — the model is told to
@@ -1471,12 +1501,14 @@ export function buildAIExportPayload(input: AIExportInput) {
                 'pairs[].spreadPct is the gap between the best and the worst rate ever taken on that pair — the money left on the table by timing and venue.',
                 'conversions[].vsYourAvgPct is signed from the user\'s point of view: positive means that conversion beat their own volume-weighted average for the pair, negative means it was worse.',
                 'The market fields — vsMarketPct, marketRateOnDate, lostToExchangerInBase, lostInSpentCurrency, best/worstVsMarketPct — compare each conversion with the market rate of its own day; read marketBenchmark.note before using them. byRoute breaks the same cut down by venue (source → destination account).',
+                'byExchanger breaks it down by who the user exchanged through, as they wrote it in the transfer\'s comment (conversions[].exchanger); exchanger null gathers the conversions whose comment names nobody. Use it to say which exchanger gives the better rate — vsMarketPct compares them fairly even across different pairs.',
             ].join(' '),
             crossCurrencyConversions: crossTransfers.length,
             sameCurrencyMoves: internalTransfers.length,
             marketBenchmark,
             pairs: fxPairs,
             byRoute,
+            byExchanger,
             conversions,
             liveRates: {
                 note: `Market reference rates, ${baseCurrency} per 1 unit of the listed currency.`,
