@@ -24,6 +24,7 @@ import { TripFormModal, type TripFormValues } from './TripFormModal';
 import { TripTransactionPicker } from './TripTransactionPicker';
 import { TripSplitModal, type SplitPart } from './TripSplitModal';
 import { ConfirmDialog } from './ConfirmDialog';
+import { PhotoButton } from './OperationPhotos';
 
 interface TripDetailProps {
     trip: Trip;
@@ -865,6 +866,7 @@ function EntryRow({ entry, isPrivacyMode, money, onToggle, onSplit, showDate = f
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 min-w-0">
                     <span className={cn("font-bold truncate", counted ? "text-gray-900" : "text-gray-500 line-through")}>{getTransactionTitle(tx)}</span>
+                    <PhotoButton photos={tx.photos} title={getTransactionTitle(tx)} />
                     {beforeTrip && !inBookedGroup && <Badge className="bg-blue-50 text-blue-700 border-blue-100">booked ahead</Badge>}
                     {added && !beforeTrip && <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">added</Badge>}
                     {state === 'home-bill' && <Badge className="bg-gray-100 text-gray-500 border-gray-200">home bill</Badge>}

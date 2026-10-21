@@ -16,7 +16,7 @@ export interface StatementFile {
 export interface Statement {
     file: StatementFile;
     transactions: Transaction[]; // newest first, as the app keeps them
-    backup?: BackupExtras;       // a backup's wallets with their history, and its categories
+    backup?: Omit<BackupExtras, 'photos'>; // a backup's wallets with their history, and its categories; photos are the app's alone
 }
 
 // The app names both kinds by the moment it made them: 2026_10_18_17_36_01_123747.mmbackup.

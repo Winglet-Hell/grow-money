@@ -5,6 +5,7 @@ import type { Transaction } from '../types';
 import { formatDate, cn, formatTags } from '../lib/utils';
 import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { PhotoButton } from './OperationPhotos';
 
 interface TransactionListModalProps {
     isOpen: boolean;
@@ -125,9 +126,12 @@ export const TransactionListModal: React.FC<TransactionListModalProps> = ({
 
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-baseline gap-2 mb-0.5">
-                                            <h4 className="text-[15px] font-bold text-gray-900 truncate tracking-tight">
-                                                {formatTags(t.tags) || t.note || 'No description'}
-                                            </h4>
+                                            <div className="flex items-center gap-1 min-w-0">
+                                                <h4 className="text-[15px] font-bold text-gray-900 truncate tracking-tight">
+                                                    {formatTags(t.tags) || t.note || 'No description'}
+                                                </h4>
+                                                <PhotoButton photos={t.photos} title={formatTags(t.tags) || t.note || t.category} />
+                                            </div>
                                             <div className="flex flex-col items-end flex-shrink-0">
                                                 <span className="text-[15px] font-black text-gray-900 whitespace-nowrap tracking-tight">
                                                     {formatCurrency(t.amount)}

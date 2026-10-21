@@ -37,8 +37,8 @@ async function parseCSVData(fileContent: string, fileName: string): Promise<Tran
 async function parseBackupData(fileData: ArrayBuffer): Promise<{ transactions: Transaction[]; backup: BackupExtras }> {
     const [{ default: initSqlJs }, { readBackup }] = await Promise.all([import('sql.js'), import('./backup')]);
     const SQL = await initSqlJs({ locateFile: () => sqlWasmUrl });
-    const { transactions, wallets, categories } = readBackup(new Uint8Array(fileData), SQL);
-    return { transactions, backup: { wallets, categories } };
+    const { transactions, wallets, categories, photos } = await readBackup(new Uint8Array(fileData), SQL);
+    return { transactions, backup: { wallets, categories, photos } };
 }
 
 

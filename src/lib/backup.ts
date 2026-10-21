@@ -1,14 +1,16 @@
 import { unzipSync } from 'fflate';
 import type { Database, SqlJsStatic, SqlValue } from 'sql.js';
-import type { AppCategory, BackupExtras, Transaction, WalletSnapshot } from '../types';
+import type { AppCategory, BackupExtras, BackupPhoto, Transaction, WalletSnapshot } from '../types';
 import { mapRow, uniquifyIds } from './statementRows';
 
 // A backup made by the source app (".mmbackup"): a short header, then a zip holding the app's
-// SQLite database and receipt photos. It has everything the xlsx export has and more: balance
-// corrections, the app's own ids, wallet balances. Read so far: the operations and the wallets.
+// SQLite database and the photos attached to operations. It has everything the xlsx export has and
+// more: balance corrections, the app's own ids, wallet balances, photos. Read so far: the
+// operations, the wallets, the categories and the photos.
 // Every operation is rebuilt as the export's row and goes through the same mapRow, so a backup
 // gives the very transactions an export made the same day does. Only the id differs: the app's
-// own, which survives edits, with the export's content hash kept as `exportId`.
+// own, which survives edits, with the export's content hash kept as `exportId`. Its photos are
+// the one field an export doesn't have.
 
 const DB_FILE = 'MyFinance.db';
 
@@ -45,23 +47,25 @@ function select(db: Database, sql: string, params: SqlValue[] = []): Row[] {
     }
 }
 
-function unpackDatabase(file: Uint8Array): Uint8Array {
-    // The zip begins after the header (eight 0x08 bytes so far), at its first local file header.
-    let start = -1;
+/** The zip in a backup: it begins after the header (eight 0x08 bytes so far), at its first local file header. */
+function zipOf(file: Uint8Array): Uint8Array {
     for (let i = 0; i + 3 < Math.min(file.length, 1024); i++) {
-        if (file[i] === 0x50 && file[i + 1] === 0x4b && file[i + 2] === 0x03 && file[i + 3] === 0x04) {
-            start = i;
-            break;
-        }
+        if (file[i] === 0x50 && file[i + 1] === 0x4b && file[i + 2] === 0x03 && file[i + 3] === 0x04) return file.subarray(i);
     }
-    if (start === -1) throw new Error('This file is not a backup from the expense app.');
-    let entries: Record<string, Uint8Array>;
+    throw new Error('This file is not a backup from the expense app.');
+}
+
+/** Only the files named are unpacked: the database first, then the photos the operations have. */
+function unzip(zip: Uint8Array, names: Set<string>): Record<string, Uint8Array> {
     try {
-        entries = unzipSync(file.subarray(start), { filter: f => f.name === DB_FILE });
+        return unzipSync(zip, { filter: f => names.has(f.name) });
     } catch {
         throw new Error('The backup is damaged or incomplete. Make a new one in the app and try again.');
     }
-    const db = entries[DB_FILE];
+}
+
+function unpackDatabase(zip: Uint8Array): Uint8Array {
+    const db = unzip(zip, new Set([DB_FILE]))[DB_FILE];
     if (!db) throw new Error(`This file is not a backup from the expense app (no ${DB_FILE} inside).`);
     return db;
 }
@@ -288,23 +292,88 @@ function readCategories(db: Database): AppCategory[] {
         }));
 }
 
+/** The photos each operation has, oldest first, as their files in the zip ("photos/photo_<uid>.png").
+ *  Photos are optional: a backup without the table for them is read all the same. */
+function photoFilesOf(db: Database, operations: Transaction[]): Map<string, string[]> {
+    const byOperation = new Map<string, string[]>();
+    const present = new Set(select(db, 'PRAGMA table_info("sync_file")').map(c => String(c.name)));
+    if (!['uid', 'fileType', 'localPath', 'isRemoved'].every(c => present.has(c))) return byOperation;
+    const files = new Map(select(db, "SELECT uid, localPath FROM sync_file WHERE fileType = 'photo' AND isRemoved = 0 AND localPath IS NOT NULL")
+        .map(f => [String(f.uid), `photos/${String(f.localPath)}`]));
+    const photosOf = links(db, 'Transaction', 'Photo');
+    for (const t of operations) {
+        const own = (photosOf.get(t.id) ?? []).flatMap(uid => files.get(uid) ?? []);
+        if (own.length) byOperation.set(t.id, own);
+    }
+    return byOperation;
+}
+
+/** What kind of picture a file is, by the bytes it starts with: the app names its photos .png
+ *  whatever they are (so far they have been JPEGs). Anything else isn't a picture to show. */
+function imageType(data: Uint8Array): { mime: string; ext: string } | null {
+    const ascii = (offset: number, text: string) => [...text].every((c, i) => data[offset + i] === c.charCodeAt(0));
+    if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return { mime: 'image/jpeg', ext: 'jpg' };
+    if (data[0] === 0x89 && ascii(1, 'PNG')) return { mime: 'image/png', ext: 'png' };
+    if (ascii(0, 'RIFF') && ascii(8, 'WEBP')) return { mime: 'image/webp', ext: 'webp' };
+    if (ascii(0, 'GIF8')) return { mime: 'image/gif', ext: 'gif' };
+    if (ascii(4, 'ftyp') && ['heic', 'heix', 'mif1'].some(brand => ascii(8, brand))) return { mime: 'image/heic', ext: 'heic' };
+    return null;
+}
+
+async function sha256(data: Uint8Array<ArrayBuffer>): Promise<string> {
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+    return Array.from(digest, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Gives the operations their photos, each named by its content: a picture the app attached twice
+ *  (it copies photos along with an operation) is one file, and a name always means one picture. */
+async function attachPhotos(zip: Uint8Array, transactions: Transaction[], filesOf: Map<string, string[]>): Promise<{ transactions: Transaction[]; photos: BackupPhoto[] }> {
+    if (filesOf.size === 0) return { transactions, photos: [] };
+    const nameOf = new Map<string, string>();
+    const photos = new Map<string, BackupPhoto>();
+    for (const [path, data] of Object.entries(unzip(zip, new Set([...filesOf.values()].flat())))) {
+        const type = imageType(data);
+        if (!type) continue;
+        const name = `${await sha256(data as Uint8Array<ArrayBuffer>)}.${type.ext}`;
+        nameOf.set(path, name);
+        if (!photos.has(name)) photos.set(name, { name, type: type.mime, data });
+    }
+    return {
+        transactions: transactions.map(t => {
+            const names = [...new Set((filesOf.get(t.id) ?? []).flatMap(path => nameOf.get(path) ?? []))];
+            return names.length ? { ...t, photos: names } : t;
+        }),
+        photos: [...photos.values()],
+    };
+}
+
 export interface BackupStatement extends BackupExtras {
     transactions: Transaction[];
 }
 
-/** Reads a backup file: the same transactions an xlsx export of it gives, plus the wallets and categories. */
-export function readBackup(file: Uint8Array, SQL: SqlJsStatic): BackupStatement {
-    const db = new SQL.Database(unpackDatabase(file));
+/** Everything read from the database itself, which is closed once it's done. */
+function readDatabase(db: Database) {
     try {
         checkFormat(db);
         const main = String(select(db, "SELECT value FROM syncable_settings WHERE uid = 'defaultCurrencyCode'")[0]?.value ?? 'RUB');
         const units = unitsPerWhole(db, main);
+        const transactions = readOperations(db, main, units);
         return {
-            transactions: readOperations(db, main, units),
+            transactions,
             wallets: { asOf: balancesAsOf(db), wallets: readWallets(db, units) },
             categories: readCategories(db),
+            photoFiles: photoFilesOf(db, transactions),
         };
     } finally {
         db.close();
     }
+}
+
+/** Reads a backup file: the same transactions an xlsx export of it gives, plus the wallets, the
+ *  categories and the operations' photos. */
+export async function readBackup(file: Uint8Array, SQL: SqlJsStatic): Promise<BackupStatement> {
+    const zip = zipOf(file);
+    const { photoFiles, ...read } = readDatabase(new SQL.Database(unpackDatabase(zip)));
+    const { transactions, photos } = await attachPhotos(zip, read.transactions, photoFiles);
+    return { ...read, transactions, photos };
 }

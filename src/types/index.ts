@@ -11,6 +11,7 @@ export type Transaction = {
     tags?: string[];
     index?: number; // Row index for sorting same-day transactions
     currency?: string; // Explicit currency for this transaction (overrides account default)
+    photos?: string[]; // pictures attached in the expense app (backups only): their names in the account's photo store (lib/photos)
     type: 'expense' | 'income' | 'transfer';
 
     // --- Transfer legs (populated only when type === 'transfer') ---
@@ -50,8 +51,12 @@ export type WalletSnapshot = {
 // A category as the expense app shows it: the name of its icon there and its colour.
 export type AppCategory = { name: string; type: 'expense' | 'income'; icon: string; color: string };
 
+// A picture attached to an operation, as a backup holds it. `name` is what the operations call it:
+// the SHA-256 of the file and its kind, e.g. "3f…9a.jpg".
+export type BackupPhoto = { name: string; type: string; data: Uint8Array };
+
 // What a backup carries beyond the operations.
-export type BackupExtras = { wallets: WalletSnapshot; categories: AppCategory[] };
+export type BackupExtras = { wallets: WalletSnapshot; categories: AppCategory[]; photos: BackupPhoto[] };
 
 export type Trip = {
     id: string; // generated ID

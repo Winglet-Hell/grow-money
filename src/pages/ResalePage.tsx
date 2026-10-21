@@ -10,6 +10,7 @@ import { formatNative, formatRub, formatRubSigned } from '../lib/tripFormat';
 import { getCategoryColor, getCategoryIcon } from '../lib/categoryIcons';
 import { cn } from '../lib/utils';
 import { ResalePurchaseModal } from '../components/ResalePurchaseModal';
+import { PhotoButton } from '../components/OperationPhotos';
 
 interface ResalePageProps {
     transactions: Transaction[];
@@ -110,6 +111,8 @@ export function ResalePage({ transactions }: ResalePageProps) {
                 <div className="min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                         <span className={cn("font-medium truncate", s.name ? "text-gray-900" : "text-gray-400 italic")} title={s.name}>{s.name || 'No comment'}</span>
+                        {/* A receipt or a box can be on either side of the deal. */}
+                        <PhotoButton photos={[...(s.purchase.tx?.photos ?? []), ...(s.sale.tx?.photos ?? [])]} title={s.name || 'No comment'} />
                         {s.purchase.source !== 'statement' && (
                             <span
                                 className="shrink-0 px-1.5 py-px rounded-md border border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500"
@@ -189,7 +192,10 @@ export function ResalePage({ transactions }: ResalePageProps) {
                     <Icon className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                    <div className={cn("font-medium truncate", s.name ? "text-gray-900" : "text-gray-400 italic")} title={s.name}>{s.name || 'No comment'}</div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={cn("font-medium truncate", s.name ? "text-gray-900" : "text-gray-400 italic")} title={s.name}>{s.name || 'No comment'}</span>
+                        <PhotoButton photos={s.sale.tx?.photos} title={s.name || 'No comment'} />
+                    </div>
                     <div className="text-xs text-gray-400 truncate tabular-nums">
                         Sold {formatDayKey(s.sale.day)}{s.sale.place && ` · ${s.sale.place}`}
                     </div>
@@ -222,7 +228,10 @@ export function ResalePage({ transactions }: ResalePageProps) {
                     <Icon className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                    <div className={cn("font-medium truncate", o.name ? "text-gray-900" : "text-gray-400 italic")} title={o.name}>{o.name || 'No comment'}</div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={cn("font-medium truncate", o.name ? "text-gray-900" : "text-gray-400 italic")} title={o.name}>{o.name || 'No comment'}</span>
+                        <PhotoButton photos={o.purchase.tx?.photos} title={o.name || 'No comment'} />
+                    </div>
                     <div className="text-xs text-gray-400 truncate tabular-nums">
                         <span className="md:hidden">{formatDayKey(o.purchase.day)}{o.purchase.place && ' · '}</span>
                         {o.purchase.place}

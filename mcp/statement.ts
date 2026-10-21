@@ -79,7 +79,7 @@ async function readStatement(file: StatementFile): Promise<Statement> {
     const data = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let statement: Statement;
     if (file.kind === 'backup') {
-        const { transactions, wallets, categories } = readBackup(data, await sqlJs());
+        const { transactions, wallets, categories } = await readBackup(data, await sqlJs());
         statement = { file, transactions, backup: { wallets, categories } };
     } else {
         statement = { file, transactions: await parseExcelStatement(data.slice().buffer) };

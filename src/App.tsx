@@ -13,6 +13,7 @@ import { parseFile, type ParsedStatement } from './lib/parser';
 import { readImportMeta, summarizeImport, type ImportMeta } from './lib/importing';
 import { writeWalletHistory } from './lib/netWorth';
 import { rememberAppCategories } from './lib/categoryIcons';
+import { forgetPhotos, keepPhotos, savePhotos } from './lib/photos';
 import type { CloudHead } from './lib/statementCloud';
 import { clearDevice, deviceMeta, loadFromAccount, newestFirst, noteEdited, saveImported, storeStatement, syncStatement, type SyncOutcome } from './lib/statementSync';
 import { ImportStatementDialog, type ImportState } from './components/ImportStatementDialog';
@@ -89,6 +90,7 @@ function AppContent() {
         clearAccountsCache();
         clearTripsCache();
         clearCategoryLimitsCache();
+        forgetPhotos();
         setAccountCopy(null);
       }
     });
@@ -193,18 +195,20 @@ function AppContent() {
   // Replaces whatever is on the device with a freshly parsed statement. Every import comes
   // here through handleImportFile: the import screen's drop zone and "Import statement" alike.
   // Resolves with what happened to the wallets (nothing when signed out), and, signed in, the
-  // save of the account's copy — what the other devices and Claude read — which goes on in
-  // the background.
-  const applyImport = async (data: Transaction[], fileName?: string, backup?: BackupExtras): Promise<{ newAccounts: string[]; walletSync?: WalletSyncReport; copy?: Promise<void> }> => {
+  // saves of the account's copy — what the other devices and Claude read — and of a backup's
+  // photos, which go on in the background.
+  const applyImport = async (data: Transaction[], fileName?: string, backup?: BackupExtras): Promise<{ newAccounts: string[]; walletSync?: WalletSyncReport; copy?: Promise<void>; photos?: Promise<void> }> => {
     // UI PREFERENCE: Sort Newest First (Desc)
     data.sort(newestFirst);
     const userId: string | undefined = session?.user?.id;
 
     // A backup's balance history and category looks, stored before the new statement reaches the
-    // pages that read them. An export has neither and leaves the last backup's in place.
+    // pages that read them, and its photos, open here at once. An export has none of them and
+    // leaves the last backup's in place.
     if (backup) {
       writeWalletHistory(backup.wallets);
       rememberAppCategories(backup.categories);
+      keepPhotos(backup.photos);
     }
     setTransactions(data);
     setIsTestData(false);
@@ -227,12 +231,14 @@ function AppContent() {
     if (userId) {
       const copy = saveImported(userId, data, meta);
       copy.catch(() => undefined); // handled by the caller once the wallets are done; no unhandled rejection meanwhile
+      const photos = backup ? savePhotos(userId, backup.photos) : undefined;
+      photos?.catch(() => undefined); // the same
       const result = backup
         ? { newAccounts: [], walletSync: await syncWalletsFromBackup(backup.wallets, userId) }
         : { newAccounts: await syncAccountsWithSupabase(data, userId) };
       if (backup) await healTrips(data).catch(err => console.error('Moving trip links failed:', err));
       await invalidateAccounts();
-      return { ...result, copy };
+      return { ...result, copy, photos };
     }
     return { newAccounts: [] };
   };
@@ -261,8 +267,14 @@ function AppContent() {
     const summary = summarizeImport(transactions, data);
     setImportState({ status: 'applying', fileName });
     try {
-      const { newAccounts, walletSync, copy } = await applyImport(data, fileName, backup);
-      setImportState({ status: 'done', fileName, summary, newAccounts, walletSync, ...(copy ? { copy: { status: 'saving' } } : {}) });
+      const { newAccounts, walletSync, copy, photos } = await applyImport(data, fileName, backup);
+      // Told about only when there are photos: a backup without any just clears the account's.
+      const withPhotos = data.filter(t => t.photos?.length).length;
+      setImportState({
+        status: 'done', fileName, summary, newAccounts, walletSync,
+        ...(copy ? { copy: { status: 'saving' } } : {}),
+        ...(photos && withPhotos ? { photos: { operations: withPhotos, copy: { status: 'saving' } } } : {}),
+      });
       // The dialog says how the account's copy went, while it is still open on this import.
       copy?.then(
         () => setImportState(s => (s.status === 'done' && s.fileName === fileName ? { ...s, copy: { status: 'saved' } } : s)),
@@ -270,6 +282,15 @@ function AppContent() {
           ? { ...s, copy: { status: 'failed', message: err instanceof Error ? err.message : String(err) } }
           : s)),
       );
+      // …and the photos, likewise.
+      if (withPhotos) {
+        photos?.then(
+          () => setImportState(s => (s.status === 'done' && s.fileName === fileName && s.photos ? { ...s, photos: { ...s.photos, copy: { status: 'saved' } } } : s)),
+          (err: unknown) => setImportState(s => (s.status === 'done' && s.fileName === fileName && s.photos
+            ? { ...s, photos: { ...s.photos, copy: { status: 'failed', message: err instanceof Error ? err.message : String(err) } } }
+            : s)),
+        );
+      }
     } catch (err) {
       console.error('Import failed:', err);
       setImportState({ status: 'error', fileName, message: err instanceof Error ? err.message : 'Could not save the data' });

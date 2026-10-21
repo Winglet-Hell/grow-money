@@ -142,7 +142,7 @@ function ImportScreen({ onFile, onChooseFile, accountCopy }: Pick<LandingProps, 
 
             <div className="mt-4 grid sm:grid-cols-2 gap-3">
                 <FormatCard icon={DatabaseBackup} title="Backup" ext=".mmbackup" best>
-                    Operations, wallet balances with their history, and category looks.
+                    Operations with their photos, wallet balances with their history, and category looks.
                 </FormatCard>
                 <FormatCard icon={FileSpreadsheet} title="Excel export" ext=".xlsx · .csv">
                     Operations only. New wallets start at a zero balance.
@@ -151,7 +151,7 @@ function ImportScreen({ onFile, onChooseFile, accountCopy }: Pick<LandingProps, 
 
             <p className="mt-8 max-w-lg mx-auto text-sm text-center text-emerald-900/50">
                 <Lock className="inline w-3.5 h-3.5 mr-1.5 -mt-0.5" />
-                The file is read on this device and never uploaded. The operations are saved to your account for your other devices.
+                The file is read on this device and never uploaded. The operations and their photos are saved to your account for your other devices.
             </p>
         </div>
     );

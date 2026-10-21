@@ -7,6 +7,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { cn, formatDate, formatTags, getTransactionTitle } from '../lib/utils';
 import { getCategoryIcon, getCategoryColor } from '../lib/categoryIcons';
+import { PhotoButton } from './OperationPhotos';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown } from 'lucide-react';
 
 interface TransactionTableProps {
@@ -269,7 +270,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
                             <Icon className="w-5 h-5" />
                         </div>
                         <div className="flex flex-col gap-1">
-                            <div className="font-medium text-gray-900">{getTransactionTitle(t)}</div>
+                            <div className="flex items-center gap-1.5 font-medium text-gray-900">
+                                {getTransactionTitle(t)}
+                                <PhotoButton photos={t.photos} title={getTransactionTitle(t)} />
+                            </div>
                             <div className="flex items-center gap-2">
                                 <span className="text-xs bg-gray-100 px-2 py-1 rounded-full text-gray-600">
                                     {formatTags(t.tags) ? (t.note || t.category) : (t.note ? t.category : 'No category')}
@@ -369,7 +373,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = React.memo(({ t
                     })()}
                 </td>
                 <td className={`px-6 ${py} whitespace-nowrap text-sm font-medium text-gray-900`}>
-                    {getTransactionTitle(t)}
+                    <span className="inline-flex items-center gap-1.5">
+                        {getTransactionTitle(t)}
+                        <PhotoButton photos={t.photos} title={getTransactionTitle(t)} />
+                    </span>
                 </td>
                 {showCategory && (
                     <td className={`px-6 ${py} whitespace-nowrap`}>

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { Loader2, CheckCircle2, AlertTriangle, XCircle, FileSpreadsheet, Wallet, X, Cloud } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertTriangle, XCircle, FileSpreadsheet, Wallet, X, Cloud, Paperclip } from 'lucide-react';
 import type { BackupExtras, Transaction } from '../types';
 import { formatImportTime, type ImportSummary } from '../lib/importing';
 import type { WalletSyncReport } from '../lib/accountUtils';
@@ -16,8 +16,11 @@ export type ImportState =
     | { status: 'parsing'; fileName: string }
     | { status: 'confirm'; fileName: string; summary: ImportSummary; data: Transaction[]; backup?: BackupExtras }
     | { status: 'applying'; fileName: string }
-    | { status: 'done'; fileName: string; summary: ImportSummary; newAccounts: string[]; walletSync?: WalletSyncReport; copy?: CloudCopy }
+    | { status: 'done'; fileName: string; summary: ImportSummary; newAccounts: string[]; walletSync?: WalletSyncReport; copy?: CloudCopy; photos?: PhotosCopy }
     | { status: 'error'; fileName: string; message: string };
+
+// A backup's photos on their way to the account: how many operations have some, and how the save went.
+export type PhotosCopy = { operations: number; copy: CloudCopy };
 
 interface ImportStatementDialogProps {
     state: ImportState;
@@ -170,6 +173,7 @@ export const ImportStatementDialog: React.FC<ImportStatementDialogProps> = ({ st
                 {walletSync && <WalletSyncNote report={walletSync} onClose={onClose} />}
 
                 {state.copy && <CopyNote copy={state.copy} />}
+                {state.photos && <PhotosNote photos={state.photos} />}
             </div>
         );
         footer = (
@@ -308,6 +312,29 @@ function CopyNote({ copy }: { copy: CloudCopy }) {
         <p className="text-xs text-gray-400 flex items-center gap-2">
             {copy.status === 'saving' ? <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" /> : <Cloud className="w-3.5 h-3.5 shrink-0" />}
             {copy.status === 'saving' ? 'Saving to your account…' : 'Saved to your account: your other devices and Claude get this statement.'}
+        </p>
+    );
+}
+
+// The photos attached in the app (lib/photos): they open from a paperclip next to their operation.
+function PhotosNote({ photos: { operations, copy } }: { photos: PhotosCopy }) {
+    const which = `The photos of ${plural(operations, 'operation', 'operations')}`;
+    if (copy.status === 'failed') {
+        return (
+            <p className="text-xs text-amber-700 flex items-start gap-2">
+                <Paperclip className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span className="break-words">{which} aren't in your account yet: {copy.message}. They open on this device until you reload, and go up with the next backup you import.</span>
+            </p>
+        );
+    }
+    return (
+        <p className="text-xs text-gray-400 flex items-start gap-2">
+            {copy.status === 'saving' ? <Loader2 className="w-3.5 h-3.5 mt-0.5 shrink-0 animate-spin" /> : <Paperclip className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+            <span>
+                {copy.status === 'saving'
+                    ? `Saving ${which.charAt(0).toLowerCase()}${which.slice(1)} to your account…`
+                    : `${which} are saved to your account. They open from the paperclip next to an operation.`}
+            </span>
         </p>
     );
 }
