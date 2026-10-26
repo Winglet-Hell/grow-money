@@ -52,6 +52,14 @@ export function formatTripRange(start: string, end: string): string {
 
 export const pluralDays = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
 
+/** "2 Sep – 1 Oct 2026", "28 Dec 2025 – 3 Jan 2026", or one day "13 May 2026" — a range to read in a sentence. */
+export function formatTripRangeLong(start: string, end: string): string {
+    const year = (day: string) => day.slice(0, 4);
+    if (start === end) return `${formatDayShort(start)} ${year(start)}`;
+    if (year(start) === year(end)) return `${formatDayShort(start)} – ${formatDayShort(end)} ${year(end)}`;
+    return `${formatDayShort(start)} ${year(start)} – ${formatDayShort(end)} ${year(end)}`;
+}
+
 /** What the budget says in words: how the spending stands against it, and where a trip under way is heading. */
 export function describeBudget(b: BudgetStatus, money: (n: number) => string): { line: string; pace: string | null } {
     let line: string;

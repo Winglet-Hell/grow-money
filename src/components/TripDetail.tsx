@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ArrowDownUp, ArrowLeft, Calendar, CalendarClock, Check, ChevronDown, House, Lightbulb, MapPin, Pencil, Plane, Plus, Scissors,
-    Search, Sparkles, Target, Wallet, X,
+    Search, Share, Sparkles, Target, Wallet, X,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LabelList } from 'recharts';
 import type { Transaction, Trip } from '../types';
@@ -24,6 +24,7 @@ import {
 import { TripFormModal, type TripFormValues } from './TripFormModal';
 import { TripTransactionPicker } from './TripTransactionPicker';
 import { TripSplitModal, type SplitPart } from './TripSplitModal';
+import { TripShareModal } from './TripShareModal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { PhotoButton } from './OperationPhotos';
 
@@ -39,6 +40,7 @@ const SUGGESTIONS_SHOWN = 3;
 const HOME_ROWS_SHOWN = 8;
 const CATEGORIES_SHOWN = 7;
 const LABELLED_BARS_MAX = 14; // more bars than this and the amount labels run into each other
+const HEADER_ACTION = "flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-2.5 sm:py-3 rounded-lg transition-colors text-xs sm:text-sm font-medium whitespace-nowrap";
 
 
 // The chart's and the list's name for "paid before the first day".
@@ -66,6 +68,7 @@ export function TripDetail({ trip, trips, transactions, onBack, onDeleted }: Tri
     const [showSwitchedOff, setShowSwitchedOff] = useState(false);
     const [showAllCategories, setShowAllCategories] = useState(false);
     const [splitting, setSplitting] = useState<Transaction | null>(null);
+    const [isSharing, setIsSharing] = useState(false);
 
     const resolved = useMemo(() => resolveTrip(trip, transactions), [trip, transactions]);
     const metrics = useMemo(() => tripMetrics(trip, trips, transactions, resolved), [trip, trips, transactions, resolved]);
@@ -256,18 +259,27 @@ ${JSON.stringify(data, null, 2)}`;
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto sm:ml-auto">
+                {/* Three across on a phone, each icon over its label. */}
+                <div className="grid grid-cols-3 sm:flex items-stretch gap-2 w-full sm:w-auto sm:ml-auto">
                     <button
                         onClick={copyForAI}
-                        className="flex items-center justify-center gap-2 px-3 py-3 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors text-sm font-medium whitespace-nowrap"
+                        className={cn(HEADER_ACTION, "bg-purple-50 text-purple-700 hover:bg-purple-100")}
                         title="Copy an analysis prompt with this trip's numbers"
                     >
                         {copyState === 'copied' ? <Check className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
                         <span>{copyState === 'copied' ? 'Copied' : copyState === 'failed' ? "Couldn't copy" : 'AI Analysis'}</span>
                     </button>
                     <button
+                        onClick={() => setIsSharing(true)}
+                        className={cn(HEADER_ACTION, "bg-blue-50 text-blue-700 hover:bg-blue-100")}
+                        title="Make a PDF of this trip to send someone"
+                    >
+                        <Share className="w-4 h-4" />
+                        <span>Share PDF</span>
+                    </button>
+                    <button
                         onClick={() => setIsPickerOpen(true)}
-                        className="flex items-center justify-center gap-2 px-3 py-3 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium whitespace-nowrap"
+                        className={cn(HEADER_ACTION, "bg-emerald-50 text-emerald-700 hover:bg-emerald-100")}
                     >
                         <Plus className="w-4 h-4" />
                         <span>Add transaction</span>
@@ -662,6 +674,8 @@ ${JSON.stringify(data, null, 2)}`;
                     onClose={() => setSplitting(null)}
                 />
             )}
+
+            {isSharing && <TripShareModal trip={trip} trips={trips} transactions={transactions} onClose={() => setIsSharing(false)} />}
 
             {isPickerOpen && (
                 <TripTransactionPicker

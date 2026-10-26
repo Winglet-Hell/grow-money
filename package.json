@@ -14,6 +14,7 @@
     "mcp:deploy": "node mcp/build-function.mjs && supabase functions deploy mcp --project-ref oryartvtjwzkajrjbnwh --no-verify-jwt --use-api"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
     "@supabase/supabase-js": "^2.89.0",
     "class-variance-authority": "^0.7.1",
     "classnames": "^2.5.1",

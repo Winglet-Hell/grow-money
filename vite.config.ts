@@ -30,7 +30,10 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // The trip PDF maker (react-pdf, ~0.5 MB gzipped) loads only when a trip is shared, with its
+        // fonts from the network anyway: not worth adding to every install and update.
+        globIgnores: ['**/tripReportPdf-*.js']
       }
     })
   ],
