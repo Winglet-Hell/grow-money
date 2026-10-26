@@ -1,4 +1,5 @@
 import { getCurrencyMeta } from './currencies';
+import type { BudgetStatus } from './tripStats';
 
 // Number and date formats shared by the trip screens.
 
@@ -50,3 +51,16 @@ export function formatTripRange(start: string, end: string): string {
 }
 
 export const pluralDays = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
+
+/** What the budget says in words: how the spending stands against it, and where a trip under way is heading. */
+export function describeBudget(b: BudgetStatus, money: (n: number) => string): { line: string; pace: string | null } {
+    let line: string;
+    if (b.left < 0) line = `Over budget by ${money(-b.left)}`;
+    else if (b.status === 'past') line = `Under budget by ${money(b.left)}`;
+    else if (b.perDayLeft !== null) line = `${money(b.left)} left · about ${money(b.perDayLeft)}/day for the ${pluralDays(b.daysLeft)} ${b.status === 'upcoming' ? 'of the trip' : 'still ahead'}`;
+    else line = `${money(b.left)} left`;
+    const pace = b.projected !== null
+        ? `At this pace the trip comes to ${money(b.projected)} — ${b.projected > b.budget ? `${money(b.projected - b.budget)} over` : `${money(b.budget - b.projected)} under`} the budget.`
+        : null;
+    return { line, pace };
+}

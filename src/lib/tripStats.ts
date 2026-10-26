@@ -1,9 +1,10 @@
 import type { Transaction, Trip } from '../types';
 import { getGlobalCategory, isHomeBill, isPlannedPayment } from './categoryGroups';
 import { dateKeyOf } from './periods';
+import { formatDayWithWeekday } from './tripFormat';
 import {
     daysBetween, eachDay, indexTransactions, localDayKey, resolveTrip, shiftDay, tripDayCount, tripStatus,
-    type ResolvedTrip, type TripStatus,
+    type ResolvedTrip, type TripEntry, type TripStatus,
 } from './tripUtils';
 
 // How a trip compares with ordinary life at home. "Everyday" spending leaves out what doesn't
@@ -152,6 +153,57 @@ export function dailySpending(trip: Trip, resolved: ResolvedTrip): { day: string
         if (day && byDay.has(day)) byDay.set(day, byDay.get(day)! + Math.abs(t.amount));
     }
     return [...byDay.entries()].map(([day, amount]) => ({ day, amount }));
+}
+
+export interface CategoryShare {
+    name: string;
+    amount: number;
+    share: number; // % of the trip's total
+    width: number; // % of the biggest category, for its bar
+}
+
+/** What the counted spending went on, biggest category first. */
+export function categoryBreakdown(counted: Transaction[], total: number): CategoryShare[] {
+    const byCategory = new Map<string, number>();
+    for (const t of counted) byCategory.set(t.category, (byCategory.get(t.category) ?? 0) + Math.abs(t.amount));
+    const rows = [...byCategory.entries()].map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount);
+    const max = rows[0]?.amount ?? 0;
+    return rows.map(r => ({ ...r, share: total ? (r.amount / total) * 100 : 0, width: max ? (r.amount / max) * 100 : 0 }));
+}
+
+// What the list and the chart call "paid before the first day", and what comes after the last one.
+export const BOOKED_AHEAD = 'before';
+const AFTER_TRIP = 'after';
+
+export interface DaySection {
+    key: string; // the day, or BOOKED_AHEAD / "after"
+    title: string;
+    note?: string;
+    total: number; // the trip's part of each payment
+    entries: TripEntry[];
+}
+
+/** Counted entries by day — bookings first, then each day of the trip, then anything after it. */
+export function daySections(trip: Trip, entries: TripEntry[], latestFirst = false): DaySection[] {
+    const byKey = new Map<string, TripEntry[]>();
+    for (const entry of entries) {
+        const day = dateKeyOf(entry.tx.date) ?? '';
+        const key = day < trip.startDate ? BOOKED_AHEAD : day > trip.endDate ? AFTER_TRIP : day;
+        const list = byKey.get(key);
+        if (list) list.push(entry); else byKey.set(key, [entry]);
+    }
+    const keys = [...byKey.keys()].sort((a, b) => {
+        const rank = (k: string) => (k === BOOKED_AHEAD ? 0 : k === AFTER_TRIP ? 2 : 1);
+        return rank(a) - rank(b) || a.localeCompare(b);
+    });
+    if (latestFirst) keys.reverse();
+    return keys.map(key => {
+        const list = byKey.get(key)!.sort((a, b) => (a.tx.index ?? 0) - (b.tx.index ?? 0));
+        const total = list.reduce((sum, e) => sum + Math.abs(e.tx.amount) * e.share, 0);
+        if (key === BOOKED_AHEAD) return { key, title: 'Booked ahead', note: 'paid before the first day', total, entries: list };
+        if (key === AFTER_TRIP) return { key, title: 'After the trip', total, entries: list };
+        return { key, title: `Day ${daysBetween(trip.startDate, key) + 1}`, note: formatDayWithWeekday(key), total, entries: list };
+    });
 }
 
 export interface TripYear {

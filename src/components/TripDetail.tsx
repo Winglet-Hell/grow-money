@@ -13,12 +13,13 @@ import {
     tripStatus,
     type TripEntry, type TripLists, type TripSuggestion,
 } from '../lib/tripUtils';
-import { budgetStatus, compareWithHome, dailySpending, tripMetrics, type BudgetStatus } from '../lib/tripStats';
-import { dateKeyOf } from '../lib/periods';
+import {
+    BOOKED_AHEAD, budgetStatus, categoryBreakdown, compareWithHome, dailySpending, daySections, tripMetrics, type BudgetStatus,
+} from '../lib/tripStats';
 import { autoTripIcon, tripIcon } from '../lib/tripIcons';
 import { deleteTrip, updateTrip } from '../lib/tripsStore';
 import {
-    formatDayShort, formatDayWithWeekday, formatNative, formatRub, formatRubCompact, formatRubSigned, formatTripRange, pluralDays,
+    describeBudget, formatDayShort, formatDayWithWeekday, formatNative, formatRub, formatRubCompact, formatRubSigned, formatTripRange, pluralDays,
 } from '../lib/tripFormat';
 import { TripFormModal, type TripFormValues } from './TripFormModal';
 import { TripTransactionPicker } from './TripTransactionPicker';
@@ -41,15 +42,7 @@ const LABELLED_BARS_MAX = 14; // more bars than this and the amount labels run i
 
 
 // The chart's and the list's name for "paid before the first day".
-const BEFORE = 'before';
-
-interface ListSection {
-    key: string;
-    title: string;
-    note?: string;
-    total: number;
-    entries: TripEntry[];
-}
+const BEFORE = BOOKED_AHEAD;
 
 const percentChange = (now: number, before: number) => (before > 0 ? Math.round((now / before - 1) * 100) : null);
 
@@ -83,13 +76,7 @@ export function TripDetail({ trip, trips, transactions, onBack, onDeleted }: Tri
     const icon = useMemo(() => tripIcon(trip, transactions), [trip, transactions]);
     const budget = useMemo(() => budgetStatus(trip, metrics), [trip, metrics]);
 
-    const breakdown = useMemo(() => {
-        const byCategory = new Map<string, number>();
-        for (const t of resolved.counted) byCategory.set(t.category, (byCategory.get(t.category) ?? 0) + Math.abs(t.amount));
-        const rows = [...byCategory.entries()].map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount);
-        const max = rows[0]?.amount ?? 0;
-        return rows.map(r => ({ ...r, share: metrics.total ? (r.amount / metrics.total) * 100 : 0, width: max ? (r.amount / max) * 100 : 0 }));
-    }, [resolved, metrics.total]);
+    const breakdown = useMemo(() => categoryBreakdown(resolved.counted, metrics.total), [resolved, metrics.total]);
 
     const biggest = useMemo(
         () => [...resolved.counted].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 5),
@@ -115,32 +102,11 @@ export function TripDetail({ trip, trips, transactions, onBack, onDeleted }: Tri
         });
     }, [resolved, search, filterDay, filterCategory]);
 
-    // Counted spending by day — bookings first, then each day of the trip, then anything after
-    // it — with what's switched off kept apart at the bottom.
-    const { sections, switchedOff } = useMemo(() => {
-        const byKey = new Map<string, TripEntry[]>();
-        const off: TripEntry[] = [];
-        for (const entry of visibleEntries) {
-            if (entry.state !== 'counted') { off.push(entry); continue; }
-            const day = dateKeyOf(entry.tx.date) ?? '';
-            const key = day < trip.startDate ? BEFORE : day > trip.endDate ? 'after' : day;
-            const list = byKey.get(key);
-            if (list) list.push(entry); else byKey.set(key, [entry]);
-        }
-        const keys = [...byKey.keys()].sort((a, b) => {
-            const rank = (k: string) => (k === BEFORE ? 0 : k === 'after' ? 2 : 1);
-            return rank(a) - rank(b) || a.localeCompare(b);
-        });
-        if (latestFirst) keys.reverse();
-        const list: ListSection[] = keys.map(key => {
-            const entries = byKey.get(key)!.sort((a, b) => (a.tx.index ?? 0) - (b.tx.index ?? 0));
-            const total = entries.reduce((sum, e) => sum + Math.abs(e.tx.amount) * e.share, 0);
-            if (key === BEFORE) return { key, title: 'Booked ahead', note: 'paid before the first day', total, entries };
-            if (key === 'after') return { key, title: 'After the trip', total, entries };
-            return { key, title: `Day ${daysBetween(trip.startDate, key) + 1}`, note: formatDayWithWeekday(key), total, entries };
-        });
-        return { sections: list, switchedOff: off.sort((a, b) => a.tx.date.localeCompare(b.tx.date)) };
-    }, [visibleEntries, trip.startDate, trip.endDate, latestFirst]);
+    // Counted spending by day, with what's switched off kept apart at the bottom.
+    const { sections, switchedOff } = useMemo(() => ({
+        sections: daySections(trip, visibleEntries.filter(e => e.state === 'counted'), latestFirst),
+        switchedOff: visibleEntries.filter(e => e.state !== 'counted').sort((a, b) => a.tx.date.localeCompare(b.tx.date)),
+    }), [visibleEntries, trip, latestFirst]);
 
     // Point the stored lists at today's ids (see healTripLists) — once per trip and statement,
     // quietly: the user didn't ask for it, and a failed attempt must not retry in a loop.
@@ -740,14 +706,7 @@ function BudgetCard({ budget: b, money, onEdit }: { budget: BudgetStatus; money:
     const over = b.left < 0;
     const overPace = b.projected !== null && b.projected > b.budget; // still inside it, but heading past it
     const fill = over ? 'bg-red-500' : b.share > 0.9 || overPace ? 'bg-amber-500' : 'bg-emerald-500';
-    let line: string;
-    if (over) line = `Over budget by ${money(-b.left)}`;
-    else if (b.status === 'past') line = `Under budget by ${money(b.left)}`;
-    else if (b.perDayLeft !== null) line = `${money(b.left)} left · about ${money(b.perDayLeft)}/day for the ${pluralDays(b.daysLeft)} ${b.status === 'upcoming' ? 'of the trip' : 'still ahead'}`;
-    else line = `${money(b.left)} left`;
-    const pace = b.projected !== null
-        ? `At this pace the trip comes to ${money(b.projected)} — ${b.projected > b.budget ? `${money(b.projected - b.budget)} over` : `${money(b.budget - b.projected)} under`} the budget.`
-        : null;
+    const { line, pace } = describeBudget(b, money);
     return (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
             <div className="flex items-baseline justify-between gap-3">
