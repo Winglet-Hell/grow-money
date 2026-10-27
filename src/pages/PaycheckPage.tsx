@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import type { Transaction, PaycheckConfig, PaycheckJob, OvertimeEntry, SalesEntry } from '../types';
+import type { Transaction, PaycheckConfig, PaycheckJob, OvertimeEntry, SalesEntry, CommissionChange } from '../types';
 import {
     Banknote,
     HandCoins,
@@ -19,12 +19,14 @@ import {
     Percent,
     ShoppingBag,
     Pencil,
+    X,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useUserSettings } from '../contexts/UserSettingsContext';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { MetricCard } from '../components/MetricCard';
 import { ndflOn, grossOfNet } from '../lib/ndfl';
+import { commissionPctFor, hasCommission, commissionFrom, withoutCommissionChange } from '../lib/paycheck';
 
 interface PaycheckPageProps {
     transactions: Transaction[];
@@ -50,6 +52,11 @@ const addMonths = (key: string, n: number) => {
 const monthLabel = (key: string) => {
     const [y, m] = key.split('-').map(Number);
     return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+};
+
+const monthShort = (key: string) => {
+    const [y, m] = key.split('-').map(Number);
+    return `${MONTHS_SHORT[m - 1] ?? ''} ${y}`;
 };
 
 const shortDate = (iso: string) => {
@@ -286,13 +293,15 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
     const plannedSalary = activeJob?.plannedSalary ?? 0;
     const beforeTax = !!activeJob?.beforeTax;
     const hourlyRate = activeJob?.hourlyRate ?? 0;
-    const commissionPct = activeJob?.commissionPct ?? 0;
     const salesLabel = activeJob?.salesLabel?.trim() || 'Sales';
     const overtime = useMemo(() => activeJob?.overtime ?? [], [activeJob]);
     const sales = useMemo(() => activeJob?.sales ?? [], [activeJob]);
+    // The commission % can differ month to month (a raise from some month on).
+    const pctFor = useCallback((key: string) => (activeJob ? commissionPctFor(activeJob, key) : 0), [activeJob]);
+    const currentPct = useMemo(() => pctFor(currentKey), [pctFor, currentKey]);
 
     const usesOvertime = hourlyRate > 0 || overtime.length > 0;
-    const usesCommission = commissionPct > 0 || sales.length > 0;
+    const usesCommission = (!!activeJob && hasCommission(activeJob)) || sales.length > 0;
 
     // All relevant work-months, filled so skipped months show as gaps. Payments
     // are grouped by work-month (see workMonthOf); overtime and sales live in
@@ -318,6 +327,19 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
         }
         return filled;
     }, [paycheckTx, overtime, sales, currentKey]);
+
+    // The earliest month on record: a commission rate set from it (or before)
+    // is the job's starting rate.
+    const firstMonth = useMemo(() => Array.from(allMonths).sort()[0], [allMonths]);
+
+    // Months a new commission rate can start from, oldest first: the ones on
+    // record after the first, then a year ahead for a raise agreed in advance.
+    const rateMonths = useMemo(() => {
+        const keys: string[] = [];
+        const last = addMonths(currentKey, 12);
+        for (let k = addMonths(firstMonth, 1); k <= last; k = addMonths(k, 1)) keys.push(k);
+        return keys;
+    }, [firstMonth, currentKey]);
 
     const availableYears = useMemo(() => {
         const ys = new Set<string>();
@@ -405,6 +427,8 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
             const overtimeValue = otEntries.reduce((s, o) => s + o.hours * (o.rate ?? hourlyRate), 0);
             const salesEntry = sales.find((s) => s.monthKey === key);
             const salesAmount = salesEntry ? salesEntry.amount : null;
+            const commissionPct = pctFor(key);
+            const prevCommissionPct = pctFor(addMonths(key, -1));
             const commissionValue = commissionPct > 0 && salesAmount !== null ? (salesAmount * commissionPct) / 100 : 0;
             const gross = plannedSalary + overtimeValue + commissionValue;
             // A before-tax job is owed its gross minus НДФЛ, charged on top of what
@@ -438,6 +462,8 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
                 otEntries,
                 overtimeValue,
                 salesAmount,
+                commissionPct,
+                prevCommissionPct,
                 commissionValue,
                 gross,
                 ndfl,
@@ -460,7 +486,7 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
             hourlyRate,
             plannedSalary,
             beforeTax,
-            commissionPct,
+            pctFor,
             currentKey,
             boundaryMonth,
             trackingStartMonth,
@@ -547,6 +573,16 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
             category: effectiveCategory,
             sales: amount === null ? rest : [...rest, { monthKey, amount }],
         });
+    };
+    // A new commission rate holds from its month on; the months before keep theirs.
+    const setCommissionFrom = (monthKey: string | null, pct: number) => {
+        if (!activeJob) return;
+        const from = monthKey === null || monthKey <= firstMonth ? null : monthKey;
+        patchJob(activeJob.id, { category: effectiveCategory, ...commissionFrom(activeJob, from, pct) });
+    };
+    const removeCommissionChange = (monthKey: string) => {
+        if (!activeJob) return;
+        patchJob(activeJob.id, withoutCommissionChange(activeJob, monthKey));
     };
 
     const hasData = paycheckTx.length > 0 || incomeCategories.length > 0;
@@ -657,13 +693,17 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
                     suffix="₽/hr"
                     onSave={(v) => patchJob(activeJob.id, { category: effectiveCategory, hourlyRate: v })}
                 />
-                <PlanInput
-                    label="Sales commission"
+                <CommissionInput
+                    key={activeJob.id}
                     hint={`Share of ${salesLabel.toLowerCase()} paid on top · 0 if none`}
-                    icon={<Percent className="w-5 h-5 text-amber-500" />}
-                    value={activeJob.commissionPct ?? 0}
-                    suffix="% /mo"
-                    onSave={(v) => patchJob(activeJob.id, { category: effectiveCategory, commissionPct: v })}
+                    pct={currentPct}
+                    startPct={activeJob.commissionPct ?? 0}
+                    changes={activeJob.commissionChanges ?? []}
+                    months={rateMonths}
+                    currentKey={currentKey}
+                    pctFor={pctFor}
+                    onSave={setCommissionFrom}
+                    onRemoveChange={removeCommissionChange}
                 />
             </div>
 
@@ -752,10 +792,10 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
                     description={
                         beforeTax
                             ? usesCommission
-                                ? `Gross, before NDFL · ${commissionPct}% commission on top`
+                                ? `Gross, before NDFL · ${currentPct}% commission on top`
                                 : 'Gross per month, before NDFL'
                             : usesCommission
-                            ? `Per month, before ${commissionPct}% commission`
+                            ? `Per month, before ${currentPct}% commission`
                             : 'Expected amount per month'
                     }
                     isPrivacy={isPrivacyMode}
@@ -844,13 +884,14 @@ export const PaycheckPage: React.FC<PaycheckPageProps> = ({ transactions }) => {
                             beforeTax={beforeTax}
                             hourlyRate={hourlyRate}
                             usesOvertime={usesOvertime}
-                            commissionPct={commissionPct}
+                            usesCommission={usesCommission}
                             salesLabel={salesLabel}
                             formatCurrency={formatCurrency}
                             isPrivacy={isPrivacyMode}
                             defaultExpanded={key === monthsForYear[0]}
                             onRemoveOvertime={removeOvertime}
                             onSetSales={setSalesFor}
+                            onSetCommission={setCommissionFrom}
                         />
                     ))}
             </div>
@@ -997,6 +1038,169 @@ const PlanInput: React.FC<{
     );
 };
 
+// ---- commission rate --------------------------------------------------------
+
+const FROM_START = 'start';
+
+// The rate in force this month, and every change on record. A new rate asks
+// from which month it holds and leaves the months before alone, so a raise
+// doesn't rewrite what was already paid.
+const CommissionInput: React.FC<{
+    hint: string;
+    pct: number; // this month's rate
+    startPct: number; // the rate before the first change
+    changes: CommissionChange[];
+    months: string[]; // months a new rate can start from, oldest first
+    currentKey: string;
+    pctFor: (monthKey: string) => number;
+    onSave: (monthKey: string | null, pct: number) => void;
+    onRemoveChange: (monthKey: string) => void;
+}> = ({ hint, pct, startPct, changes, months, currentKey, pctFor, onSave, onRemoveChange }) => {
+    const defaultFrom = months.includes(currentKey) ? currentKey : FROM_START;
+    const [draft, setDraft] = useState(String(pct));
+    const [from, setFrom] = useState(defaultFrom);
+    const [saved, setSaved] = useState(false);
+
+    // Follow the stored rate when it changes underneath (a save, another device).
+    const [synced, setSynced] = useState(pct);
+    if (pct !== synced) {
+        setSynced(pct);
+        setDraft(String(pct));
+    }
+
+    const parsed = parseFloat(draft.replace(',', '.'));
+    const next = isNaN(parsed) ? 0 : Math.max(0, parsed);
+    const dirty = next !== pct;
+
+    const reset = () => {
+        setDraft(String(pct));
+        setFrom(defaultFrom);
+    };
+
+    const commit = () => {
+        if (!dirty) return;
+        onSave(from === FROM_START ? null : from, next);
+        // Back to this month's rate: the sync above moves it on if the new one covers this month.
+        reset();
+        setSaved(true);
+        window.setTimeout(() => setSaved(false), 1500);
+    };
+
+    const nextChange = changes.find((c) => from !== FROM_START && c.monthKey > from);
+    const schedule = [{ monthKey: null as string | null, pct: startPct }, ...changes];
+
+    return (
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+            <div className="flex items-center gap-2 mb-2">
+                <div className="p-2 bg-gray-50 rounded-lg">
+                    <Percent className="w-5 h-5 text-amber-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                        Sales commission
+                        {saved && (
+                            <span className="text-emerald-600 flex items-center gap-0.5 text-xs animate-in fade-in">
+                                <Check className="w-3 h-3" /> saved
+                            </span>
+                        )}
+                    </div>
+                    <div className="text-xs text-gray-400 truncate">{hint}</div>
+                </div>
+            </div>
+            <div className="flex items-center gap-2">
+                <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="any"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') commit();
+                        if (e.key === 'Escape') reset();
+                    }}
+                    placeholder="0"
+                    className="flex-1 min-w-0 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 font-semibold focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                />
+                <span className="text-xs text-gray-400 whitespace-nowrap w-14">% /mo</span>
+            </div>
+
+            {dirty && (
+                <div className="mt-2 space-y-1.5 animate-in fade-in slide-in-from-top-1">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400">from</span>
+                        <div className="relative flex-1 min-w-0">
+                            <select
+                                value={from}
+                                onChange={(e) => setFrom(e.target.value)}
+                                title="First month at the new rate"
+                                className="appearance-none w-full px-2.5 py-1.5 pr-7 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none cursor-pointer"
+                            >
+                                <option value={FROM_START}>the start</option>
+                                {months.map((k) => (
+                                    <option key={k} value={k}>
+                                        {monthShort(k)}
+                                    </option>
+                                ))}
+                            </select>
+                            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                        </div>
+                        <button
+                            onClick={commit}
+                            className="px-3 py-1.5 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+                        >
+                            Save
+                        </button>
+                        <button
+                            onClick={reset}
+                            title="Cancel"
+                            className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <div className="text-xs text-gray-400">
+                        {from === FROM_START
+                            ? changes.length > 0
+                                ? `Every month before ${monthShort(changes[0].monthKey)}`
+                                : 'Every month'
+                            : `Months before ${monthShort(from)} keep ${pctFor(addMonths(from, -1))}%`}
+                        {nextChange && ` · from ${monthShort(nextChange.monthKey)} it's ${nextChange.pct}%`}
+                    </div>
+                </div>
+            )}
+
+            {changes.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-gray-100 space-y-1 text-xs text-gray-400">
+                    {schedule.map((c, i) => {
+                        const until = schedule[i + 1]?.monthKey ?? null;
+                        const inForce = (c.monthKey ?? '') <= currentKey && (until === null || until > currentKey);
+                        return (
+                            <div
+                                key={c.monthKey ?? FROM_START}
+                                className={cn('flex items-center justify-between gap-2', inForce && 'text-gray-700 font-medium')}
+                            >
+                                <span>
+                                    {c.pct}% {c.monthKey ? `from ${monthShort(c.monthKey)}` : `before ${monthShort(until!)}`}
+                                </span>
+                                {c.monthKey && (
+                                    <button
+                                        onClick={() => onRemoveChange(c.monthKey!)}
+                                        title={`Undo — ${monthShort(c.monthKey)} and later go back to ${schedule[i - 1].pct}%`}
+                                        className="p-0.5 text-gray-300 hover:text-red-500 transition-colors"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 // ---- month card -------------------------------------------------------------
 
 interface MonthData {
@@ -1006,6 +1210,8 @@ interface MonthData {
     otEntries: OvertimeEntry[];
     overtimeValue: number;
     salesAmount: number | null; // null = not filled in yet
+    commissionPct: number; // this month's rate
+    prevCommissionPct: number; // the month before's — differs where a raise or cut starts
     commissionValue: number;
     gross: number; // plan + overtime + commission
     ndfl: number; // НДФЛ withheld from the gross (before-tax jobs only, else 0)
@@ -1026,26 +1232,28 @@ const MonthCard: React.FC<{
     beforeTax: boolean;
     hourlyRate: number;
     usesOvertime: boolean;
-    commissionPct: number;
+    usesCommission: boolean;
     salesLabel: string;
     formatCurrency: (v: number) => string;
     isPrivacy: boolean;
     defaultExpanded: boolean;
     onRemoveOvertime: (id: string) => void;
     onSetSales: (monthKey: string, amount: number | null) => void;
+    onSetCommission: (monthKey: string, pct: number) => void;
 }> = ({
     data,
     plannedSalary,
     beforeTax,
     hourlyRate,
     usesOvertime,
-    commissionPct,
+    usesCommission,
     salesLabel,
     formatCurrency,
     isPrivacy,
     defaultExpanded,
     onRemoveOvertime,
     onSetSales,
+    onSetCommission,
 }) => {
     const [expanded, setExpanded] = useState(defaultExpanded);
 
@@ -1056,6 +1264,8 @@ const MonthCard: React.FC<{
         otEntries,
         overtimeValue,
         salesAmount,
+        commissionPct,
+        prevCommissionPct,
         commissionValue,
         gross,
         ndfl,
@@ -1072,7 +1282,8 @@ const MonthCard: React.FC<{
 
     // A month is "scored" (compared to the plan) only when it's a normal completed month.
     const scored = !isIncomplete && !isFuture && !isCurrent && !needsSales;
-    const showCommission = commissionPct > 0 || salesAmount !== null;
+    // Every month of a commission job shows its rate, a 0% one too, so it can be raised again there.
+    const showCommission = usesCommission;
 
     // Status chip
     let status: { label: string; cls: string; icon: React.ReactNode } | null = null;
@@ -1306,9 +1517,11 @@ const MonthCard: React.FC<{
                             label={salesLabel}
                             amount={salesAmount}
                             commissionPct={commissionPct}
+                            prevCommissionPct={prevCommissionPct}
                             commissionValue={commissionValue}
                             formatCurrency={formatCurrency}
                             onSave={onSetSales}
+                            onSetPct={onSetCommission}
                         />
                     )}
 
@@ -1372,20 +1585,44 @@ const SalesRow: React.FC<{
     label: string;
     amount: number | null;
     commissionPct: number;
+    prevCommissionPct: number;
     commissionValue: number;
     formatCurrency: (v: number) => string;
     onSave: (monthKey: string, amount: number | null) => void;
-}> = ({ monthKey, label, amount, commissionPct, commissionValue, formatCurrency, onSave }) => {
+    onSetPct: (monthKey: string, pct: number) => void;
+}> = ({
+    monthKey,
+    label,
+    amount,
+    commissionPct,
+    prevCommissionPct,
+    commissionValue,
+    formatCurrency,
+    onSave,
+    onSetPct,
+}) => {
     const [draft, setDraft] = useState(amount === null ? '' : String(amount));
+    const [pctDraft, setPctDraft] = useState(String(commissionPct));
     const [saved, setSaved] = useState(false);
 
-    // Follow the stored figure when it changes underneath us (settings synced
-    // from another device), without stomping on what is being typed.
+    // Follow the stored figures when they change underneath us (settings synced
+    // from another device, a rate set from an earlier month), without stomping
+    // on what is being typed.
     const [synced, setSynced] = useState(amount);
     if (amount !== synced) {
         setSynced(amount);
         setDraft(amount === null ? '' : String(amount));
     }
+    const [syncedPct, setSyncedPct] = useState(commissionPct);
+    if (commissionPct !== syncedPct) {
+        setSyncedPct(commissionPct);
+        setPctDraft(String(commissionPct));
+    }
+
+    const flashSaved = () => {
+        setSaved(true);
+        window.setTimeout(() => setSaved(false), 1500);
+    };
 
     const commit = () => {
         const trimmed = draft.trim();
@@ -1393,8 +1630,21 @@ const SalesRow: React.FC<{
         const next = trimmed === '' || isNaN(parsed) ? null : Math.max(0, parsed);
         if (next !== amount) {
             onSave(monthKey, next);
-            setSaved(true);
-            window.setTimeout(() => setSaved(false), 1500);
+            flashSaved();
+        }
+    };
+
+    // A rate typed here holds from this month on; a cleared box keeps the old one.
+    const commitPct = () => {
+        const parsed = parseFloat(pctDraft.replace(',', '.'));
+        if (pctDraft.trim() === '' || isNaN(parsed)) {
+            setPctDraft(String(commissionPct));
+            return;
+        }
+        const next = Math.max(0, parsed);
+        if (next !== commissionPct) {
+            onSetPct(monthKey, next);
+            flashSaved();
         }
     };
 
@@ -1425,21 +1675,39 @@ const SalesRow: React.FC<{
                         className="w-52 pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                     />
                 </div>
-                <span className="text-sm text-gray-400">× {commissionPct}% =</span>
-                <span className="text-sm font-semibold text-gray-900">{formatCurrency(commissionValue)}</span>
-                {amount !== null && (
-                    <button
-                        onClick={() => onSave(monthKey, null)}
-                        className="p-1 text-gray-300 hover:text-red-500 transition-colors"
-                        title="Clear"
-                    >
-                        <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                )}
+                <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-400">×</span>
+                    <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        step="any"
+                        value={pctDraft}
+                        onChange={(e) => setPctDraft(e.target.value)}
+                        onBlur={commitPct}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                        }}
+                        title="Commission rate — a new one holds from this month on"
+                        className="w-16 px-2 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold text-gray-900 text-center focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                    />
+                    <span className="text-sm text-gray-400">% =</span>
+                    <span className="text-sm font-semibold text-gray-900">{formatCurrency(commissionValue)}</span>
+                    {amount !== null && (
+                        <button
+                            onClick={() => onSave(monthKey, null)}
+                            className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+                            title="Clear"
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                </div>
             </div>
             <p className="text-xs text-gray-400 mt-1.5">
-                {label} for {monthLabel(monthKey)} — {commissionPct}% of it is expected on top of the salary. Enter 0 if
-                there were none.
+                {label} for {monthLabel(monthKey)} — {commissionPct}% of it is expected on top of the salary
+                {commissionPct !== prevCommissionPct && ` (${prevCommissionPct}% before this month)`}. Enter 0 if there
+                were none. A new % here holds from this month on.
             </p>
         </div>
     );

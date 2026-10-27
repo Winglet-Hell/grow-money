@@ -16,6 +16,7 @@ import {
 import { activeLimits } from './budget';
 import { getCurrencyMeta } from './currencies';
 import { ndflOn } from './ndfl';
+import { commissionPctFor, hasCommission } from './paycheck';
 import {
     FIRST_SNAPSHOT_DATE,
     IMPLAUSIBLE_CUT_PCT,
@@ -1326,15 +1327,21 @@ export function buildAIExportPayload(input: AIExportInput) {
                 plannedNetMonthlySalary: j.plannedSalary == null ? null : round(netSalary(j)),
                 plannedGrossMonthlySalary: j.beforeTax ? j.plannedSalary ?? null : null,
                 overtimeHourlyRate: j.hourlyRate || null,
-                salesCommissionPct: j.commissionPct || null,
-                commissionBase: j.commissionPct ? (j.salesLabel || 'sales') : null,
+                salesCommissionPct: commissionPctFor(j, currentMonthKey) || null,
+                salesCommissionPctHistory: j.commissionChanges?.length
+                    ? [
+                        { fromWorkMonth: null, pct: j.commissionPct ?? 0 },
+                        ...j.commissionChanges.map(c => ({ fromWorkMonth: c.monthKey, pct: c.pct })),
+                    ]
+                    : null,
+                commissionBase: hasCommission(j) ? (j.salesLabel || 'sales') : null,
                 monthsOfSelfReportedSales: (j.sales ?? []).length,
             })),
             plannedMonthlySalary: paycheck?.jobs?.length
                 ? round(paycheck.jobs.reduce((s, j) => s + netSalary(j), 0))
                 : paycheck?.plannedSalary ?? null,
             plannedSalaryNote:
-                'Sum of the fixed net salary of every tracked job. Sales commission and overtime sit on top of it and vary month to month. A job with plannedGrossMonthlySalary is paid gross with НДФЛ withheld (commission and overtime too): its net figure is at the 13% base rate, and once that employer\'s pay for the year passes 2.4M RUB the rate on the excess is 15% (18% past 5M), so the net pay drops late in the year.',
+                'Sum of the fixed net salary of every tracked job. Sales commission and overtime sit on top of it and vary month to month. A job with plannedGrossMonthlySalary is paid gross with НДФЛ withheld (commission and overtime too): its net figure is at the 13% base rate, and once that employer\'s pay for the year passes 2.4M RUB the rate on the excess is 15% (18% past 5M), so the net pay drops late in the year. salesCommissionPct is the rate for the current work-month; when it changed over time (a raise), salesCommissionPctHistory lists every rate with the first work-month it applies to (fromWorkMonth null = from the start), and each work-month is paid at the rate in force then.',
         },
 
         milestones: {

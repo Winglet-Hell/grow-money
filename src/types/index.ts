@@ -125,6 +125,13 @@ export type SalesEntry = {
     amount: number;
 };
 
+// A new commission rate (a raise, a cut) that holds from a work-month on,
+// until the next change.
+export type CommissionChange = {
+    monthKey: string; // "YYYY-MM", the first work-month at this rate
+    pct: number;
+};
+
 // One employer tracked on the Paycheck page. Pay is salary + optional overtime
 // + optional commission on sales; the parts a job doesn't use stay at 0.
 export type PaycheckJob = {
@@ -135,7 +142,8 @@ export type PaycheckJob = {
     beforeTax?: boolean; // salary, overtime and commission are gross; the page withholds НДФЛ itself
     hourlyRate?: number; // default overtime rate (per hour); 0 = job has no overtime
     overtime?: OvertimeEntry[];
-    commissionPct?: number; // % of the month's sales paid on top; 0 = no commission
+    commissionPct?: number; // % of the month's sales paid on top, from the start; 0 = no commission
+    commissionChanges?: CommissionChange[]; // later rates, oldest first; months before the first keep commissionPct
     salesLabel?: string; // what the commission is based on, e.g. "Ozon sales"
     sales?: SalesEntry[];
 };
